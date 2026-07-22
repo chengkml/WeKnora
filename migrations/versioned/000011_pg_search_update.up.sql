@@ -1,4 +1,4 @@
--- Migration 000011: Update pg_search extension to latest version
+-- Migration 000011: Update pg_search extension to latest version (no-op without pg_search)
 -- Equivalent to: psql -c 'ALTER EXTENSION pg_search UPDATE;'
 
 DO $$
@@ -8,5 +8,9 @@ BEGIN
         RETURN;
     END IF;
 
-    ALTER EXTENSION pg_search UPDATE;
+    BEGIN
+        ALTER EXTENSION pg_search UPDATE;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE '[Migration 000011] pg_search extension not available, skipping update';
+    END;
 END $$;

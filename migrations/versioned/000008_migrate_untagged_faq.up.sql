@@ -7,7 +7,11 @@ BEGIN
         RETURN;
     END IF;
 
-    ALTER EXTENSION pg_search UPDATE;
+    BEGIN
+        ALTER EXTENSION pg_search UPDATE;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE '[Migration 000008] pg_search extension not available, skipping update';
+    END;
 END $$;
 
 DO $$

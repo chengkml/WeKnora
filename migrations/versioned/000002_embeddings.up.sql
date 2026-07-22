@@ -12,14 +12,19 @@ BEGIN
     -- If we reach here, proceed with migration
     RAISE NOTICE '[Conditional Migration: embeddings] Creating embeddings table...';
 
-    -- Create required extensions
+    -- Create required extensions (pg_search is ParadeDB-specific and may not be available)
     CREATE EXTENSION IF NOT EXISTS vector;
     CREATE EXTENSION IF NOT EXISTS pg_trgm;
-    CREATE EXTENSION IF NOT EXISTS pg_search;
+
+    BEGIN
+        CREATE EXTENSION IF NOT EXISTS pg_search;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE '[Migration 000002] pg_search extension not available (expected without ParadeDB), skipping BM25 index';
+    END;
 
     -- Create embeddings table
     RAISE NOTICE '[Conditional Migration: embeddings] Creating indexes for embeddings (this may take a while)...';
-    
+
     CREATE TABLE IF NOT EXISTS embeddings (
         id SERIAL PRIMARY KEY,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -37,28 +42,32 @@ BEGIN
 
     CREATE UNIQUE INDEX IF NOT EXISTS embeddings_unique_source ON embeddings(source_id, source_type);
 
-    -- Create BM25 search index (check if exists first)
-    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'embeddings_search_idx') THEN
-        CREATE INDEX embeddings_search_idx ON embeddings
-        USING bm25 (id, knowledge_base_id, content, knowledge_id, chunk_id)
-        WITH (
-            key_field = 'id',
-            text_fields = '{
-                "content": {
-                  "tokenizer": {"type": "chinese_lindera"}
-                }
-            }'
-        );
-        RAISE NOTICE '[Conditional Migration: embeddings] Created BM25 index embeddings_search_idx';
+    -- Create BM25 search index (only if pg_search extension is available)
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_search') THEN
+        IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'embeddings_search_idx') THEN
+            CREATE INDEX embeddings_search_idx ON embeddings
+            USING bm25 (id, knowledge_base_id, content, knowledge_id, chunk_id)
+            WITH (
+                key_field = 'id',
+                text_fields = '{
+                    "content": {
+                      "tokenizer": {"type": "chinese_lindera"}
+                    }
+                }'
+            );
+            RAISE NOTICE '[Conditional Migration: embeddings] Created BM25 index embeddings_search_idx';
+        ELSE
+            RAISE NOTICE '[Conditional Migration: embeddings] BM25 index embeddings_search_idx already exists';
+        END IF;
     ELSE
-        RAISE NOTICE '[Conditional Migration: embeddings] BM25 index embeddings_search_idx already exists';
+        RAISE NOTICE '[Conditional Migration: embeddings] pg_search not available, skipping BM25 index';
     END IF;
 
     -- Create HNSW indexes for vector search (check if exists first)
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'embeddings_embedding_idx' OR indexname LIKE 'embeddings_embedding%3584%') THEN
-        CREATE INDEX embeddings_embedding_idx_3584 ON embeddings 
-        USING hnsw ((embedding::halfvec(3584)) halfvec_cosine_ops) 
-        WITH (m = 16, ef_construction = 64) 
+        CREATE INDEX embeddings_embedding_idx_3584 ON embeddings
+        USING hnsw ((embedding::halfvec(3584)) halfvec_cosine_ops)
+        WITH (m = 16, ef_construction = 64)
         WHERE (dimension = 3584);
         RAISE NOTICE '[Conditional Migration: embeddings] Created HNSW index for dimension 3584';
     ELSE
@@ -66,9 +75,9 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'embeddings_embedding_idx_798' OR indexname LIKE 'embeddings_embedding%798%') THEN
-        CREATE INDEX embeddings_embedding_idx_798 ON embeddings 
-        USING hnsw ((embedding::halfvec(798)) halfvec_cosine_ops) 
-        WITH (m = 16, ef_construction = 64) 
+        CREATE INDEX embeddings_embedding_idx_798 ON embeddings
+        USING hnsw ((embedding::halfvec(798)) halfvec_cosine_ops)
+        WITH (m = 16, ef_construction = 64)
         WHERE (dimension = 798);
         RAISE NOTICE '[Conditional Migration: embeddings] Created HNSW index for dimension 798';
     ELSE
@@ -85,9 +94,11 @@ BEGIN
     CREATE INDEX IF NOT EXISTS idx_embeddings_knowledge_base_id ON embeddings(knowledge_base_id);
 
     -- Reindex BM25 search index (idempotent - will rebuild if exists)
-    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'embeddings_search_idx') THEN
-        REINDEX INDEX embeddings_search_idx;
-        RAISE NOTICE '[Migration 000002] Reindexed embeddings_search_idx';
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_search') THEN
+        IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'embeddings_search_idx') THEN
+            REINDEX INDEX embeddings_search_idx;
+            RAISE NOTICE '[Migration 000002] Reindexed embeddings_search_idx';
+        END IF;
     END IF;
 
     RAISE NOTICE '[Conditional Migration: embeddings] Embeddings table setup completed successfully!';
