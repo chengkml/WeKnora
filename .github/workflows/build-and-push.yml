@@ -82,6 +82,50 @@ jobs:
           cache-to: type=gha,mode=max,scope=weknora-app-${{ matrix.arch_tag }}
 
   # ===================================================================
+  # Docreader: 需要本地 protoc 安装，用原生 runner 各自构建
+  # ===================================================================
+  build-docreader:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch_tag: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch_tag: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v6
+
+      - name: 设置 Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 登录阿里云镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建并推送 Docreader 镜像（${{ matrix.platform }}）
+        uses: docker/build-push-action@v7
+        with:
+          push: true
+          platforms: ${{ matrix.platform }}
+          file: docker/Dockerfile.docreader
+          context: .
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-docreader:${{ github.sha }}-${{ matrix.arch_tag }}
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-docreader:${{ matrix.arch_tag }}
+          cache-from: type=gha,scope=weknora-docreader-${{ matrix.arch_tag }}
+          cache-to: type=gha,mode=max,scope=weknora-docreader-${{ matrix.arch_tag }}
+
+  # ===================================================================
   # UI: multi-platform build in one shot (nginx + static files, fast)
   # ===================================================================
   build-ui:
@@ -140,7 +184,7 @@ jobs:
   # ===================================================================
   merge-manifest:
     runs-on: ubuntu-latest
-    needs: [build-app, build-ui]
+    needs: [build-app, build-docreader, build-ui]
     timeout-minutes: 10
 
     steps:
@@ -157,3 +201,10 @@ jobs:
             -t ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-app:latest \
             ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-app:amd64 \
             ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-app:arm64
+
+      - name: 创建多架构 manifest（weknora-docreader:latest）
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-docreader:latest \
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-docreader:amd64 \
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-docreader:arm64
