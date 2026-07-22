@@ -128,9 +128,12 @@ type AuthToken struct {
 	User *User `json:"user,omitempty" gorm:"foreignKey:UserID"`
 }
 
-// LoginRequest represents a login request
+// LoginRequest represents a login request.
+// Accepts either Email (original) or Username (duowen_harness compatible).
+// At least one is required; if both are provided Email takes precedence.
 type LoginRequest struct {
-	Email    string `json:"email"    binding:"required,email"`
+	Email    string `json:"email,omitempty"`
+	Username string `json:"username,omitempty"`
 	Password string `json:"password" binding:"required,min=6"`
 }
 

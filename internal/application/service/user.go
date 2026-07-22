@@ -206,17 +206,36 @@ func (s *userService) Register(ctx context.Context, req *types.RegisterRequest) 
 // Login authenticates a user and returns tokens
 func (s *userService) Login(ctx context.Context, req *types.LoginRequest) (*types.LoginResponse, error) {
 	logger.Info(ctx, "Start user login")
-	// Get user by email
-	user, err := s.userRepo.GetUserByEmail(ctx, req.Email)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to get user by email: %v", err)
-		return &types.LoginResponse{
-			Success: false,
-			Message: "Invalid email or password",
-		}, nil
+
+	// Resolve user by email first, then by username (for duowen_harness compatibility).
+	var user *types.User
+	var err error
+	identity := strings.TrimSpace(req.Email)
+	if identity != "" {
+		user, err = s.userRepo.GetUserByEmail(ctx, identity)
+		if err != nil && !errors.Is(err, ErrUserNotFound) {
+			logger.Errorf(ctx, "Failed to get user by email: %v", err)
+			return &types.LoginResponse{
+				Success: false,
+				Message: "Invalid email or password",
+			}, nil
+		}
 	}
 	if user == nil {
-		logger.Warn(ctx, "User not found for email")
+		identity = strings.TrimSpace(req.Username)
+		if identity != "" {
+			user, err = s.userRepo.GetUserByUsername(ctx, identity)
+			if err != nil && !errors.Is(err, ErrUserNotFound) {
+				logger.Errorf(ctx, "Failed to get user by username: %v", err)
+				return &types.LoginResponse{
+					Success: false,
+					Message: "Invalid email or password",
+				}, nil
+			}
+		}
+	}
+	if user == nil {
+		logger.Warn(ctx, "User not found")
 		return &types.LoginResponse{
 			Success: false,
 			Message: "Invalid email or password",

@@ -218,15 +218,28 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.Error(appErr)
 		return
 	}
-	email := secutils.SanitizeForLog(req.Email)
 
-	// Validate required fields
-	if req.Email == "" || req.Password == "" {
-		logger.Error(ctx, "Missing required login fields")
-		appErr := errors.NewValidationError("Email and password are required")
+	// Accept email or username; at least one must be provided.
+	req.Email = strings.TrimSpace(req.Email)
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Email == "" && req.Username == "" {
+		logger.Error(ctx, "Missing email and username")
+		appErr := errors.NewValidationError("Email or username is required")
 		c.Error(appErr)
 		return
 	}
+	if req.Password == "" {
+		logger.Error(ctx, "Missing password")
+		appErr := errors.NewValidationError("Password is required")
+		c.Error(appErr)
+		return
+	}
+
+	loginID := req.Email
+	if loginID == "" {
+		loginID = req.Username
+	}
+	email := secutils.SanitizeForLog(loginID)
 
 	// Call service to authenticate user
 	response, err := h.userService.Login(ctx, &req)
