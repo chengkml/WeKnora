@@ -213,7 +213,7 @@ func (s *userService) Login(ctx context.Context, req *types.LoginRequest) (*type
 	identity := strings.TrimSpace(req.Email)
 	if identity != "" {
 		user, err = s.userRepo.GetUserByEmail(ctx, identity)
-		if err != nil && !errors.Is(err, ErrUserNotFound) {
+		if err != nil && !errors.Is(err, apprepo.ErrUserNotFound) {
 			logger.Errorf(ctx, "Failed to get user by email: %v", err)
 			return &types.LoginResponse{
 				Success: false,
@@ -225,7 +225,7 @@ func (s *userService) Login(ctx context.Context, req *types.LoginRequest) (*type
 		identity = strings.TrimSpace(req.Username)
 		if identity != "" {
 			user, err = s.userRepo.GetUserByUsername(ctx, identity)
-			if err != nil && !errors.Is(err, ErrUserNotFound) {
+			if err != nil && !errors.Is(err, apprepo.ErrUserNotFound) {
 				logger.Errorf(ctx, "Failed to get user by username: %v", err)
 				return &types.LoginResponse{
 					Success: false,
