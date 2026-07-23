@@ -20,6 +20,7 @@ import secrets
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import mcp.types as types
 import uvicorn
@@ -449,7 +450,7 @@ def create_app() -> Starlette:
     routes = [
         Route("/health", endpoint=health_check),
         # SSE and message endpoints for KB-scoped access
-        Route("/mcp/{path:path}", endpoint=mcp_router, methods=["GET", "POST"]),
+        Mount("/mcp", endpoint=mcp_router),
     ]
     return Starlette(routes=routes, lifespan=_lifespan)
 
@@ -457,15 +458,13 @@ def create_app() -> Starlette:
 async def mcp_router(scope: dict, receive: Any, send: Any) -> None:
     """Dispatch incoming MCP requests to the SSE or messages handler.
 
-    Because Starlette's ``Route`` with a ``{path:path}`` catch‑all reaches
-    this single endpoint for every ``/mcp/…`` path, we parse the path and
-    delegate.
+    Mounted at ``/mcp``; path after the mount point looks like
+    ``/<kb_id>/sse`` or ``/<kb_id>/messages``.
     """
     path: str = scope["path"]
-    # path will be something like /mcp/<kb_id>/sse or /mcp/<kb_id>/messages
-    segments = path.strip("/").split("/")  # ["mcp", "<kb_id>", "sse"|"messages"]
+    segments = path.strip("/").split("/")  # ["<kb_id>", "sse"|"messages"]
 
-    if len(segments) < 3:
+    if len(segments) < 2:
         await _send_404(send)
         return
 

@@ -499,6 +499,8 @@ services:
   postgres:
     image: pgvector/pgvector:0.8.0-pg17
     container_name: WeKnora-postgres
+    ports:
+      - "${DB_EXPOSE_PORT:-5432}:5432"
     environment:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -997,6 +999,34 @@ services:
       - WeKnora-network
     restart: unless-stopped
     profiles:
+      - full
+
+  # ---------------------------------------------------------------------------
+  # MCP Gateway: URL 路径隔离的知识库 MCP 服务（只读，SSE 传输）
+  # 独立容器，无默认 profile，按需启用：
+  #   docker compose --profile mcp-gateway up -d
+  # ---------------------------------------------------------------------------
+  mcp-gateway:
+    image: wechatopenai/weknora-mcp-gateway:${WEKNORA_VERSION:-latest}
+    build:
+      context: ./mcp-gateway
+    container_name: WeKnora-mcp-gateway
+    ports:
+      - "${MCP_GATEWAY_PORT:-8001}:8000"
+    environment:
+      - WEKNORA_BASE_URL=http://app:8080/api/v1
+      - WEKNORA_API_KEY=${WEKNORA_API_KEY:-}
+      # MCP 客户端认证用的共享密钥（Authorization: Bearer）；dev 默认值仅用于本地开发
+      - MCP_GATEWAY_AUTH_TOKEN=${MCP_GATEWAY_AUTH_TOKEN:-dev-mcp-gateway-token}
+      - WEKNORA_VERIFY_SSL=${WEKNORA_VERIFY_SSL:-true}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - WeKnora-network
+    restart: unless-stopped
+    profiles:
+      - mcp-gateway
       - full
 
 networks:
