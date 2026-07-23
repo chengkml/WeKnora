@@ -180,11 +180,55 @@ jobs:
           cache-to: type=gha,mode=max,scope=weknora-ui
 
   # ===================================================================
+  # MCP Gateway: Python 项目，多架构并行构建
+  # ===================================================================
+  build-mcp-gateway:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch_tag: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch_tag: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v6
+
+      - name: 设置 Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 登录阿里云镜像仓库
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建并推送 MCP Gateway 镜像（${{ matrix.platform }}）
+        uses: docker/build-push-action@v7
+        with:
+          push: true
+          platforms: ${{ matrix.platform }}
+          file: mcp-gateway/Dockerfile
+          context: ./mcp-gateway
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-mcp-gateway:${{ github.sha }}-${{ matrix.arch_tag }}
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-mcp-gateway:${{ matrix.arch_tag }}
+          cache-from: type=gha,scope=weknora-mcp-gateway-${{ matrix.arch_tag }}
+          cache-to: type=gha,mode=max,scope=weknora-mcp-gateway-${{ matrix.arch_tag }}
+
+  # ===================================================================
   # Manifest: 合并多架构镜像到 latest 标签
   # ===================================================================
   merge-manifest:
     runs-on: ubuntu-latest
-    needs: [build-app, build-docreader, build-ui]
+    needs: [build-app, build-docreader, build-ui, build-mcp-gateway]
     timeout-minutes: 10
 
     steps:
@@ -208,3 +252,10 @@ jobs:
             -t ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-docreader:latest \
             ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-docreader:amd64 \
             ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-docreader:arm64
+
+      - name: 创建多架构 manifest（weknora-mcp-gateway:latest）
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-mcp-gateway:latest \
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-mcp-gateway:amd64 \
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-mcp-gateway:arm64
