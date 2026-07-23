@@ -306,7 +306,7 @@ _transport_cache: dict[str, SseServerTransport] = {}
 def _get_transport(kb_id: str) -> SseServerTransport:
     if kb_id not in _transport_cache:
         _transport_cache[kb_id] = SseServerTransport(
-            f"/mcp/{kb_id}/messages"
+            f"/{kb_id}/messages"
         )
     return _transport_cache[kb_id]
 
@@ -373,7 +373,12 @@ async def _send_405(send: Any) -> None:
 
 
 async def mcp_sse(scope: dict, receive: Any, send: Any) -> None:
-    """Handle ``GET /mcp/{kb_id}/sse`` — establish an SSE session."""
+    """Handle ``GET /mcp/{kb_id}/sse`` — establish an SSE session.
+
+    Mount("/mcp") strips the ``/mcp`` prefix from ``scope["path"]``,
+    so the path seen here is ``/{kb_id}/sse`` — 3 parts before strip,
+    2 parts after.
+    """
     if scope["method"] != "GET":
         await _send_405(send)
         return
@@ -382,14 +387,14 @@ async def mcp_sse(scope: dict, receive: Any, send: Any) -> None:
         await _send_401(send)
         return
 
-    # Extract kb_id from the URL path: /mcp/{kb_id}/sse
+    # Mount("/mcp") strips /mcp from scope["path"], leaving /{kb_id}/sse
     path = scope["path"]
     parts = path.strip("/").split("/")
-    if len(parts) < 3 or parts[-1] != "sse":
+    if len(parts) < 2 or parts[-1] != "sse":
         await _send_404(send)
         return
 
-    kb_id = parts[1]
+    kb_id = parts[0]
     transport = _get_transport(kb_id)
 
     token = _kb_context.set(kb_id)
@@ -404,7 +409,10 @@ async def mcp_sse(scope: dict, receive: Any, send: Any) -> None:
 
 
 async def mcp_messages(scope: dict, receive: Any, send: Any) -> None:
-    """Handle ``POST /mcp/{kb_id}/messages`` — inbound MCP messages."""
+    """Handle ``POST /mcp/{kb_id}/messages`` — inbound MCP messages.
+
+    After Mount strips ``/mcp``, ``scope["path"]`` is ``/{kb_id}/messages``.
+    """
     if scope["method"] not in ("POST", "OPTIONS"):
         await _send_405(send)
         return
@@ -413,14 +421,14 @@ async def mcp_messages(scope: dict, receive: Any, send: Any) -> None:
         await _send_401(send)
         return
 
-    # Extract kb_id from the URL path: /mcp/{kb_id}/messages
+    # Mount("/mcp") strips /mcp from scope["path"], leaving /{kb_id}/messages
     path = scope["path"]
     parts = path.strip("/").split("/")
-    if len(parts) < 3:
+    if len(parts) < 2:
         await _send_404(send)
         return
 
-    kb_id = parts[1]
+    kb_id = parts[0]
     transport = _get_transport(kb_id)
     await transport.handle_post_message(scope, receive, send)
 
