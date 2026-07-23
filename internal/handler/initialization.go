@@ -64,6 +64,8 @@ type InitializationHandler struct {
 	documentReader   interfaces.DocumentReader
 	pooler           embedding.EmbedderPooler
 	storageResolver  interfaces.StorageBackendResolver
+	userService      interfaces.UserService
+	tenantMemberSvc  interfaces.TenantMemberService
 }
 
 // NewInitializationHandler 创建初始化处理器
@@ -78,6 +80,8 @@ func NewInitializationHandler(
 	documentReader interfaces.DocumentReader,
 	pooler embedding.EmbedderPooler,
 	storageResolver interfaces.StorageBackendResolver,
+	userService interfaces.UserService,
+	tenantMemberSvc interfaces.TenantMemberService,
 ) *InitializationHandler {
 	return &InitializationHandler{
 		config:           config,
@@ -90,7 +94,155 @@ func NewInitializationHandler(
 		documentReader:   documentReader,
 		pooler:           pooler,
 		storageResolver:  storageResolver,
+		userService:      userService,
+		tenantMemberSvc:  tenantMemberSvc,
 	}
+}
+
+// UserInitRequest 用户初始化请求
+type UserInitRequest struct {
+	UserID   string `json:"userId"   binding:"required"`
+	Username string `json:"username" binding:"required"`
+	Email    string `json:"email"    binding:"required"`
+}
+
+// UserInitResponse 用户初始化响应
+type UserInitResponse struct {
+	Success       bool                 `json:"success"`
+	Message       string               `json:"message,omitempty"`
+	User          *types.UserInfo      `json:"user,omitempty"`
+	Tenant        *types.Tenant        `json:"tenant,omitempty"`
+	KnowledgeBase *types.KnowledgeBase `json:"knowledge_base,omitempty"`
+	AlreadyInit   bool                 `json:"already_init"`
+}
+
+// UserInitialize godoc
+// @Summary      用户初始化
+// @Description  用户首次进入系统时调用该接口完成初始化流程，包括创建用户、默认工作空间和个人知识库。
+//
+//	已初始化过的用户再次调用不会重复创建（幂等）。
+//
+// @Tags         初始化
+// @Accept       json
+// @Produce      json
+// @Param        request  body      handler.UserInitRequest  true  "用户初始化请求"
+// @Success      200      {object}  map[string]interface{}  "初始化成功"
+// @Failure      400      {object}  errors.AppError         "请求参数错误"
+// @Router       /initialization/user/init [post]
+func (h *InitializationHandler) UserInitialize(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req UserInitRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error(ctx, "Failed to parse user init request", err)
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+
+	// Step 1: 查重 — 使用用户ID去系统查询是否存在该用户
+	existingUser, err := h.userService.GetUserByID(ctx, req.UserID)
+	if err != nil {
+		// 如果用户不存在，这是正常情况（首次初始化）
+		logger.Infof(ctx, "User not found, proceeding with initialization: %s", req.UserID)
+	} else if existingUser != nil {
+		// 用户已存在，直接返回（幂等）
+		logger.Infof(ctx, "User already initialized: %s", req.UserID)
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "用户已初始化",
+			"data": UserInitResponse{
+				Success:     true,
+				Message:     "用户已初始化",
+				User:        existingUser.ToUserInfo(),
+				AlreadyInit: true,
+			},
+		})
+		return
+	}
+
+	// Step 2: 创建用户（无密码模式）
+	user := &types.User{
+		ID:           req.UserID,
+		Username:     req.Username,
+		Email:        req.Email,
+		PasswordHash: "", // 初始化流程无密码，用户后续可通过其他方式登录
+		IsActive:     true,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	if err := h.userService.CreateUser(ctx, user); err != nil {
+		logger.Errorf(ctx, "Failed to create user: %v", err)
+		c.Error(errors.NewInternalServerError("创建用户失败: " + err.Error()))
+		return
+	}
+	logger.Infof(ctx, "User created: %s", req.UserID)
+
+	// Step 3: 创建默认工作空间（以用户ID命名）
+	tenant := &types.Tenant{
+		Name:        req.UserID,
+		Description: "默认工作空间",
+		Status:      "active",
+	}
+
+	createdTenant, err := h.tenantService.CreateTenant(ctx, tenant)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to create workspace for user: %v", err)
+		c.Error(errors.NewInternalServerError("创建工作空间失败: " + err.Error()))
+		return
+	}
+	logger.Infof(ctx, "Workspace created: %d for user: %s", createdTenant.ID, req.UserID)
+
+	// 创建Owner成员关系
+	if _, err := h.tenantMemberSvc.EnsureOwner(ctx, user.ID, createdTenant.ID); err != nil {
+		logger.Errorf(ctx, "Failed to create owner membership: %v", err)
+		c.Error(errors.NewInternalServerError("创建工作空间所有权失败: " + err.Error()))
+		return
+	}
+
+	// Step 4: 创建个人知识库
+	kb := &types.KnowledgeBase{
+		Name:        "个人知识库",
+		Description: "个人知识库",
+		Type:        "document",
+		TenantID:    createdTenant.ID,
+		CreatorID:   user.ID,
+		ChunkingConfig: types.ChunkingConfig{
+			ChunkSize:    1000,
+			ChunkOverlap: 200,
+			Separators:   []string{"\n\n", "\n", "。", "！", "？", ";", "；"},
+		},
+		IndexingStrategy: types.IndexingStrategy{
+			VectorEnabled:  true,
+			KeywordEnabled: false,
+			WikiEnabled:    true,
+			GraphEnabled:   false,
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	createdKB, err := h.kbService.CreateKnowledgeBase(ctx, kb)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to create personal knowledge base: %v", err)
+		c.Error(errors.NewInternalServerError("创建个人知识库失败: " + err.Error()))
+		return
+	}
+	logger.Infof(ctx, "Personal knowledge base created: %s", createdKB.ID)
+
+	// 返回成功响应
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "用户初始化成功",
+		"data": UserInitResponse{
+			Success:       true,
+			Message:       "用户初始化成功",
+			User:          user.ToUserInfo(),
+			Tenant:        createdTenant,
+			KnowledgeBase: createdKB,
+			AlreadyInit:   false,
+		},
+	})
 }
 
 // KBModelConfigRequest 知识库模型配置请求（简化版，只传模型ID）

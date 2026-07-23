@@ -579,6 +579,12 @@ func (s *userService) GetUserByTenantID(ctx context.Context, tenantID uint64) (*
 	return s.userRepo.GetUserByTenantID(ctx, tenantID)
 }
 
+// CreateUser creates a user without going through the full registration flow.
+// Used by the user initialization endpoint for direct user creation with minimal fields.
+func (s *userService) CreateUser(ctx context.Context, user *types.User) error {
+	return s.userRepo.CreateUser(ctx, user)
+}
+
 // UpdateUser updates user information
 func (s *userService) UpdateUser(ctx context.Context, user *types.User) error {
 	user.UpdatedAt = time.Now()

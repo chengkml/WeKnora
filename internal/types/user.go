@@ -235,6 +235,24 @@ type RegisterResponse struct {
 	Tenant  *Tenant `json:"tenant,omitempty"`
 }
 
+// UserInitRequest represents a user initialization request.
+// Called when a user first enters the system to complete the initialization flow.
+type UserInitRequest struct {
+	UserID   string `json:"userId"   binding:"required"`
+	Username string `json:"username" binding:"required"`
+	Email    string `json:"email"    binding:"required"`
+}
+
+// UserInitResponse represents a user initialization response.
+type UserInitResponse struct {
+	Success       bool           `json:"success"`
+	Message       string         `json:"message,omitempty"`
+	User          *UserInfo      `json:"user,omitempty"`
+	Tenant        *Tenant        `json:"tenant,omitempty"`
+	KnowledgeBase *KnowledgeBase `json:"knowledge_base,omitempty"`
+	AlreadyInit   bool           `json:"already_init"`
+}
+
 // UserInfo represents user information for API responses
 type UserInfo struct {
 	ID                  string          `json:"id"`
