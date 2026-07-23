@@ -18,7 +18,8 @@ import logging
 import os
 import secrets
 import sys
-from typing import Any
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import mcp.types as types
 import uvicorn
@@ -436,6 +437,13 @@ async def health_check(request: Any) -> JSONResponse:
 # Starlette application
 # ---------------------------------------------------------------------------
 
+@asynccontextmanager
+async def _lifespan(_app: Starlette) -> AsyncIterator[None]:
+    """Application lifespan: validate config on startup."""
+    require_gateway_auth()
+    yield
+
+
 def create_app() -> Starlette:
     """Build and return the Starlette application."""
     routes = [
@@ -443,7 +451,7 @@ def create_app() -> Starlette:
         # SSE and message endpoints for KB-scoped access
         Route("/mcp/{path:path}", endpoint=mcp_router, methods=["GET", "POST"]),
     ]
-    return Starlette(routes=routes, on_startup=[require_gateway_auth])
+    return Starlette(routes=routes, lifespan=_lifespan)
 
 
 async def mcp_router(scope: dict, receive: Any, send: Any) -> None:
