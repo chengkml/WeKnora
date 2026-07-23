@@ -121,6 +121,10 @@ func (s *knowledgeBaseService) CreateKnowledgeBase(ctx context.Context,
 		kb.CreatorID = uid
 	}
 	kb.EnsureDefaults()
+	// Validate ownership_type if explicitly set
+	if kb.OwnershipType != types.KnowledgeBaseOwnershipTypePersonal && kb.OwnershipType != types.KnowledgeBaseOwnershipTypeTeam {
+		return nil, apperrors.NewBadRequestError("Invalid ownership type, must be 'personal' or 'team'")
+	}
 	applyTenantDefaultStorageProvider(ctx, kb)
 	if err := s.applyAndValidateStorageBackend(ctx, kb); err != nil {
 		return nil, err

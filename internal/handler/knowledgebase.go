@@ -679,6 +679,18 @@ func (h *KnowledgeBaseHandler) ListKnowledgeBases(c *gin.Context) {
 		}
 		kbs = filtered
 	}
+
+	// Optional ownership_type filter — filters by personal/team ownership
+	ownershipFilter := strings.ToLower(strings.TrimSpace(c.Query("ownership_type")))
+	if ownershipFilter == types.KnowledgeBaseOwnershipTypePersonal || ownershipFilter == types.KnowledgeBaseOwnershipTypeTeam {
+		filtered := make([]*types.KnowledgeBase, 0, len(kbs))
+		for _, kb := range kbs {
+			if kb.OwnershipType == ownershipFilter {
+				filtered = append(filtered, kb)
+			}
+		}
+		kbs = filtered
+	}
 	kbs = filterKnowledgeBasesForAPIKeyScope(ctx, kbs)
 
 	// Get share counts for all knowledge bases

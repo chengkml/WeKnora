@@ -261,6 +261,11 @@
                         <t-icon v-if="kb.isProcessing" name="loading" size="12px" class="processing-icon" />
                       </div>
                     </t-tooltip>
+                    <!-- 知识库归属类型 -->
+                    <div v-if="kb.ownership_type === 'team'" class="feature-badge scope-team">
+                      <t-icon name="usergroup" size="14px" />
+                      <span class="badge-count">{{ $t('knowledgeEditor.basic.ownershipTypeTeam') }}</span>
+                    </div>
                     <t-tooltip v-if="kb.extract_config?.enabled" :content="$t('knowledgeList.features.knowledgeGraph')"
                       placement="top">
                       <div class="feature-badge kg">
@@ -338,6 +343,11 @@
                         }}</span>
                       </div>
                     </t-tooltip>
+                    <!-- 知识库归属类型 -->
+                    <div v-if="kb.ownership_type === 'team'" class="feature-badge scope-team">
+                      <t-icon name="usergroup" size="14px" />
+                      <span class="badge-count">{{ $t('knowledgeEditor.basic.ownershipTypeTeam') }}</span>
+                    </div>
                     <t-tooltip v-if="kb.extract_config?.enabled" :content="$t('knowledgeList.features.knowledgeGraph')"
                       placement="top">
                       <div class="feature-badge kg">
@@ -494,6 +504,11 @@
                         <t-icon v-if="kb.isProcessing" name="loading" size="12px" class="processing-icon" />
                       </div>
                     </t-tooltip>
+                    <!-- 知识库归属类型 -->
+                    <div v-if="kb.ownership_type === 'team'" class="feature-badge scope-team">
+                      <t-icon name="usergroup" size="14px" />
+                      <span class="badge-count">{{ $t('knowledgeEditor.basic.ownershipTypeTeam') }}</span>
+                    </div>
                     <t-tooltip v-if="kb.extract_config?.enabled" :content="$t('knowledgeList.features.knowledgeGraph')"
                       placement="top">
                       <div class="feature-badge kg">
