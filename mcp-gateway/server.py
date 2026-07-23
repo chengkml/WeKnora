@@ -450,7 +450,7 @@ def create_app() -> Starlette:
     routes = [
         Route("/health", endpoint=health_check),
         # SSE and message endpoints for KB-scoped access
-        Mount("/mcp", endpoint=mcp_router),
+        Mount("/mcp", app=mcp_router),
     ]
     return Starlette(routes=routes, lifespan=_lifespan)
 
