@@ -82,6 +82,10 @@ type UserService interface {
 	// RevokeSystemAdmin removes system-admin privileges with the
 	// last-admin/self-revoke checks performed atomically.
 	RevokeSystemAdmin(ctx context.Context, userID, actorID string) (*types.User, error)
+	// CreateUser creates a user without the full registration flow.
+	// Used by the user initialization endpoint to bypass password hashing
+	// and email/username uniqueness checks (caller is responsible for dedup).
+	CreateUser(ctx context.Context, user *types.User) error
 	// UpdateUserPreferences partially updates the calling user's
 	// preferences blob (PATCH semantics: only keys present in `patch`
 	// overwrite existing values). Returns the updated, persisted prefs.
@@ -119,14 +123,6 @@ type UserRepository interface {
 	RevokeSystemAdmin(ctx context.Context, userID, actorID string) (*types.User, error)
 	// SearchUsers searches users by username or email
 	SearchUsers(ctx context.Context, query string, limit int) ([]*types.User, error)
-	// CreateUser creates a user without the full registration flow.
-	// Used by the user initialization endpoint to bypass password hashing
-	// and email/username uniqueness checks (caller is responsible for dedup).
-	CreateUser(ctx context.Context, user *types.User) error
-	// UpdateUserPreferences partially updates the calling user's
-	// preferences blob (PATCH semantics: only keys present in `patch`
-	// overwrite existing values). Returns the updated, persisted prefs.
-	UpdateUserPreferences(ctx context.Context, userID string, patch types.UserPreferences) (types.UserPreferences, error)
 }
 
 // AuthTokenRepository defines the auth token repository interface
