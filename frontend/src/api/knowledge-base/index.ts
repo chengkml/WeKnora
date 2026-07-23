@@ -57,6 +57,8 @@ export function createKnowledgeBase(data: {
   name: string;
   description?: string;
   type?: 'document' | 'faq';
+  /** Knowledge base ownership type: personal or team. Defaults to personal on the server. */
+  ownership_type?: 'personal' | 'team';
   chunking_config?: any;
   embedding_model_id?: string;
   summary_model_id?: string;

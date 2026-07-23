@@ -35,6 +35,14 @@ const (
 	KnowledgeBaseTypeWiki     = "wiki"
 )
 
+// OwnershipType represents the ownership type of a knowledge base
+const (
+	// KnowledgeBaseOwnershipTypePersonal represents a personal knowledge base
+	KnowledgeBaseOwnershipTypePersonal = "personal"
+	// KnowledgeBaseOwnershipTypeTeam represents a team knowledge base
+	KnowledgeBaseOwnershipTypeTeam = "team"
+)
+
 // FAQIndexMode represents the FAQ index mode: only index questions or index questions and answers
 type FAQIndexMode string
 
@@ -63,6 +71,8 @@ type KnowledgeBase struct {
 	Name string `yaml:"name"                    json:"name"`
 	// Type of the knowledge base (document, faq, etc.)
 	Type string `yaml:"type"                    json:"type"                    gorm:"type:varchar(32);default:'document'"`
+	// OwnershipType represents the ownership type (personal, team)
+	OwnershipType string `yaml:"ownership_type"          json:"ownership_type"          gorm:"type:varchar(16);default:'personal'"`
 	// Whether this knowledge base is temporary (ephemeral) and should be hidden from UI
 	IsTemporary bool `yaml:"is_temporary"            json:"is_temporary"            gorm:"default:false"`
 	// Description of the knowledge base
@@ -603,6 +613,9 @@ func (kb *KnowledgeBase) EnsureDefaults() {
 	}
 	if kb.Type == "" {
 		kb.Type = KnowledgeBaseTypeDocument
+	}
+	if kb.OwnershipType == "" {
+		kb.OwnershipType = KnowledgeBaseOwnershipTypePersonal
 	}
 	// Clear type-specific configs that don't belong
 	if kb.Type != KnowledgeBaseTypeFAQ {

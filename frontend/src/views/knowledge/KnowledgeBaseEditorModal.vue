@@ -157,6 +157,19 @@
                         />
                       </div>
 
+                      <!-- 知识库归属类型 (仅创建模式可选) -->
+                      <div class="form-item" data-guide="kb-create-ownership">
+                        <label class="form-label">{{ $t('knowledgeEditor.basic.ownershipTypeLabel') }}</label>
+                        <t-radio-group
+                          v-model="formData.ownershipType"
+                          :disabled="mode === 'edit'"
+                        >
+                          <t-radio-button value="personal">{{ $t('knowledgeEditor.basic.ownershipTypePersonal') }}</t-radio-button>
+                          <t-radio-button value="team">{{ $t('knowledgeEditor.basic.ownershipTypeTeam') }}</t-radio-button>
+                        </t-radio-group>
+                        <p class="form-tip">{{ $t('knowledgeEditor.basic.ownershipTypeTip') }}</p>
+                      </div>
+
                       <div class="form-item" data-guide="kb-create-name">
                         <label class="form-label required">{{ $t('knowledgeEditor.basic.nameLabel') }}</label>
                         <t-input 
@@ -686,6 +699,7 @@ watch(
 const initFormData = (type: 'document' | 'faq' = 'document') => {
   return {
     type,
+    ownershipType: 'personal',
     name: '',
     description: '',
     faqConfig: {
@@ -807,6 +821,7 @@ const loadKBData = async () => {
     const kbType = (kb.type as 'document' | 'faq') || 'document'
     formData.value = {
       type: kbType,
+      ownershipType: (kb as any).ownership_type || 'personal',
       name: kb.name || '',
       description: kb.description || '',
       faqConfig: {
@@ -1137,6 +1152,7 @@ const buildSubmitData = () => {
     name: formData.value.name,
     description: formData.value.description,
     type: formData.value.type,
+    ownership_type: formData.value.ownershipType || 'personal',
     chunking_config: {
       chunk_size: formData.value.chunkingConfig.chunkSize,
       chunk_overlap: formData.value.chunkingConfig.chunkOverlap,
