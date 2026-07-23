@@ -123,6 +123,10 @@ type UserRepository interface {
 	// Used by the user initialization endpoint to bypass password hashing
 	// and email/username uniqueness checks (caller is responsible for dedup).
 	CreateUser(ctx context.Context, user *types.User) error
+	// UpdateUserPreferences partially updates the calling user's
+	// preferences blob (PATCH semantics: only keys present in `patch`
+	// overwrite existing values). Returns the updated, persisted prefs.
+	UpdateUserPreferences(ctx context.Context, userID string, patch types.UserPreferences) (types.UserPreferences, error)
 }
 
 // AuthTokenRepository defines the auth token repository interface
