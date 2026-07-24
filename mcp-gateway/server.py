@@ -372,13 +372,43 @@ async def _send_405(send: Any) -> None:
     await send({"type": "http.response.body", "body": body})
 
 
+async def _send_200_head(send: Any) -> None:
+    """Respond to HEAD with SSE content-type but no body.
+
+    Clients (e.g. hermes) send HEAD to probe whether the SSE endpoint is
+    alive.  Returning 200 with the SSE content-type signals readiness
+    without establishing an actual SSE session.
+    """
+    headers_list = [
+        [b"content-type", b"text/event-stream; charset=utf-8"],
+        [b"cache-control", b"no-store"],
+        [b"connection", b"keep-alive"],
+    ]
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 200,
+            "headers": headers_list,
+        }
+    )
+    await send({"type": "http.response.body", "body": b""})
+
+
 async def mcp_sse(scope: dict, receive: Any, send: Any) -> None:
     """Handle ``GET /mcp/{kb_id}/sse`` — establish an SSE session.
 
     Mount("/mcp") strips the ``/mcp`` prefix from ``scope["path"]``,
     so the path seen here is ``/{kb_id}/sse`` — 3 parts before strip,
     2 parts after.
+
+    ``HEAD`` requests are answered with 200 + SSE content-type (no body)
+    so that probing clients (hermes, etc.) can verify the endpoint is
+    alive without starting a full SSE session.
     """
+    if scope["method"] == "HEAD":
+        await _send_200_head(send)
+        return
+
     if scope["method"] != "GET":
         await _send_405(send)
         return
