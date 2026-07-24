@@ -1184,11 +1184,17 @@ func (s *wikiIngestService) mapOneDocument(
 		}
 	}
 
-	// Citation source reference. We deliberately use only the knowledge ID
-	// (not docTitle, which is typically the upload filename) so the filename
-	// does not leak into citation strings that downstream LLM prompts may
-	// surface during wiki page editing.
+	// Citation source reference for database storage. We embed the
+	// docTitle after a pipe separator so the frontend can display a
+	// human-readable document name (instead of a bare knowledge ID)
+	// in the "来源文档" section of the wiki page detail view.
+	// The docTitle is deliberately EXCLUDED from LLM-facing fields
+	// (SourceChunks / DocTitle in prompts) to avoid leaking upload
+	// filenames into citation strings during wiki page editing.
 	sourceRef := knowledgeID
+	if docTitle != "" && docTitle != knowledgeID {
+		sourceRef = knowledgeID + "|" + docTitle
+	}
 	oldPageSlugs := s.getExistingPageSlugsForKnowledge(ctx, payload.KnowledgeBaseID, knowledgeID)
 
 	// Pass 0: lightweight candidate slug extraction (skeleton only).
