@@ -397,9 +397,9 @@ async def _send_200_head(send: Any) -> None:
 async def mcp_sse(scope: dict, receive: Any, send: Any) -> None:
     """Handle ``GET /mcp/{kb_id}/sse`` — establish an SSE session.
 
-    Mount("/mcp") strips the ``/mcp`` prefix from ``scope["path"]``,
-    so the path seen here is ``/{kb_id}/sse`` — 3 parts before strip,
-    2 parts after.
+    ``Mount("/mcp")`` updates ``root_path`` but does **not** strip
+    ``scope["path"]``, so the path seen here is still
+    ``/mcp/{kb_id}/sse`` → parts = ["mcp", "{kb_id}", "sse"].
 
     ``HEAD`` requests are answered with 200 + SSE content-type (no body)
     so that probing clients (hermes, etc.) can verify the endpoint is
@@ -417,14 +417,16 @@ async def mcp_sse(scope: dict, receive: Any, send: Any) -> None:
         await _send_401(send)
         return
 
-    # Mount("/mcp") strips /mcp from scope["path"], leaving /{kb_id}/sse
+    # Mount("/mcp") updates root_path but does NOT strip scope["path"],
+    # so the path seen here is still /mcp/{kb_id}/sse.
+    # parts = ["mcp", "{kb_id}", "sse"]
     path = scope["path"]
     parts = path.strip("/").split("/")
-    if len(parts) < 2 or parts[-1] != "sse":
+    if len(parts) < 3 or parts[-1] != "sse":
         await _send_404(send)
         return
 
-    kb_id = parts[0]
+    kb_id = parts[1]
     transport = _get_transport(kb_id)
 
     token = _kb_context.set(kb_id)
@@ -451,14 +453,15 @@ async def mcp_messages(scope: dict, receive: Any, send: Any) -> None:
         await _send_401(send)
         return
 
-    # Mount("/mcp") strips /mcp from scope["path"], leaving /{kb_id}/messages
+    # Mount does NOT strip scope["path"], so path is still /mcp/{kb_id}/messages
+    # parts = ["mcp", "{kb_id}", "messages"]
     path = scope["path"]
     parts = path.strip("/").split("/")
-    if len(parts) < 2:
+    if len(parts) < 3:
         await _send_404(send)
         return
 
-    kb_id = parts[0]
+    kb_id = parts[1]
     transport = _get_transport(kb_id)
     await transport.handle_post_message(scope, receive, send)
 
@@ -496,11 +499,12 @@ def create_app() -> Starlette:
 async def mcp_router(scope: dict, receive: Any, send: Any) -> None:
     """Dispatch incoming MCP requests to the SSE or messages handler.
 
-    Mounted at ``/mcp``; path after the mount point looks like
-    ``/<kb_id>/sse`` or ``/<kb_id>/messages``.
+    Mounted at ``/mcp``; ``scope["path"]`` is the original path
+    ``/mcp/{kb_id}/sse`` or ``/mcp/{kb_id}/messages``
+    since Mount does not strip it.
     """
     path: str = scope["path"]
-    segments = path.strip("/").split("/")  # ["<kb_id>", "sse"|"messages"]
+    segments = path.strip("/").split("/")  # ["mcp", "{kb_id}", "sse"|"messages"]
 
     if len(segments) < 2:
         await _send_404(send)
