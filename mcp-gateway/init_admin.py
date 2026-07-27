@@ -6,12 +6,15 @@ Runs as a one-shot docker-compose service (init-admin) after the app is
 healthy. Idempotent: re-running is a no-op when the user already exists and
 is already a system admin.
 
-Two steps:
+Three steps:
   1. POST /api/v1/auth/register — create the account (skip if it exists).
      WeKnora has no "first user becomes admin" logic, and the promote API
      itself requires an existing SystemAdmin, so…
   2. SQL UPDATE users SET is_system_admin=true — done over a direct
      postgres connection (instant effect, no WeKnora restart needed).
+  3. POST /api/v1/tenants — ensure the admin belongs to a system workspace
+     ("synapse-system"), so builtin model updates (PUT /api/v1/models/{id})
+     have a valid tenant context. Skips if the admin already has a workspace.
 
 Required env (from the compose .env; the WEKNORA_ADMIN_* triple MUST match
 the Synapse backend's WIKI_AUTH_USERNAME / WIKI_AUTH_EMAIL / WIKI_AUTH_PASSWORD):
@@ -118,10 +121,71 @@ def promote_system_admin() -> None:
         print(f"[init-admin] {ADMIN_EMAIL} is already SystemAdmin (no-op)")
 
 
+SYSTEM_TENANT_NAME = "synapse-system"
+
+
+def ensure_system_workspace() -> None:
+    """
+    Ensure the admin belongs to a workspace so builtin model updates have
+    tenant context (PUT /api/v1/models/{id} returns 409 without it).
+
+    Idempotent: login → check memberships → skip if admin already has a
+    non-default tenant; otherwise create "{SYSTEM_TENANT_NAME}" (API key
+    not needed — the admin only uses this workspace for model management).
+    """
+    # 1. Login
+    login_resp = requests.post(
+        f"{WEKNORA_BASE_URL}/api/v1/auth/login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+        timeout=10,
+    )
+    login_body = login_resp.json() if login_resp.content else {}
+    if not login_resp.ok or not login_body.get("success"):
+        sys.exit(
+            f"[init-admin] admin login failed: HTTP {login_resp.status_code} "
+            f"{str(login_body)[:200]}"
+        )
+
+    memberships = login_body.get("memberships") or []
+    has_workspace = any(
+        str(m.get("tenant_id", "0")) != "0" for m in memberships
+    )
+    if has_workspace:
+        print(
+            f"[init-admin] admin already has workspace(s), skip tenant creation"
+        )
+        return
+
+    # 2. Create system tenant (admin becomes owner automatically)
+    token = login_body["token"]
+    create_resp = requests.post(
+        f"{WEKNORA_BASE_URL}/api/v1/tenants",
+        json={
+            "name": SYSTEM_TENANT_NAME,
+            "description": "Synapse system workspace — builtin model management",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    create_body = create_resp.json() if create_resp.content else {}
+    data = create_body.get("data") if isinstance(create_body, dict) else None
+    tenant_id = data.get("id") if isinstance(data, dict) else None
+    if not create_resp.ok or tenant_id is None:
+        sys.exit(
+            f"[init-admin] create system tenant failed: HTTP {create_resp.status_code} "
+            f"{str(create_body)[:300]}"
+        )
+    print(
+        f"[init-admin] created system workspace "
+        f"'{SYSTEM_TENANT_NAME}' (tenant_id={tenant_id})"
+    )
+
+
 def main() -> None:
     wait_for_app()
     register_user()
     promote_system_admin()
+    ensure_system_workspace()
     print("[init-admin] done")
 
 
