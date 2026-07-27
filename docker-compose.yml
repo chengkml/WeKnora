@@ -497,7 +497,7 @@ services:
 
   # 修改的PostgreSQL配置
   postgres:
-    image: pgvector/pgvector:0.8.0-pg17
+    image: paradedb/paradedb:v0.21.0-pg17
     container_name: WeKnora-postgres
     ports:
       - "${DB_EXPOSE_PORT:-5432}:5432"
@@ -777,7 +777,7 @@ services:
   # 一次性初始化脚本：在已有的 WeKnora-postgres 里创建 langfuse 数据库（幂等，数据库已存在则跳过）
   # 复用 WeKnora-postgres 的 pgvector 镜像，避免多拉一个 postgres 镜像
   langfuse-db-init:
-    image: pgvector/pgvector:0.8.0-pg17
+    image: paradedb/paradedb:v0.21.0-pg17
     container_name: WeKnora-langfuse-db-init
     depends_on:
       postgres:
