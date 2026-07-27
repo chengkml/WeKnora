@@ -1,7 +1,7 @@
 # WeKnora MCP Gateway
 
 A standalone, stateless MCP (Model Context Protocol) Gateway that provides
-KB-scoped read-only access to WeKnora knowledge bases over SSE transport.
+read-only access to WeKnora knowledge bases over SSE transport.
 Runs as a **separate container** from the WeKnora Go backend.
 
 ## Architecture
@@ -9,134 +9,116 @@ Runs as a **separate container** from the WeKnora Go backend.
 ```
                      ┌──────────────────────┐
 MCP Client ──SSE──►  │  weknora-mcp-gateway  │──REST──► WeKnora Go API
-(Claude Desktop,     │  (single Python proc) │          (:8080/api/v1)
-etc.)                └──────────────────────┘
+                     │  (single Python proc) │          (:8080/api/v1)
+                     └──────────────────────┘
 ```
 
 - **Single process** — Python asyncio (Starlette + uvicorn) handles all SSE connections.
-- **Stateless** — no cache, no database; every tool call hits the Go API in real time.
-- **KB isolation via URL path** — connect to different URLs to access different KBs.
+- **Stateless** — no database; per-key REST clients are cached in memory only.
+- **Tenant isolation via `X-API-Key` header** — each SSE connection carries the
+  caller's WeKnora tenant API key; one gateway process serves every tenant.
+- **KB scoping via tool arguments** — KB tools take an explicit `kb_id`
+  (call `list_knowledge_bases` first). The URL no longer contains a KB id.
 
 ## Endpoints
 
-| URL | Scope |
+| URL | Purpose |
 |---|---|
-| `/mcp/<kb-uuid>/sse` | Single knowledge base |
-| `/mcp/__all__/sse` | All knowledge bases the API key can access |
+| `GET /mcp/sse` | SSE session (HEAD = liveness probe) |
+| `POST /mcp/messages` | MCP client-to-server messages (auto-advertised by the SSE stream) |
+| `GET /health` | Liveness probe |
 
-Each SSE connection binds the knowledge-base ID from the URL; every tool call
-is automatically scoped to that KB.
+## Authentication (two layers, both header-only)
 
-### Message endpoint
+Every request must carry **both** headers:
 
-The MCP protocol uses a secondary POST endpoint for client-to-server messages.
-The SSE stream advertises its location automatically; **you do not need to
-configure it manually**.
+```
+Authorization: Bearer <MCP_GATEWAY_AUTH_TOKEN>   # gateway-level shared secret
+X-API-Key: <weknora tenant api key>              # selects the WeKnora tenant
+```
 
-In the path structure the messages endpoint is at:
-
-| SSE endpoint | Messages endpoint (auto‑resolved) |
-|---|---|
-| `/mcp/<kb-uuid>/sse` | `/mcp/<kb-uuid>/messages` |
-| `/mcp/__all__/sse` | `/mcp/__all__/messages` |
+- Missing/ wrong Bearer → `401 {"error":"unauthorized"}`
+- Missing `X-API-Key` on the SSE connect → `401 {"error":"missing X-API-Key header"}`
+- The tenant API key needs at least the `retrieve` capability.
 
 ## Tools
 
 All tools are **read-only**:
 
-| Tool | Description | KB scoped |
+| Tool | Required args | Description |
 |---|---|---|
-| `hybrid_search` | Semantic + keyword search | ✅ |
-| `list_documents` | List documents with pagination | ✅ |
-| `get_document` | Get document metadata by UUID | ✅ (implicitly through KB) |
-| `list_chunks` | List text chunks of a document | ✅ (implicitly through KB) |
-| `wiki_search` | Full‑text wiki search | ✅ |
-| `wiki_read_page` | Read a wiki page by slug | ✅ |
-| `list_knowledge_bases` | List KB(s) visible to the session | ✅ |
-
-## Authentication
-
-The gateway requires a shared secret passed via the `MCP_GATEWAY_AUTH_TOKEN`
-environment variable.  Every request must include:
-
-```
-Authorization: Bearer <token>
-```
+| `list_knowledge_bases` | — | List every KB accessible with the session key — call first |
+| `hybrid_search` | `kb_id`, `query` | Semantic + keyword search |
+| `list_documents` | `kb_id` | List documents with pagination |
+| `get_document` | `knowledge_id` | Get document metadata by UUID |
+| `list_chunks` | `knowledge_id` | List text chunks of a document |
+| `wiki_search` | `kb_id`, `query` | Full-text wiki search |
+| `wiki_read_page` | `kb_id`, `slug` | Read a wiki page by slug |
 
 ## Configuration
 
 | Env var | Required | Default | Description |
 |---|---|---|---|
 | `WEKNORA_BASE_URL` | ✅ | `http://localhost:8080/api/v1` | Go backend URL |
-| `WEKNORA_API_KEY` | ✅ | — | API key for Go backend |
 | `MCP_GATEWAY_AUTH_TOKEN` | ✅ | — | Shared secret for MCP clients |
 | `MCP_HOST` | ❌ | `0.0.0.0` | Gateway listen address |
 | `MCP_PORT` | ❌ | `8000` | Gateway listen port |
 | `WEKNORA_VERIFY_SSL` | ❌ | `true` | Set to `false` to disable SSL verification |
 
-## Quick Start
+> `WEKNORA_API_KEY` was removed: the gateway no longer holds a global key.
 
-### Build
-
-```bash
-docker build -t weknora-mcp-gateway ./mcp-gateway
-```
-
-### Run
+## Build & Run
 
 ```bash
-docker run -d --name weknora-mcp \
-  -p 8000:8000 \
-  -e WEKNORA_BASE_URL=http://weknora-go:8080/api/v1 \
-  -e WEKNORA_API_KEY=your-api-key \
-  -e MCP_GATEWAY_AUTH_TOKEN=your-gateway-secret \
-  weknora-mcp-gateway
+./rebuild.sh            # incremental build on top of the published image, tag unchanged
 ```
+
+The image also carries `init_admin.py` (see below); the default command is
+unchanged (`python server.py`).
 
 ### Local development (without Docker)
 
 ```bash
-cd mcp-gateway
 pip install -r requirements.txt
 WEKNORA_BASE_URL=http://localhost:8080/api/v1 \
-  WEKNORA_API_KEY=xxx \
   MCP_GATEWAY_AUTH_TOKEN=dev-secret \
   python server.py
 ```
 
-### Claude Desktop configuration
+### Client configuration
 
 ```json
 {
   "mcpServers": {
-    "weknora-products": {
-      "url": "http://gateway:8000/mcp/<kb-uuid>/sse"
+    "weknora": {
+      "url": "http://gateway:8000/mcp/sse",
+      "transport": "sse",
+      "headers": {
+        "Authorization": "Bearer <gateway-token>",
+        "X-API-Key": "<tenant api key>"
+      }
     }
   }
 }
 ```
 
-Replace `<kb-uuid>` with the knowledge-base UUID from your WeKnora instance.
-Use `list_knowledge_bases` (via `__all__`) to discover available KB UUIDs.
+## init_admin.py — super-user bootstrap
 
-## Relationship with `mcp-server/`
+One-shot helper shipped in the same image, run as the compose `init-admin`
+service. Creates the agreed super user and promotes it to SystemAdmin
+(idempotent, no WeKnora restart needed):
 
-The existing `mcp-server/` directory contains a full‑featured MCP server with
-read/write tools and stdio transport, intended for local development and
-debugging.  The **mcp-gateway** is a lightweight, production-oriented component
-that:
+1. Waits for `WEKNORA_BASE_URL/health`
+2. `POST /api/v1/auth/register` (skips if the user exists)
+3. Direct SQL `UPDATE users SET is_system_admin=true` (via pg8000)
 
-- Runs as a **separate container** (not alongside the Go process)
-- Exposes **read-only tools** only
-- Uses **SSE transport** instead of stdio
-- Provides **KB-level isolation** via URL paths
-
-Both can coexist; which one you use depends on the deployment scenario.
+Required env: `WEKNORA_BASE_URL` (no `/api/v1` suffix),
+`WEKNORA_ADMIN_USERNAME` / `WEKNORA_ADMIN_EMAIL` / `WEKNORA_ADMIN_PASSWORD`,
+`DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME`.
+Re-run with `docker compose run --rm init-admin`.
 
 ## Notes
 
-- The gateway does **not** modify any existing code — `mcp-server/` and the
-  Go backend are left untouched.
-- Each SSE connection is a long‑lived HTTP connection.  Plan your connection
-  pool and file‑descriptor limits accordingly.
-- Use the `WEKNORA_API_KEY` with at least `retrieve` scope.
+- The gateway does **not** modify any existing WeKnora code.
+- Each SSE connection is a long-lived HTTP connection. Plan your connection
+  pool and file-descriptor limits accordingly.

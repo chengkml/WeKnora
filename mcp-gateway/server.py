@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 """
-WeKnora MCP Gateway — multi-tenant SSE MCP server.
+WeKnora MCP Gateway — multi-tenant Streamable HTTP MCP server (per-user API key edition).
 
-Single Starlette process that exposes KB-scoped MCP endpoints:
+Single Starlette process exposing ONE MCP endpoint:
 
-    /mcp/<kb_id>/sse       → SSE session for a single knowledge base
-    /mcp/__all__/sse        → SSE session for all accessible knowledge bases
+    /mcp            → Streamable HTTP（POST/GET/DELETE 单端点双向）
 
-Each path segment ``kb_id`` is bound to the SSE session so that every
-tool call automatically scopes its queries to that knowledge base.
+Two-layer auth (both via headers, no query params):
+
+    Authorization: Bearer <MCP_GATEWAY_AUTH_TOKEN>   — gateway-level shared secret
+    X-API-Key: <weknora tenant api key>              — selects the WeKnora tenant
+
+The X-API-Key is bound to the MCP session via contextvars: the session's
+server-run task is created on the initialize request and inherits the
+context (task creation copies contextvars), so every tool call in that
+session resolves (or creates) a WeKnoraGatewayClient for that key — one
+gateway process serves every tenant. Knowledge-base scoping is explicit:
+KB tools take a required ``kb_id`` argument (call ``list_knowledge_bases`` first).
 """
 
 from __future__ import annotations
@@ -18,15 +26,15 @@ import logging
 import os
 import secrets
 import sys
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
 import mcp.types as types
 import uvicorn
-from mcp.server import NotificationOptions, Server
-from mcp.server.models import InitializationOptions
-from mcp.server.sse import SseServerTransport
+from mcp.server import Server
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
@@ -45,7 +53,6 @@ logger = logging.getLogger("mcp-gateway")
 # ---------------------------------------------------------------------------
 
 WEKNORA_BASE_URL = os.getenv("WEKNORA_BASE_URL", "http://localhost:8080/api/v1")
-WEKNORA_API_KEY = os.getenv("WEKNORA_API_KEY", "")
 
 # Gateway-level auth token.  When set, *every* request must carry
 # ``Authorization: Bearer <token>``.
@@ -53,7 +60,7 @@ MCP_GATEWAY_AUTH_TOKEN = os.getenv("MCP_GATEWAY_AUTH_TOKEN", "").strip()
 
 
 def require_gateway_auth() -> str:
-    """Exit if the gateway auth token is missing when needed (always required)."""
+    """Exit if the gateway auth token is missing (always required)."""
     if not MCP_GATEWAY_AUTH_TOKEN:
         logger.error(
             "MCP_GATEWAY_AUTH_TOKEN is required. "
@@ -68,22 +75,37 @@ def require_gateway_auth() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Per-connection KB-ID via contextvars
+# Per-connection WeKnora API key via contextvars
 # ---------------------------------------------------------------------------
 
-_kb_context: contextvars.ContextVar[str] = contextvars.ContextVar("kb_id")
+_api_key_context: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "weknora_api_key"
+)
 
 
-def current_kb_id() -> str:
-    """Return the knowledge-base UUID bound to the current SSE session."""
-    return _kb_context.get()
+def current_api_key() -> str:
+    """Return the WeKnora API key bound to the current MCP session."""
+    return _api_key_context.get()
 
 
 # ---------------------------------------------------------------------------
-# Global client (stateless — safe to share)
+# Per-key client cache (clients are stateless — safe to share per key)
 # ---------------------------------------------------------------------------
 
-_gateway_client = WeKnoraGatewayClient(WEKNORA_BASE_URL, WEKNORA_API_KEY)
+_client_cache: dict[str, WeKnoraGatewayClient] = {}
+_client_lock = threading.Lock()
+
+
+def current_client() -> WeKnoraGatewayClient:
+    """Resolve (or create) the WeKnora client for the session's API key."""
+    api_key = current_api_key()
+    with _client_lock:
+        client = _client_cache.get(api_key)
+        if client is None:
+            client = WeKnoraGatewayClient(WEKNORA_BASE_URL, api_key)
+            _client_cache[api_key] = client
+        return client
+
 
 # ---------------------------------------------------------------------------
 # MCP Server
@@ -91,30 +113,46 @@ _gateway_client = WeKnoraGatewayClient(WEKNORA_BASE_URL, WEKNORA_API_KEY)
 
 mcp_server = Server("weknora-mcp-gateway")
 
+_KB_ID_PROP = {
+    "kb_id": {
+        "type": "string",
+        "description": "Knowledge base UUID. Call list_knowledge_bases first "
+        "to discover accessible IDs.",
+    }
+}
+
 
 @mcp_server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
-    """Expose only read‑only tools, each scoped to the session's KB."""
+    """Expose read-only tools. KB-scoped tools take an explicit kb_id."""
     return [
         types.Tool(
+            name="list_knowledge_bases",
+            description="List every knowledge base accessible with this session's "
+            "API key. Call this first to discover kb_id values for the other tools.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
             name="hybrid_search",
-            description="Hybrid (semantic + keyword) search within the knowledge base. "
-            "Results include document text, metadata, and relevance scores.",
+            description="Hybrid (semantic + keyword) search within one knowledge "
+            "base. Requires kb_id from list_knowledge_bases. Results include "
+            "document text, metadata, and relevance scores.",
             inputSchema={
                 "type": "object",
                 "properties": {
+                    **_KB_ID_PROP,
                     "query": {
                         "type": "string",
-                        "description": "Natural‑language search query",
+                        "description": "Natural-language search query",
                     },
                     "vector_threshold": {
                         "type": "number",
-                        "description": "Vector similarity threshold (0–1)",
+                        "description": "Vector similarity threshold (0-1)",
                         "default": 0.5,
                     },
                     "keyword_threshold": {
                         "type": "number",
-                        "description": "Keyword match threshold (0–1)",
+                        "description": "Keyword match threshold (0-1)",
                         "default": 0.3,
                     },
                     "match_count": {
@@ -123,18 +161,20 @@ async def handle_list_tools() -> list[types.Tool]:
                         "default": 5,
                     },
                 },
-                "required": ["query"],
+                "required": ["kb_id", "query"],
             },
         ),
         types.Tool(
             name="list_documents",
-            description="List all documents in the knowledge base with pagination.",
+            description="List documents in one knowledge base with pagination. "
+            "Requires kb_id from list_knowledge_bases.",
             inputSchema={
                 "type": "object",
                 "properties": {
+                    **_KB_ID_PROP,
                     "page": {
                         "type": "integer",
-                        "description": "Page number (1‑based)",
+                        "description": "Page number (1-based)",
                         "default": 1,
                     },
                     "page_size": {
@@ -143,6 +183,7 @@ async def handle_list_tools() -> list[types.Tool]:
                         "default": 20,
                     },
                 },
+                "required": ["kb_id"],
             },
         ),
         types.Tool(
@@ -171,7 +212,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "page": {
                         "type": "integer",
-                        "description": "Page number (1‑based)",
+                        "description": "Page number (1-based)",
                         "default": 1,
                     },
                     "page_size": {
@@ -185,13 +226,15 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="wiki_search",
-            description="Search wiki pages within the knowledge base.",
+            description="Search wiki pages within one knowledge base. "
+            "Requires kb_id from list_knowledge_bases.",
             inputSchema={
                 "type": "object",
                 "properties": {
+                    **_KB_ID_PROP,
                     "query": {
                         "type": "string",
-                        "description": "Full‑text search query",
+                        "description": "Full-text search query",
                     },
                     "limit": {
                         "type": "integer",
@@ -199,32 +242,23 @@ async def handle_list_tools() -> list[types.Tool]:
                         "default": 10,
                     },
                 },
-                "required": ["query"],
+                "required": ["kb_id", "query"],
             },
         ),
         types.Tool(
             name="wiki_read_page",
-            description="Read a wiki page by its slug. Returns markdown content, "
-            "metadata, and linked pages.",
+            description="Read a wiki page by its slug within one knowledge base. "
+            "Returns markdown content, metadata, and linked pages.",
             inputSchema={
                 "type": "object",
                 "properties": {
+                    **_KB_ID_PROP,
                     "slug": {
                         "type": "string",
                         "description": "Wiki page slug (URL path)",
-                    }
+                    },
                 },
-                "required": ["slug"],
-            },
-        ),
-        types.Tool(
-            name="list_knowledge_bases",
-            description="List knowledge base(s) accessible in this session. "
-            "For a single‑KB endpoint this returns only that KB; "
-            "for /mcp/__all__/sse it returns every KB the API key can access.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
+                "required": ["kb_id", "slug"],
             },
         ),
     ]
@@ -234,47 +268,54 @@ async def handle_list_tools() -> list[types.Tool]:
 async def handle_call_tool(
     name: str, arguments: dict[str, Any] | None
 ) -> list[types.TextContent]:
-    """Dispatch tool calls, injecting the session's kb_id."""
-    kb_id = current_kb_id()
+    """Dispatch tool calls through the session-keyed WeKnora client."""
     args = arguments or {}
 
     try:
-        if name == "hybrid_search":
+        client = current_client()
+    except LookupError:
+        return [
+            types.TextContent(
+                type="text",
+                text="Error: no WeKnora API key bound to this session "
+                "(connect with an X-API-Key header).",
+            )
+        ]
+
+    try:
+        if name == "list_knowledge_bases":
+            result = client.list_knowledge_bases()
+        elif name == "hybrid_search":
             config = {
                 k: args[k]
                 for k in ("vector_threshold", "keyword_threshold", "match_count")
                 if k in args
             }
-            result = _gateway_client.hybrid_search(
-                kb_id, args["query"], config or None
+            result = client.hybrid_search(
+                args["kb_id"], args["query"], config or None
             )
         elif name == "list_documents":
-            result = _gateway_client.list_knowledge(
-                kb_id,
+            result = client.list_knowledge(
+                args["kb_id"],
                 page=args.get("page", 1),
                 page_size=args.get("page_size", 20),
             )
         elif name == "get_document":
-            result = _gateway_client.get_knowledge(args["knowledge_id"])
+            result = client.get_knowledge(args["knowledge_id"])
         elif name == "list_chunks":
-            result = _gateway_client.list_chunks(
+            result = client.list_chunks(
                 args["knowledge_id"],
                 page=args.get("page", 1),
                 page_size=args.get("page_size", 20),
             )
         elif name == "wiki_search":
-            result = _gateway_client.wiki_search(
-                kb_id,
+            result = client.wiki_search(
+                args["kb_id"],
                 query=args["query"],
                 limit=args.get("limit", 10),
             )
         elif name == "wiki_read_page":
-            result = _gateway_client.wiki_read_page(kb_id, args["slug"])
-        elif name == "list_knowledge_bases":
-            if kb_id == "__all__":
-                result = _gateway_client.list_knowledge_bases()
-            else:
-                result = _gateway_client.get_knowledge_base(kb_id)
+            result = client.wiki_read_page(args["kb_id"], args["slug"])
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -284,50 +325,35 @@ async def handle_call_tool(
         return [types.TextContent(type="text", text=f"Error: {exc}")]
 
 
-async def mcp_initialization_options() -> InitializationOptions:
-    """Return MCP initialization metadata."""
-    return InitializationOptions(
-        server_name="weknora-mcp-gateway",
-        server_version="0.1.0",
-        capabilities=mcp_server.get_capabilities(
-            notification_options=NotificationOptions(),
-            experimental_capabilities={},
-        ),
-    )
+# ---------------------------------------------------------------------------
+# Streamable HTTP session manager (single instance — KB scoping via tool args)
+# ---------------------------------------------------------------------------
+
+_session_manager = StreamableHTTPSessionManager(
+    app=mcp_server,
+    event_store=None,      # 不需要断线重放
+    json_response=False,   # 响应走 SSE 流（单端点内），兼容 agno/mcp 客户端
+    stateless=False,       # 有会话：initialize 时绑定租户 key 到 run task
+)
 
 
 # ---------------------------------------------------------------------------
-# SSE Transport cache (one per kb_id)
+# ASGI helpers
 # ---------------------------------------------------------------------------
 
-_transport_cache: dict[str, SseServerTransport] = {}
 
-
-def _get_transport(kb_id: str) -> SseServerTransport:
-    if kb_id not in _transport_cache:
-        _transport_cache[kb_id] = SseServerTransport(
-            f"/{kb_id}/messages"
-        )
-    return _transport_cache[kb_id]
-
-
-# ---------------------------------------------------------------------------
-# ASGI endpoints
-# ---------------------------------------------------------------------------
-
-# Special sentinel for the "all KBs" route
-ALL_KB_SENTINEL = "__all__"
-
-
-async def _auth_ok(scope: dict) -> bool:
-    """Check Bearer token against the gateway auth token (if configured)."""
-    if not MCP_GATEWAY_AUTH_TOKEN:
-        return True
-    headers = {
+def _headers(scope: dict) -> dict[str, str]:
+    return {
         k.decode("latin-1").lower(): v.decode("latin-1")
         for k, v in scope.get("headers", [])
     }
-    auth = headers.get("authorization", "")
+
+
+async def _bearer_ok(scope: dict) -> bool:
+    """Check Bearer token against the gateway auth token."""
+    if not MCP_GATEWAY_AUTH_TOKEN:
+        return True
+    auth = _headers(scope).get("authorization", "")
     if auth.lower().startswith("bearer "):
         provided = auth[7:].strip()
         return bool(provided) and secrets.compare_digest(
@@ -336,139 +362,59 @@ async def _auth_ok(scope: dict) -> bool:
     return False
 
 
-async def _send_401(send: Any) -> None:
-    body = b'{"error":"unauthorized"}'
+def _api_key_from(scope: dict) -> str:
+    """Read the WeKnora API key from the X-API-Key header (header-only)."""
+    return _headers(scope).get("x-api-key", "").strip()
+
+
+async def _send_json(send: Any, status: int, body: bytes) -> None:
     await send(
         {
             "type": "http.response.start",
-            "status": 401,
+            "status": status,
             "headers": [[b"content-type", b"application/json"]],
         }
     )
     await send({"type": "http.response.body", "body": body})
 
 
-async def _send_404(send: Any) -> None:
-    body = b"Not Found"
-    await send(
-        {
-            "type": "http.response.start",
-            "status": 404,
-            "headers": [[b"content-type", b"text/plain"]],
-        }
-    )
-    await send({"type": "http.response.body", "body": body})
+async def _send_401(send: Any) -> None:
+    await _send_json(send, 401, b'{"error":"unauthorized"}')
 
 
-async def _send_405(send: Any) -> None:
-    body = b"Method Not Allowed"
-    await send(
-        {
-            "type": "http.response.start",
-            "status": 405,
-            "headers": [[b"content-type", b"text/plain"]],
-        }
-    )
-    await send({"type": "http.response.body", "body": body})
+# ---------------------------------------------------------------------------
+# ASGI endpoints
+# ---------------------------------------------------------------------------
 
 
-async def _send_200_head(send: Any) -> None:
-    """Respond to HEAD with SSE content-type but no body.
+async def mcp_streamable(scope: dict, receive: Any, send: Any) -> None:
+    """Handle ``/mcp`` — Streamable HTTP endpoint（POST/GET/DELETE）。
 
-    Clients (e.g. hermes) send HEAD to probe whether the SSE endpoint is
-    alive.  Returning 200 with the SSE content-type signals readiness
-    without establishing an actual SSE session.
+    双层鉴权：Bearer 网关令牌 + X-API-Key 租户 key（每个请求都带）。
+    initialize 请求会创建会话的 server-run task（task 创建时复制当前
+    context），contextvar 绑定的租户 key 随之固定到该会话；后续请求经
+    memory stream 在同一 task 内执行，工具调用读到的即本会话 key。
     """
-    headers_list = [
-        [b"content-type", b"text/event-stream; charset=utf-8"],
-        [b"cache-control", b"no-store"],
-        [b"connection", b"keep-alive"],
-    ]
-    await send(
-        {
-            "type": "http.response.start",
-            "status": 200,
-            "headers": headers_list,
-        }
-    )
-    await send({"type": "http.response.body", "body": b""})
-
-
-async def mcp_sse(scope: dict, receive: Any, send: Any) -> None:
-    """Handle ``GET /mcp/{kb_id}/sse`` — establish an SSE session.
-
-    ``Mount("/mcp")`` updates ``root_path`` but does **not** strip
-    ``scope["path"]``, so the path seen here is still
-    ``/mcp/{kb_id}/sse`` → parts = ["mcp", "{kb_id}", "sse"].
-
-    ``HEAD`` requests are answered with 200 + SSE content-type (no body)
-    so that probing clients (hermes, etc.) can verify the endpoint is
-    alive without starting a full SSE session.
-    """
-    if scope["method"] == "HEAD":
-        await _send_200_head(send)
-        return
-
-    if scope["method"] != "GET":
-        await _send_405(send)
-        return
-
-    if not await _auth_ok(scope):
+    if not await _bearer_ok(scope):
         await _send_401(send)
         return
 
-    # Mount("/mcp") updates root_path but does NOT strip scope["path"],
-    # so the path seen here is still /mcp/{kb_id}/sse.
-    # parts = ["mcp", "{kb_id}", "sse"]
-    path = scope["path"]
-    parts = path.strip("/").split("/")
-    if len(parts) < 3 or parts[-1] != "sse":
-        await _send_404(send)
+    api_key = _api_key_from(scope)
+    if not api_key:
+        await _send_json(send, 401, b'{"error":"missing X-API-Key header"}')
         return
 
-    kb_id = parts[1]
-    transport = _get_transport(kb_id)
-
-    token = _kb_context.set(kb_id)
+    token = _api_key_context.set(api_key)
     try:
-        async with transport.connect_sse(scope, receive, send) as streams:
-            init_opts = await mcp_initialization_options()
-            await mcp_server.run(
-                streams[0], streams[1], init_opts
-            )
+        await _session_manager.handle_request(scope, receive, send)
     finally:
-        _kb_context.reset(token)
-
-
-async def mcp_messages(scope: dict, receive: Any, send: Any) -> None:
-    """Handle ``POST /mcp/{kb_id}/messages`` — inbound MCP messages.
-
-    After Mount strips ``/mcp``, ``scope["path"]`` is ``/{kb_id}/messages``.
-    """
-    if scope["method"] not in ("POST", "OPTIONS"):
-        await _send_405(send)
-        return
-
-    if not await _auth_ok(scope):
-        await _send_401(send)
-        return
-
-    # Mount does NOT strip scope["path"], so path is still /mcp/{kb_id}/messages
-    # parts = ["mcp", "{kb_id}", "messages"]
-    path = scope["path"]
-    parts = path.strip("/").split("/")
-    if len(parts) < 3:
-        await _send_404(send)
-        return
-
-    kb_id = parts[1]
-    transport = _get_transport(kb_id)
-    await transport.handle_post_message(scope, receive, send)
+        _api_key_context.reset(token)
 
 
 # ---------------------------------------------------------------------------
 # Health check
 # ---------------------------------------------------------------------------
+
 
 async def health_check(request: Any) -> JSONResponse:
     """``GET /health`` — simple liveness probe."""
@@ -479,49 +425,28 @@ async def health_check(request: Any) -> JSONResponse:
 # Starlette application
 # ---------------------------------------------------------------------------
 
+
 @asynccontextmanager
 async def _lifespan(_app: Starlette) -> AsyncIterator[None]:
-    """Application lifespan: validate config on startup."""
+    """Application lifespan: validate config + run session manager task group."""
     require_gateway_auth()
-    yield
+    async with _session_manager.run():
+        yield
 
 
 def create_app() -> Starlette:
     """Build and return the Starlette application."""
     routes = [
         Route("/health", endpoint=health_check),
-        # SSE and message endpoints for KB-scoped access
-        Mount("/mcp", app=mcp_router),
+        Mount("/mcp", app=mcp_streamable),
     ]
     return Starlette(routes=routes, lifespan=_lifespan)
-
-
-async def mcp_router(scope: dict, receive: Any, send: Any) -> None:
-    """Dispatch incoming MCP requests to the SSE or messages handler.
-
-    Mounted at ``/mcp``; ``scope["path"]`` is the original path
-    ``/mcp/{kb_id}/sse`` or ``/mcp/{kb_id}/messages``
-    since Mount does not strip it.
-    """
-    path: str = scope["path"]
-    segments = path.strip("/").split("/")  # ["mcp", "{kb_id}", "sse"|"messages"]
-
-    if len(segments) < 2:
-        await _send_404(send)
-        return
-
-    action = segments[-1]  # "sse" or "messages"
-    if action == "sse":
-        await mcp_sse(scope, receive, send)
-    elif action == "messages":
-        await mcp_messages(scope, receive, send)
-    else:
-        await _send_404(send)
 
 
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     import argparse
