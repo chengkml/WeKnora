@@ -1,22 +1,27 @@
 # WeKnora MCP Gateway
 
-A standalone, stateless MCP (Model Context Protocol) Gateway that provides
-read-only access to WeKnora knowledge bases over SSE transport.
+A standalone MCP (Model Context Protocol) Gateway that provides
+read-only access to WeKnora knowledge bases over **Streamable HTTP** transport.
 Runs as a **separate container** from the WeKnora Go backend.
 
 ## Architecture
 
 ```
-                     ┌──────────────────────┐
-MCP Client ──SSE──►  │  weknora-mcp-gateway  │──REST──► WeKnora Go API
-                     │  (single Python proc) │          (:8080/api/v1)
-                     └──────────────────────┘
+                          ┌──────────────────────┐
+MCP Client ──Streamable──►│  weknora-mcp-gateway  │──REST──► WeKnora Go API
+   HTTP (single /mcp)     │  (single Python proc) │          (:8080/api/v1)
+                          └──────────────────────┘
 ```
 
-- **Single process** — Python asyncio (Starlette + uvicorn) handles all SSE connections.
-- **Stateless** — no database; per-key REST clients are cached in memory only.
-- **Tenant isolation via `X-API-Key` header** — each SSE connection carries the
-  caller's WeKnora tenant API key; one gateway process serves every tenant.
+- **Single process** — Python asyncio (Starlette + uvicorn) with
+  `StreamableHTTPSessionManager` handles all MCP sessions.
+- **No database** — per-key REST clients are cached in memory only.
+- **Sessions are stateful** (`stateless=False`) — the tenant key is bound to
+  the session's server-run task at `initialize`; responses use SSE streams
+  inside the single endpoint (`json_response=False`), compatible with
+  agno/mcp clients.
+- **Tenant isolation via `X-API-Key` header** — every `/mcp` request carries
+  the caller's WeKnora tenant API key; one gateway process serves every tenant.
 - **KB scoping via tool arguments** — KB tools take an explicit `kb_id`
   (call `list_knowledge_bases` first). The URL no longer contains a KB id.
 
@@ -24,9 +29,11 @@ MCP Client ──SSE──►  │  weknora-mcp-gateway  │──REST──► 
 
 | URL | Purpose |
 |---|---|
-| `GET /mcp/sse` | SSE session (HEAD = liveness probe) |
-| `POST /mcp/messages` | MCP client-to-server messages (auto-advertised by the SSE stream) |
+| `/mcp` | Streamable HTTP MCP endpoint (POST messages / GET SSE stream / DELETE session) |
 | `GET /health` | Liveness probe |
+
+> The legacy SSE transport (`GET /mcp/sse` + `POST /mcp/messages`) was removed
+> in 2026-07; clients must use `transport: "streamable-http"` against `/mcp`.
 
 ## Authentication (two layers, both header-only)
 
@@ -38,7 +45,7 @@ X-API-Key: <weknora tenant api key>              # selects the WeKnora tenant
 ```
 
 - Missing/ wrong Bearer → `401 {"error":"unauthorized"}`
-- Missing `X-API-Key` on the SSE connect → `401 {"error":"missing X-API-Key header"}`
+- Missing `X-API-Key` on any `/mcp` request → `401 {"error":"missing X-API-Key header"}`
 - The tenant API key needs at least the `retrieve` capability.
 
 ## Tools
@@ -91,8 +98,8 @@ WEKNORA_BASE_URL=http://localhost:8080/api/v1 \
 {
   "mcpServers": {
     "weknora": {
-      "url": "http://gateway:8000/mcp/sse",
-      "transport": "sse",
+      "url": "http://gateway:8000/mcp",
+      "transport": "streamable-http",
       "headers": {
         "Authorization": "Bearer <gateway-token>",
         "X-API-Key": "<tenant api key>"
@@ -106,7 +113,8 @@ WEKNORA_BASE_URL=http://localhost:8080/api/v1 \
 
 One-shot helper shipped in the same image, run as the compose `init-admin`
 service. Creates the agreed super user and promotes it to SystemAdmin
-(idempotent, no WeKnora restart needed):
+(idempotent, no WeKnora restart needed). This has taken over the role of the
+removed Synapse-side wiki/bootstrap control plane.
 
 1. Waits for `WEKNORA_BASE_URL/health`
 2. `POST /api/v1/auth/register` (skips if the user exists)
@@ -120,5 +128,5 @@ Re-run with `docker compose run --rm init-admin`.
 ## Notes
 
 - The gateway does **not** modify any existing WeKnora code.
-- Each SSE connection is a long-lived HTTP connection. Plan your connection
-  pool and file-descriptor limits accordingly.
+- Streamable HTTP sessions hold a server-run task per `initialize`; plan your
+  file-descriptor limits accordingly.
