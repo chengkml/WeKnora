@@ -128,9 +128,70 @@ func (r *userRepository) UpdateUser(ctx context.Context, user *types.User) error
 	return r.db.WithContext(ctx).Save(user).Error
 }
 
-// DeleteUser deletes a user
+// DeleteUser hard-deletes a user and its cascade of related records.
+//
+// Unlike soft-deletes that rely on User.DeletedAt, this uses Unscoped so the
+// row is physically removed.  All tables that may reference the user are
+// cleaned inside a single transaction to prevent orphan rows.
 func (r *userRepository) DeleteUser(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&types.User{}).Error
+	// knowledges must be removed before knowledge_bases (no FK on
+	// knowledges.knowledge_base_id).  chunks and embeddings also lack FK
+	// constraints so they must be cleaned ahead of their parent rows.
+	kbsBefore := []struct {
+		table  string
+		column string
+	}{
+		{"chunks", "knowledge_base_id"},
+		{"embeddings", "knowledge_base_id"},
+		{"data_sources", "knowledge_base_id"},
+		{"sync_logs", "knowledge_base_id"},
+		{"knowledges", "knowledge_base_id"},
+	}
+	clean := []struct {
+		table  string
+		column string
+	}{
+		{"agent_shares", "shared_by_user_id"},
+		{"kb_shares", "shared_by_user_id"},
+		{"organization_tenant_members", "representative_user_id"},
+		{"tenant_invitations", "invitee_user_id"},
+		{"tenant_members", "user_id"},
+		{"sessions", "user_id"},
+		{"user_kb_pins", "user_id"},
+		{"user_resource_favorites", "user_id"},
+		{"knowledge_bases", "creator_id"},
+		{"organization_join_requests", "user_id"},
+		{"organization_members_pre_plan3", "user_id"},
+		{"custom_agents", "created_by"},
+		{"im_channel_sessions", "user_id"},
+		{"mcp_oauth_tokens", "user_id"},
+		{"message_suggestion_events", "actor_id"},
+		{"organizations", "owner_id"},
+		{"resource_bindings", "owner_id"},
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. Delete child records of user's knowledge bases.
+		for _, c := range kbsBefore {
+			if err := tx.Unscoped().
+				Table(c.table).
+				Where(c.column+" IN (SELECT id FROM knowledge_bases WHERE creator_id = ?)", id).
+				Delete(nil).Error; err != nil {
+				return err
+			}
+		}
+		// 2. Delete records that reference the user directly.
+		for _, c := range clean {
+			if err := tx.Unscoped().
+				Table(c.table).
+				Where(c.column+" = ?", id).
+				Delete(nil).Error; err != nil {
+				return err
+			}
+		}
+		// auth_tokens has ON DELETE CASCADE FK, so the user-row DELETE
+		// below will clean it automatically.
+		return tx.Unscoped().Where("id = ?", id).Delete(&types.User{}).Error
+	})
 }
 
 // ListUsers lists users with pagination
