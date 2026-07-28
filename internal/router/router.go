@@ -697,6 +697,10 @@ func RegisterTenantRoutes(
 		g.apiKeyRoute(tenantRoutes, http.MethodGet, "/kv/:key", apiKeyManageTenantSettings(apiKeyFullAccess()), g.Viewer(), handler.GetTenantKV)
 		g.apiKeyRoute(tenantRoutes, http.MethodPut, "/kv/:key", apiKeyManageTenantSettings(apiKeyFullAccess()), g.Admin(), handler.UpdateTenantKV)
 
+		// 工作空间配置检查：无需 :id 路径参数，支持可选的 ?ids=1,2,3 查询参数。
+		// 如果不传 ids，则检查用户有权限的所有工作空间。
+		tenantRoutes.GET("/config-check", g.Viewer(), handler.CheckTenantConfig)
+
 		// Per-tenant endpoints share PathTenantMatch at the group level.
 		// Most /tenants/:id/* endpoints stay undeclared for API keys by
 		// default — tenant lifecycle and key/principal management require
@@ -707,7 +711,6 @@ func RegisterTenantRoutes(
 			g.apiKeyRoute(tenantByID, http.MethodGet, "",
 				apiKeyPlatform(types.APIKeyCapabilitySystemTenantsRead, types.APIKeyCapabilitySystemTenantsManage),
 				g.Viewer(), handler.GetTenant)
-			tenantByID.GET("/config-check", g.Viewer(), handler.CheckTenantConfig)
 			g.apiKeyRoute(tenantByID, http.MethodPut, "",
 				apiKeyPlatform(types.APIKeyCapabilitySystemTenantsManage), g.Owner(), handler.UpdateTenant)
 			g.apiKeyRoute(tenantByID, http.MethodDelete, "",
@@ -866,7 +869,7 @@ func RegisterAuthRoutes(r *gin.RouterGroup, handler *handler.AuthHandler, g *rba
 
 func RegisterInitializationRoutes(r *gin.RouterGroup, handler *handler.InitializationHandler, g *rbacGuards) {
 	// 初始化接口
-	// 用户初始化接口（无需鉴权，首次初始化时调用）
+	// 用户初始化接口（需 JWT 认证，tenantless 用户可调用）
 	r.POST("/initialization/user/init", handler.UserInitialize)
 
 	// GetCurrentConfigByKB 是只读，Viewer+ 即可（KB 受限 key 可读其范围内的 KB）。

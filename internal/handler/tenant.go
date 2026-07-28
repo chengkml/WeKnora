@@ -560,76 +560,142 @@ func (h *TenantHandler) GetTenant(c *gin.Context) {
 	})
 }
 
-// CheckTenantConfig 检查工作空间的模型配置情况
-//
-//	@Summary      检查工作空间模型配置
-//	@Description  检查工作空间下是否已配置 LLM 大语言模型和 Embedding 嵌入模型
-//	@Tags         空间管理
-//	@Accept       json
-//	@Produce      json
-//	@Param        id   path      int  true  "空间ID"
-//	@Success      200  {object}  map[string]interface{}  "检查结果"
-//	@Failure      400  {object}  errors.AppError         "请求参数错误"
-//	@Security     Bearer
-//	@Router       /tenants/{id}/config-check [get]
-func (h *TenantHandler) CheckTenantConfig(c *gin.Context) {
-	ctx := c.Request.Context()
+// tenantConfigCheckResult is the per-tenant result entry returned by
+// CheckTenantConfig.
+type tenantConfigCheckResult struct {
+	TenantID            uint64 `json:"tenant_id"`
+	TenantName          string `json:"tenant_name"`
+	HasChatModel        bool   `json:"has_chat_model"`
+	HasEmbeddingModel   bool   `json:"has_embedding_model"`
+	ChatModelCount      int    `json:"chat_model_count"`
+	EmbeddingModelCount int    `json:"embedding_model_count"`
+}
 
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+// checkSingleTenantModels checks whether the given workspace has LLM and
+// Embedding models configured. The caller is responsible for setting
+// TenantIDContextKey on ctx.
+func (h *TenantHandler) checkSingleTenantModels(ctx context.Context, tenantID uint64) (*tenantConfigCheckResult, error) {
+	tenant, err := h.service.GetTenantByID(ctx, tenantID)
 	if err != nil {
-		logger.Errorf(ctx, "Invalid workspace ID: %s", secutils.SanitizeForLog(c.Param("id")))
-		c.Error(errors.NewBadRequestError("Invalid workspace ID"))
-		return
-	}
-
-	// Override the context tenant to match the path ID so model listing and
-	// tenant lookup use the correct namespace (especially for cross-tenant
-	// superusers who bypass PathTenantMatch).
-	ctx = context.WithValue(ctx, types.TenantIDContextKey, id)
-
-	tenant, err := h.service.GetTenantByID(ctx, id)
-	if err != nil {
-		if appErr, ok := errors.IsAppError(err); ok {
-			c.Error(appErr)
-		} else {
-			c.Error(errors.NewInternalServerError("Failed to retrieve workspace").WithDetails(err.Error()))
-		}
-		return
+		return nil, fmt.Errorf("get workspace %d: %w", tenantID, err)
 	}
 
 	models, err := h.modelService.ListModels(ctx)
 	if err != nil {
-		logger.Errorf(ctx, "Failed to list models for workspace %d: %v", id, err)
-		c.Error(errors.NewInternalServerError("Failed to list models"))
-		return
+		return nil, fmt.Errorf("list models for workspace %d: %w", tenantID, err)
 	}
 
-	hasChatModel := false
-	chatModelCount := 0
-	hasEmbeddingModel := false
-	embeddingModelCount := 0
-
+	result := &tenantConfigCheckResult{
+		TenantID:   tenantID,
+		TenantName: tenant.Name,
+	}
 	for _, m := range models {
 		switch m.Type {
 		case types.ModelTypeKnowledgeQA, types.ModelTypeVLLM:
-			hasChatModel = true
-			chatModelCount++
+			result.HasChatModel = true
+			result.ChatModelCount++
 		case types.ModelTypeEmbedding:
-			hasEmbeddingModel = true
-			embeddingModelCount++
+			result.HasEmbeddingModel = true
+			result.EmbeddingModelCount++
 		}
+	}
+	return result, nil
+}
+
+// CheckTenantConfig 检查工作空间模型配置情况
+//
+//	@Summary      检查工作空间模型配置
+//	@Description  检查工作空间下是否已配置 LLM 大语言模型和 Embedding 嵌入模型。
+//	@Description  支持可选的 ?ids=1,2,3 查询参数指定一个或多个空间；不传则检查当前用户的所有空间。
+//	@Tags         空间管理
+//	@Accept       json
+//	@Produce      json
+//	@Param        ids   query     string  false  "工作空间 ID 列表，逗号分隔（如 1,2,3）；不传则检查用户所有空间"
+//	@Success      200  {object}  map[string]interface{}  "检查结果"
+//	@Failure      400  {object}  errors.AppError         "请求参数错误"
+//	@Security     Bearer
+//	@Router       /tenants/config-check [get]
+func (h *TenantHandler) CheckTenantConfig(c *gin.Context) {
+	ctx := c.Request.Context()
+	ids := c.Query("ids")
+
+	var tenantIDs []uint64
+
+	if ids != "" {
+		// Parse explicit workspace IDs from query string.
+		for _, part := range strings.Split(ids, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			id, err := strconv.ParseUint(part, 10, 64)
+			if err != nil {
+				logger.Errorf(ctx, "Invalid workspace ID in query: %q", secutils.SanitizeForLog(part))
+				c.Error(errors.NewBadRequestError("Invalid workspace ID in query: " + part))
+				return
+			}
+			if id == 0 {
+				c.Error(errors.NewBadRequestError("Workspace ID must be a positive integer"))
+				return
+			}
+			tenantIDs = append(tenantIDs, id)
+		}
+		if len(tenantIDs) == 0 {
+			c.Error(errors.NewBadRequestError("ids parameter contains no valid workspace IDs"))
+			return
+		}
+	} else {
+		// No ids query — list all workspaces the caller belongs to.
+		caller, ok := types.UserIDFromContext(ctx)
+		if !ok || caller == "" {
+			c.Error(errors.NewUnauthorizedError("user identity not found"))
+			return
+		}
+		memberships, err := h.memberService.ListByUser(ctx, caller)
+		if err != nil {
+			logger.Errorf(ctx, "Failed to list memberships for user %s: %v", caller, err)
+			c.Error(errors.NewInternalServerError("Failed to list memberships"))
+			return
+		}
+		for _, m := range memberships {
+			tenantIDs = append(tenantIDs, m.TenantID)
+		}
+		if len(tenantIDs) == 0 {
+			// User belongs to no workspace at all.
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"data":    []tenantConfigCheckResult{},
+			})
+			return
+		}
+	}
+
+	results := make([]tenantConfigCheckResult, 0, len(tenantIDs))
+	var firstErr error
+	for _, tid := range tenantIDs {
+		// Each workspace gets its own tenant context so model listing scopes
+		// correctly (built-in models are visible regardless).
+		tenantCtx := context.WithValue(ctx, types.TenantIDContextKey, tid)
+		r, err := h.checkSingleTenantModels(tenantCtx, tid)
+		if err != nil {
+			logger.Errorf(ctx, "Skipping workspace %d: %v", tid, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			// Return a partial result for this tenant so the client can
+			// still see what we did manage to check.
+			results = append(results, tenantConfigCheckResult{
+				TenantID:   tid,
+				TenantName: fmt.Sprintf("workspace-%d", tid),
+			})
+			continue
+		}
+		results = append(results, *r)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data": gin.H{
-			"tenant_id":            id,
-			"tenant_name":          tenant.Name,
-			"has_chat_model":       hasChatModel,
-			"has_embedding_model":  hasEmbeddingModel,
-			"chat_model_count":     chatModelCount,
-			"embedding_model_count": embeddingModelCount,
-		},
+		"data":    results,
 	})
 }
 
