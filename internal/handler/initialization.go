@@ -210,6 +210,10 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 	}
 
 	// Step 4: 创建个人知识库
+	// CreateKnowledgeBase 内部从 context 读取 tenant ID 和 user ID，
+	// 免认证的初始化接口没有这些上下文，需注入。
+	kbCtx := context.WithValue(ctx, types.TenantIDContextKey, createdTenant.ID)
+	kbCtx = context.WithValue(kbCtx, types.UserIDContextKey, user.ID)
 	kb := &types.KnowledgeBase{
 		Name:        "个人知识库",
 		Description: "个人知识库",
@@ -231,7 +235,7 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 		UpdatedAt: time.Now(),
 	}
 
-	createdKB, err := h.kbService.CreateKnowledgeBase(ctx, kb)
+	createdKB, err := h.kbService.CreateKnowledgeBase(kbCtx, kb)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to create personal knowledge base: %v", err)
 		c.Error(errors.NewInternalServerError("创建个人知识库失败: " + err.Error()))
