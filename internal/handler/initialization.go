@@ -147,18 +147,33 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 		// 如果用户不存在，这是正常情况（首次初始化）
 		logger.Infof(ctx, "User not found, proceeding with initialization: %s", req.UserID)
 	} else if existingUser != nil {
-		// 用户已存在，直接返回（幂等）
+		// 用户已存在，需生成 JWT token 供调用方使用
 		logger.Infof(ctx, "User already initialized: %s", req.UserID)
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "用户已初始化",
-			"data": UserInitResponse{
-				Success:     true,
-				Message:     "用户已初始化",
-				User:        existingUser.ToUserInfo(),
-				AlreadyInit: true,
-			},
-		})
+
+		var activeTenant *types.Tenant
+		if existingUser.TenantID > 0 {
+			t, err := h.tenantService.GetTenantByID(ctx, existingUser.TenantID)
+			if err == nil {
+				activeTenant = t
+			}
+		}
+
+		accessToken, refreshToken, tokenErr := h.userService.GenerateTokens(ctx, existingUser)
+		if tokenErr != nil {
+			logger.Errorf(ctx, "Failed to generate tokens for existing user: %v", tokenErr)
+			c.Error(errors.NewInternalServerError("生成令牌失败: " + tokenErr.Error()))
+			return
+		}
+
+		c.JSON(http.StatusOK, dto.NewAuthLoginResponse(&types.LoginResponse{
+			Success:      true,
+			Message:      "用户已初始化",
+			User:         existingUser,
+			ActiveTenant: activeTenant,
+			Memberships:  []types.Membership{},
+			Token:        accessToken,
+			RefreshToken: refreshToken,
+		}))
 		return
 	}
 
