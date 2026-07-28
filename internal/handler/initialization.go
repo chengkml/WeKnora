@@ -141,10 +141,13 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 		return
 	}
 
-	// Step 1: 查重 — userId、email、username 任一已存在则幂等返回
+	// Step 1: 查重 — 使用用户ID去系统查询是否存在该用户
 	existingUser, err := h.userService.GetUserByID(ctx, req.UserID)
-	if err == nil && existingUser != nil {
-		// userId 已存在
+	if err != nil {
+		// 如果用户不存在，这是正常情况（首次初始化）
+		logger.Infof(ctx, "User not found, proceeding with initialization: %s", req.UserID)
+	} else if existingUser != nil {
+		// 用户已存在，直接返回（幂等）
 		logger.Infof(ctx, "User already initialized: %s", req.UserID)
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -156,20 +159,6 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 				AlreadyInit: true,
 			},
 		})
-		return
-	}
-
-	// 检查 email 是否已被其他用户使用
-	if userByEmail, err := h.userService.GetUserByEmail(ctx, req.Email); err == nil && userByEmail != nil {
-		logger.Warnf(ctx, "Email already in use: %s", req.Email)
-		c.Error(errors.NewConflictError("该邮箱已被其他用户使用"))
-		return
-	}
-
-	// 检查 username 是否已被其他用户使用
-	if userByUsername, err := h.userService.GetUserByUsername(ctx, req.Username); err == nil && userByUsername != nil {
-		logger.Warnf(ctx, "Username already in use: %s", req.Username)
-		c.Error(errors.NewConflictError("该用户名已被其他用户使用"))
 		return
 	}
 
