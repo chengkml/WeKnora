@@ -118,16 +118,95 @@ func (r *tenantRepository) UpdateTenant(ctx context.Context, tenant *types.Tenan
 	return r.db.WithContext(ctx).Model(&types.Tenant{}).Where("id = ?", tenant.ID).Updates(tenant).Error
 }
 
-// DeleteTenant soft-deletes the tenant and every active membership row
-// for that tenant in one transaction. Without the membership purge,
-// /auth/me still lists the defunct tenant (name lookup fails → UI shows
-// "#<id>").
+// DeleteTenant hard-deletes the tenant and every related record for that
+// tenant in one transaction.  Without the membership purge, /auth/me still
+// lists the defunct tenant (name lookup fails → UI shows "#<id>").
 func (r *tenantRepository) DeleteTenant(ctx context.Context, id uint64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("tenant_id = ?", id).Delete(&types.TenantMember{}).Error; err != nil {
-			return err
+		// 1. Tables referenced by knowledge_bases rows (no FK cascade).
+		for _, c := range []struct {
+			table  string
+			column string
+		}{
+			{"embeddings", "knowledge_base_id"},
+			{"chunks", "knowledge_base_id"},
+			{"data_sources", "knowledge_base_id"},
+		} {
+			if err := tx.Unscoped().
+				Table(c.table).
+				Where(c.column+" IN (SELECT id FROM knowledge_bases WHERE tenant_id = ?)", id).
+				Delete(nil).Error; err != nil {
+				return err
+			}
 		}
-		return tx.Where("id = ?", id).Delete(&types.Tenant{}).Error
+		// 2. Tables that reference the tenant via a non-standard column.
+		for _, c := range []struct {
+			table  string
+			column string
+		}{
+			{"agent_shares", "source_tenant_id"},
+			{"kb_shares", "source_tenant_id"},
+			{"messages", "agent_tenant_id"},
+		} {
+			if err := tx.Unscoped().
+				Table(c.table).
+				Where(c.column+" = ?", id).
+				Delete(nil).Error; err != nil {
+				return err
+			}
+		}
+		// 3. Tables that use the standard "tenant_id" column.
+		for _, c := range []struct {
+			table  string
+			column string
+		}{
+			{"sync_logs", "tenant_id"},
+			{"knowledges", "tenant_id"},
+			{"knowledge_bases", "tenant_id"},
+			{"knowledge_tags", "tenant_id"},
+			{"sessions", "tenant_id"},
+			{"audit_logs", "tenant_id"},
+			{"custom_agents", "tenant_id"},
+			{"im_channels", "tenant_id"},
+			{"im_channel_sessions", "tenant_id"},
+			{"embed_channels", "tenant_id"},
+			{"mcp_oauth_clients", "tenant_id"},
+			{"mcp_oauth_tokens", "tenant_id"},
+			{"mcp_services", "tenant_id"},
+			{"mcp_tool_approvals", "tenant_id"},
+			{"message_suggestion_events", "tenant_id"},
+			{"message_suggestion_sets", "tenant_id"},
+			{"models", "tenant_id"},
+			{"organization_join_requests", "tenant_id"},
+			{"organization_members_pre_plan3", "tenant_id"},
+			{"organization_tenant_members", "tenant_id"},
+			{"resource_bindings", "tenant_id"},
+			{"resources", "tenant_id"},
+			{"storage_backends", "tenant_id"},
+			{"task_dead_letters", "tenant_id"},
+			{"task_pending_ops", "tenant_id"},
+			{"temporary_documents", "tenant_id"},
+			{"tenant_api_keys", "tenant_id"},
+			{"tenant_disabled_shared_agents", "tenant_id"},
+			{"tenant_invitations", "tenant_id"},
+			{"tenant_members", "tenant_id"},
+			{"user_kb_pins", "tenant_id"},
+			{"user_resource_favorites", "tenant_id"},
+			{"vector_stores", "tenant_id"},
+			{"web_search_providers", "tenant_id"},
+			{"wiki_folders", "tenant_id"},
+			{"wiki_log_entries", "tenant_id"},
+			{"wiki_page_issues", "tenant_id"},
+			{"wiki_pages", "tenant_id"},
+		} {
+			if err := tx.Unscoped().
+				Table(c.table).
+				Where(c.column+" = ?", id).
+				Delete(nil).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Unscoped().Where("id = ?", id).Delete(&types.Tenant{}).Error
 	})
 }
 

@@ -144,8 +144,8 @@ func (r *userRepository) DeleteUser(ctx context.Context, id string) error {
 		{"chunks", "knowledge_base_id"},
 		{"embeddings", "knowledge_base_id"},
 		{"data_sources", "knowledge_base_id"},
-		{"sync_logs", "knowledge_base_id"},
 		{"knowledges", "knowledge_base_id"},
+		{"knowledge_tags", "knowledge_base_id"},
 	}
 	clean := []struct {
 		table  string
