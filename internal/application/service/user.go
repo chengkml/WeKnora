@@ -600,6 +600,12 @@ func (s *userService) ListSystemAdmins(
 	return s.userRepo.ListSystemAdmins(ctx, offset, limit)
 }
 
+// ListUsers delegates to the repository and returns every user in the
+// system. offset=0, limit=0 means "all users".
+func (s *userService) ListUsers(ctx context.Context, offset, limit int) ([]*types.User, error) {
+	return s.userRepo.ListUsers(ctx, offset, limit)
+}
+
 // RevokeSystemAdmin removes system-admin privileges through the
 // repository's transactional guard so concurrent revokes cannot remove
 // the final administrator.

@@ -79,6 +79,10 @@ type UserService interface {
 	// callers pass offset/limit to page through results. Used by the
 	// /api/v1/system/admin/list endpoint, gated to SystemAdmin callers.
 	ListSystemAdmins(ctx context.Context, offset, limit int) ([]*types.User, int64, error)
+	// ListUsers returns every user in the system with offset/limit
+	// pagination. Passing offset=0, limit=0 returns all users (used by
+	// the SystemAdmin user-management dashboard).
+	ListUsers(ctx context.Context, offset, limit int) ([]*types.User, error)
 	// RevokeSystemAdmin removes system-admin privileges with the
 	// last-admin/self-revoke checks performed atomically.
 	RevokeSystemAdmin(ctx context.Context, userID, actorID string) (*types.User, error)
