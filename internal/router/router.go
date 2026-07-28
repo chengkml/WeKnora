@@ -1016,6 +1016,12 @@ func RegisterSystemAdminRoutes(
 			g.apiKeyRoute(adminRoutes, http.MethodGet, "/audit-log",
 			apiKeyPlatform(types.APIKeyCapabilitySystemAuditRead), auditLogHandler.ListSystemAuditLog)
 		}
+
+		// P2: SystemAdmin user management — list all users, remove a user
+		// from a workspace, or permanently delete a user account.
+		adminRoutes.GET("/users", handler.ListUsersWithTenants)
+		adminRoutes.POST("/users/remove-from-tenant", handler.AdminDeleteUserTenant)
+		adminRoutes.POST("/users/delete", handler.AdminDeleteUser)
 	}
 }
 

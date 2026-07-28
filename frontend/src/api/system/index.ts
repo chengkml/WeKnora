@@ -651,3 +651,64 @@ export async function mutateRuntimeTask(
     `/api/v1/system/admin/runtime/queues/${encodeURIComponent(queue)}/tasks/${encodeURIComponent(taskID)}/actions/${encodeURIComponent(action)}`,
   )
 }
+
+// ---- SystemAdmin User Management ----
+
+/**
+ * Brief info about a workspace the user belongs to.
+ */
+export interface UserTenantBrief {
+  tenant_id: number
+  tenant_name: string
+  role: string
+}
+
+/**
+ * A user profile enriched with their workspace memberships.
+ */
+export interface UserWithTenantInfo {
+  id: string
+  username: string
+  email: string
+  is_system_admin: boolean
+  is_active: boolean
+  created_at: string
+  home_tenant_id?: number | null
+  tenants: UserTenantBrief[]
+}
+
+/**
+ * List every user in the system, each enriched with workspace memberships.
+ * SystemAdmin only.
+ * Backend: GET /api/v1/system/admin/users → { success, data: UserWithTenantInfo[] }
+ */
+export async function listUsersWithTenants(): Promise<{ success: boolean; data: UserWithTenantInfo[] }> {
+  return await get('/api/v1/system/admin/users') as unknown as { success: boolean; data: UserWithTenantInfo[] }
+}
+
+/**
+ * Remove a user from a specific workspace. SystemAdmin only.
+ * Backend: POST /api/v1/system/admin/users/remove-from-tenant
+ */
+export async function removeUserFromTenant(
+  userId: string,
+  tenantId: number,
+): Promise<{ success: boolean; message?: string }> {
+  return await post('/api/v1/system/admin/users/remove-from-tenant', {
+    user_id: userId,
+    tenant_id: tenantId,
+  }) as unknown as { success: boolean; message?: string }
+}
+
+/**
+ * Permanently delete a user account. SystemAdmin only.
+ * Cannot delete your own account — backend rejects with 400.
+ * Backend: POST /api/v1/system/admin/users/delete
+ */
+export async function adminDeleteUser(
+  userId: string,
+): Promise<{ success: boolean; message?: string }> {
+  return await post('/api/v1/system/admin/users/delete', {
+    user_id: userId,
+  }) as unknown as { success: boolean; message?: string }
+}
