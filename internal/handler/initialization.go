@@ -33,6 +33,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/ollama/ollama/api"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // DownloadTask 下载任务信息
@@ -104,6 +105,7 @@ type UserInitRequest struct {
 	UserID   string `json:"userId"   binding:"required"`
 	Username string `json:"username" binding:"required"`
 	Email    string `json:"email"    binding:"required"`
+	Password string `json:"password" binding:"required"`
 }
 
 // UserInitResponse 用户初始化响应
@@ -160,12 +162,19 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 		return
 	}
 
-	// Step 2: 创建用户（无密码模式）
+	// Step 2: 创建用户（带密码模式）
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to hash password: %v", err)
+		c.Error(errors.NewInternalServerError("密码处理失败"))
+		return
+	}
+
 	user := &types.User{
 		ID:           req.UserID,
 		Username:     req.Username,
 		Email:        req.Email,
-		PasswordHash: "", // 初始化流程无密码，用户后续可通过其他方式登录
+		PasswordHash: string(hashedPassword),
 		IsActive:     true,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -230,19 +239,30 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 	}
 	logger.Infof(ctx, "Personal knowledge base created: %s", createdKB.ID)
 
-	// 返回成功响应
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "用户初始化成功",
-		"data": UserInitResponse{
-			Success:       true,
-			Message:       "用户初始化成功",
-			User:          user.ToUserInfo(),
-			Tenant:        createdTenant,
-			KnowledgeBase: createdKB,
-			AlreadyInit:   false,
+	// Step 5: 生成 JWT 令牌
+	accessToken, refreshToken, err := h.userService.GenerateTokens(ctx, user)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to generate tokens: %v", err)
+		c.Error(errors.NewInternalServerError("生成令牌失败: " + err.Error()))
+		return
+	}
+
+	// 返回成功响应（含 JWT 令牌）
+	c.JSON(http.StatusOK, dto.NewAuthLoginResponse(&types.LoginResponse{
+		Success: true,
+		Message: "用户初始化成功",
+		User:    user,
+		ActiveTenant: createdTenant,
+		Memberships: []types.Membership{
+			{
+				TenantID:   createdTenant.ID,
+				TenantName: createdTenant.Name,
+				Role:       types.TenantRoleOwner,
+			},
 		},
-	})
+		Token:        accessToken,
+		RefreshToken: refreshToken,
+	}))
 }
 
 // KBModelConfigRequest 知识库模型配置请求（简化版，只传模型ID）
@@ -1070,6 +1090,309 @@ func extractModelIDs(processedModels []*types.Model) (embeddingModelID, llmModel
 		}
 	}
 	return
+}
+
+// SyncModelConfigItem 同步接口中单个模型的配置项
+type SyncModelConfigItem struct {
+	Name      string `json:"name"      binding:"required"`
+	Source    string `json:"source"    binding:"required"`
+	BaseURL   string `json:"baseUrl"`
+	APIKey    string `json:"apiKey"`
+	Provider  string `json:"provider"`
+	Dimension int    `json:"dimension"`
+}
+
+// SyncModelConfigRequest 工作空间模型配置同步请求
+type SyncModelConfigRequest struct {
+	UserID    string               `json:"userId"    binding:"required"`
+	LLM       SyncModelConfigItem  `json:"llm"       binding:"required"`
+	Embedding SyncModelConfigItem  `json:"embedding" binding:"required"`
+	Rerank    *SyncModelConfigItem `json:"rerank,omitempty"`
+	VLM       *SyncModelConfigItem `json:"vlm,omitempty"`
+}
+
+// syncTenantResult 单个工作空间的同步结果
+type syncTenantResult struct {
+	TenantID      uint64         `json:"tenant_id"`
+	TenantName    string         `json:"tenant_name"`
+	Models        []*types.Model `json:"models"`
+	KBsUpdated    int            `json:"knowledge_bases_updated"`
+	KBTotal       int            `json:"knowledge_bases_total"`
+}
+
+// SyncWorkspaceModelConfig 同步工作空间模型配置
+//
+//	@Summary      同步工作空间模型配置
+//	@Description  基于用户ID找到其工作空间和知识库，将工作空间的模型清空重置为传入的模型配置，
+//	@Description  并按照知识库已配置的模型类型自动映射新的模型ID。
+//	@Tags         初始化
+//	@Accept       json
+//	@Produce      json
+//	@Param        request  body      SyncModelConfigRequest  true  "同步请求"
+//	@Success      200      {object}  map[string]interface{}  "同步结果"
+//	@Security     Bearer
+//	@Router       /initialization/models/sync [post]
+func (h *InitializationHandler) SyncWorkspaceModelConfig(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger.Info(ctx, "Starting workspace model config sync")
+
+	var req SyncModelConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error(ctx, "Failed to parse sync request", err)
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+
+	// SSRF validation for all user-supplied BaseURLs
+	urlsToCheck := []struct {
+		label string
+		url   string
+	}{
+		{"LLM BaseURL", req.LLM.BaseURL},
+		{"Embedding BaseURL", req.Embedding.BaseURL},
+	}
+	if req.Rerank != nil {
+		urlsToCheck = append(urlsToCheck, struct {
+			label string
+			url   string
+		}{"Rerank BaseURL", req.Rerank.BaseURL})
+	}
+	if req.VLM != nil {
+		urlsToCheck = append(urlsToCheck, struct {
+			label string
+			url   string
+		}{"VLM BaseURL", req.VLM.BaseURL})
+	}
+	for _, u := range urlsToCheck {
+		if u.url != "" {
+			if err := utils.ValidateURLForSSRF(u.url); err != nil {
+				logger.Warnf(ctx, "SSRF validation failed for %s: %v", u.label, err)
+				c.Error(errors.NewBadRequestError(utils.FormatSSRFError(u.label, u.url, err)))
+				return
+			}
+		}
+	}
+
+	// Look up user
+	user, err := h.userService.GetUserByID(ctx, req.UserID)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to find user %s: %v", utils.SanitizeForLog(req.UserID), err)
+		c.Error(errors.NewNotFoundError("User not found"))
+		return
+	}
+	logger.Infof(ctx, "Found user: %s", user.ID)
+
+	// Get all tenants the user belongs to
+	memberships, err := h.tenantMemberSvc.ListByUser(ctx, user.ID)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to list memberships for user %s: %v", user.ID, err)
+		c.Error(errors.NewInternalServerError("Failed to list user memberships"))
+		return
+	}
+	if len(memberships) == 0 {
+		logger.Warnf(ctx, "User %s has no workspace", user.ID)
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "User has no workspace",
+			"data":    []syncTenantResult{},
+		})
+		return
+	}
+
+	// Build model descriptors
+	descriptors := buildSyncModelDescriptors(&req)
+
+	var results []syncTenantResult
+	for _, membership := range memberships {
+		tenant, err := h.tenantService.GetTenantByID(ctx, membership.TenantID)
+		if err != nil {
+			logger.Warnf(ctx, "Failed to get workspace %d: %v, skipping", membership.TenantID, err)
+			continue
+		}
+
+		result, err := h.syncSingleTenantModels(ctx, membership.TenantID, tenant, descriptors)
+		if err != nil {
+			logger.Errorf(ctx, "Failed to sync models for workspace %d: %v", membership.TenantID, err)
+			results = append(results, syncTenantResult{
+				TenantID:   membership.TenantID,
+				TenantName: tenant.Name,
+			})
+			continue
+		}
+		results = append(results, *result)
+	}
+
+	logger.Infof(ctx, "Workspace model config sync completed for user %s, %d workspace(s) processed", user.ID, len(results))
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    results,
+	})
+}
+
+// buildSyncModelDescriptors 从同步请求构建模型描述符列表
+func buildSyncModelDescriptors(req *SyncModelConfigRequest) []modelDescriptor {
+	descriptors := []modelDescriptor{
+		{
+			modelType:   types.ModelTypeKnowledgeQA,
+			name:        utils.SanitizeForLog(req.LLM.Name),
+			source:      types.ModelSource(req.LLM.Source),
+			description: "LLM Model (synced)",
+			baseURL:     utils.SanitizeForLog(req.LLM.BaseURL),
+			apiKey:      req.LLM.APIKey,
+		},
+		{
+			modelType:   types.ModelTypeEmbedding,
+			name:        utils.SanitizeForLog(req.Embedding.Name),
+			source:      types.ModelSource(req.Embedding.Source),
+			description: "Embedding Model (synced)",
+			baseURL:     utils.SanitizeForLog(req.Embedding.BaseURL),
+			apiKey:      req.Embedding.APIKey,
+			dimension:   req.Embedding.Dimension,
+		},
+	}
+
+	if req.Rerank != nil {
+		descriptors = append(descriptors, modelDescriptor{
+			modelType:   types.ModelTypeRerank,
+			name:        utils.SanitizeForLog(req.Rerank.Name),
+			source:      types.ModelSource(req.Rerank.Source),
+			description: "Rerank Model (synced)",
+			baseURL:     utils.SanitizeForLog(req.Rerank.BaseURL),
+			apiKey:      req.Rerank.APIKey,
+		})
+	}
+
+	if req.VLM != nil {
+		descriptors = append(descriptors, modelDescriptor{
+			modelType:   types.ModelTypeVLLM,
+			name:        utils.SanitizeForLog(req.VLM.Name),
+			source:      types.ModelSource(req.VLM.Source),
+			description: "VLM Model (synced)",
+			baseURL:     utils.SanitizeForLog(req.VLM.BaseURL),
+			apiKey:      req.VLM.APIKey,
+		})
+	}
+
+	return descriptors
+}
+
+// syncSingleTenantModels 同步单个工作空间的模型配置
+func (h *InitializationHandler) syncSingleTenantModels(
+	ctx context.Context,
+	tenantID uint64,
+	tenant *types.Tenant,
+	descriptors []modelDescriptor,
+) (*syncTenantResult, error) {
+	// Create a context scoped to the target tenant so service calls use the
+	// correct workspace for model / KB operations.
+	tenantCtx := context.WithValue(ctx, types.TenantIDContextKey, tenantID)
+
+	// 1. Get existing models and KBs
+	existingModels, err := h.modelService.ListModels(tenantCtx)
+	if err != nil {
+		return nil, fmt.Errorf("list models: %w", err)
+	}
+
+	kbs, err := h.kbService.ListKnowledgeBases(tenantCtx)
+	if err != nil {
+		return nil, fmt.Errorf("list knowledge bases: %w", err)
+	}
+
+	// 2. Create new models from descriptors
+	var createdModels []*types.Model
+	for _, descriptor := range descriptors {
+		model := descriptor.toModel()
+		model.TenantID = tenantID
+		if err := h.modelService.CreateModel(tenantCtx, model); err != nil {
+			// Roll back previously created models on failure
+			for _, created := range createdModels {
+				_ = h.modelService.DeleteModel(tenantCtx, created.ID)
+			}
+			return nil, fmt.Errorf("create %s model: %w", descriptor.modelType, err)
+		}
+		createdModels = append(createdModels, model)
+	}
+
+	// 3. Build model lookup by type
+	modelByType := make(map[types.ModelType]*types.Model)
+	for _, m := range createdModels {
+		modelByType[m.Type] = m
+	}
+
+	// 4. Update KB model references
+	updatedCount := 0
+	for _, kb := range kbs {
+		needsUpdate := false
+
+		// LLM model — if KB had a summary model, remap it
+		if kb.SummaryModelID != "" {
+			if m, ok := modelByType[types.ModelTypeKnowledgeQA]; ok {
+				kb.SummaryModelID = m.ID
+				needsUpdate = true
+			} else if m := firstModelOfType(createdModels, types.ModelTypeKnowledgeQA); m != nil {
+				kb.SummaryModelID = m.ID
+				needsUpdate = true
+			}
+		}
+
+		// Embedding model
+		if kb.EmbeddingModelID != "" {
+			if m, ok := modelByType[types.ModelTypeEmbedding]; ok {
+				kb.EmbeddingModelID = m.ID
+				needsUpdate = true
+			} else if m := firstModelOfType(createdModels, types.ModelTypeEmbedding); m != nil {
+				kb.EmbeddingModelID = m.ID
+				needsUpdate = true
+			}
+		}
+
+		// VLM model
+		if kb.VLMConfig.Enabled && kb.VLMConfig.ModelID != "" {
+			if m, ok := modelByType[types.ModelTypeVLLM]; ok {
+				kb.VLMConfig.ModelID = m.ID
+				needsUpdate = true
+			} else if m := firstModelOfType(createdModels, types.ModelTypeVLLM); m != nil {
+				kb.VLMConfig.ModelID = m.ID
+				needsUpdate = true
+			}
+		}
+
+		if needsUpdate {
+			if err := h.kbRepository.UpdateKnowledgeBase(tenantCtx, kb); err != nil {
+				logger.Warnf(ctx, "Failed to update KB %s model references: %v", kb.ID, err)
+				continue
+			}
+			updatedCount++
+		}
+	}
+
+	// 5. Delete old non-builtin models (after KB references have been updated
+	//    to point at the new models, so the "model in use" guard won't block).
+	for _, old := range existingModels {
+		if !old.IsBuiltin {
+			if err := h.modelService.DeleteModel(tenantCtx, old.ID); err != nil {
+				logger.Warnf(ctx, "Failed to delete old model %s (%s): %v", old.ID, old.Name, err)
+			}
+		}
+	}
+
+	return &syncTenantResult{
+		TenantID:   tenantID,
+		TenantName: tenant.Name,
+		Models:     createdModels,
+		KBsUpdated: updatedCount,
+		KBTotal:    len(kbs),
+	}, nil
+}
+
+// firstModelOfType returns the first model in the slice matching the given type.
+func firstModelOfType(models []*types.Model, modelType types.ModelType) *types.Model {
+	for _, m := range models {
+		if m.Type == modelType {
+			return m
+		}
+	}
+	return nil
 }
 
 // CheckOllamaStatus godoc

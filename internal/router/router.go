@@ -869,7 +869,7 @@ func RegisterAuthRoutes(r *gin.RouterGroup, handler *handler.AuthHandler, g *rba
 
 func RegisterInitializationRoutes(r *gin.RouterGroup, handler *handler.InitializationHandler, g *rbacGuards) {
 	// 初始化接口
-	// 用户初始化接口（需 JWT 认证，tenantless 用户可调用）
+		// 用户初始化接口（无需鉴权，首次初始化时调用）
 	r.POST("/initialization/user/init", handler.UserInitialize)
 
 	// GetCurrentConfigByKB 是只读，Viewer+ 即可（KB 受限 key 可读其范围内的 KB）。
