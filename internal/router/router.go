@@ -709,12 +709,12 @@ func RegisterTenantRoutes(
 		tenantByID := tenantRoutes.Group("/:id", g.PathTenantMatch())
 		{
 			g.apiKeyRoute(tenantByID, http.MethodGet, "",
-				apiKeyPlatform(types.APIKeyCapabilitySystemTenantsRead, types.APIKeyCapabilitySystemTenantsManage),
-				g.Viewer(), handler.GetTenant)
+			apiKeyPlatform(types.APIKeyCapabilitySystemTenantsRead, types.APIKeyCapabilitySystemTenantsManage),
+			g.Viewer(), handler.GetTenant)
 			g.apiKeyRoute(tenantByID, http.MethodPut, "",
-				apiKeyPlatform(types.APIKeyCapabilitySystemTenantsManage), g.Owner(), handler.UpdateTenant)
+			apiKeyPlatform(types.APIKeyCapabilitySystemTenantsManage), g.Owner(), handler.UpdateTenant)
 			g.apiKeyRoute(tenantByID, http.MethodDelete, "",
-				apiKeyPlatform(types.APIKeyCapabilitySystemTenantsManage), g.Owner(), handler.DeleteTenant)
+			apiKeyPlatform(types.APIKeyCapabilitySystemTenantsManage), g.Owner(), handler.DeleteTenant)
 			tenantByID.GET("/api-keys", g.Owner(), handler.ListAPIKeys)
 			tenantByID.POST("/api-keys", g.Owner(), handler.CreateAPIKey)
 			tenantByID.DELETE("/api-keys/:key_id", g.Owner(), handler.DeleteAPIKey)
@@ -729,11 +729,11 @@ func RegisterTenantRoutes(
 			// their own; the service still rejects when it would leave
 			// the tenant without an Owner.
 			if memberHandler != nil {
-				g.apiKeyRoute(tenantByID, http.MethodGet, "/members", apiKeyManageMembers(apiKeyFullAccess()), g.Viewer(), memberHandler.ListMembers)
-				g.apiKeyRoute(tenantByID, http.MethodPost, "/members", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), memberHandler.AddMember)
-				g.apiKeyRoute(tenantByID, http.MethodPut, "/members/:user_id", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), memberHandler.UpdateMemberRole)
-				g.apiKeyRoute(tenantByID, http.MethodDelete, "/members/:user_id", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), memberHandler.RemoveMember)
-				tenantByID.POST("/leave", g.Viewer(), memberHandler.LeaveTenant)
+			g.apiKeyRoute(tenantByID, http.MethodGet, "/members", apiKeyManageMembers(apiKeyFullAccess()), g.Viewer(), memberHandler.ListMembers)
+			g.apiKeyRoute(tenantByID, http.MethodPost, "/members", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), memberHandler.AddMember)
+			g.apiKeyRoute(tenantByID, http.MethodPut, "/members/:user_id", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), memberHandler.UpdateMemberRole)
+			g.apiKeyRoute(tenantByID, http.MethodDelete, "/members/:user_id", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), memberHandler.RemoveMember)
+			tenantByID.POST("/leave", g.Viewer(), memberHandler.LeaveTenant)
 			}
 
 			// Tenant invitation flow. The UI-driven "Invite Member"
@@ -746,14 +746,14 @@ func RegisterTenantRoutes(
 			// mirrors memberHandler above for environments built
 			// without the invitation dependency wired.
 			if invitationHandler != nil {
-				g.apiKeyRoute(tenantByID, http.MethodGet, "/invitations", apiKeyManageMembers(apiKeyFullAccess()), g.Viewer(), invitationHandler.ListTenantInvitations)
-				g.apiKeyRoute(tenantByID, http.MethodPost, "/invitations", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), invitationHandler.CreateInvitation)
-				g.apiKeyRoute(tenantByID, http.MethodDelete, "/invitations/:inv_id", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), invitationHandler.RevokeInvitation)
-				// Share-link create lives under /invite-links so the URL
-				// reads as "create a link" rather than another flavour
-				// of /invitations; the underlying row still lives in the
-				// tenant_invitations table and shows up in the GET above.
-				g.apiKeyRoute(tenantByID, http.MethodPost, "/invite-links", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), invitationHandler.CreateInviteLink)
+			g.apiKeyRoute(tenantByID, http.MethodGet, "/invitations", apiKeyManageMembers(apiKeyFullAccess()), g.Viewer(), invitationHandler.ListTenantInvitations)
+			g.apiKeyRoute(tenantByID, http.MethodPost, "/invitations", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), invitationHandler.CreateInvitation)
+			g.apiKeyRoute(tenantByID, http.MethodDelete, "/invitations/:inv_id", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), invitationHandler.RevokeInvitation)
+			// Share-link create lives under /invite-links so the URL
+			// reads as "create a link" rather than another flavour
+			// of /invitations; the underlying row still lives in the
+			// tenant_invitations table and shows up in the GET above.
+			g.apiKeyRoute(tenantByID, http.MethodPost, "/invite-links", apiKeyManageMembers(apiKeyFullAccess()), g.Owner(), invitationHandler.CreateInviteLink)
 			}
 
 			// Audit log feed (PR 6 of #1303). Admin+ so denied-action
@@ -762,7 +762,7 @@ func RegisterTenantRoutes(
 			// reads. nil-skip mirrors the memberHandler pattern above
 			// for environments wired without the audit dependency.
 			if auditLogHandler != nil {
-				tenantByID.GET("/audit-log", g.Admin(), auditLogHandler.ListTenantAuditLog)
+			tenantByID.GET("/audit-log", g.Admin(), auditLogHandler.ListTenantAuditLog)
 			}
 		}
 	}
@@ -903,7 +903,11 @@ func RegisterInitializationRoutes(r *gin.RouterGroup, handler *handler.Initializ
 	g.apiKeyRoute(r, http.MethodPost, "/initialization/extract/text-relation", apiKeyManageModels(apiKeyFullAccess()), g.Admin(), handler.ExtractTextRelations)
 	g.apiKeyRoute(r, http.MethodPost, "/initialization/extract/fabri-tag", apiKeyManageModels(apiKeyFullAccess()), g.Admin(), handler.FabriTag)
 	g.apiKeyRoute(r, http.MethodPost, "/initialization/extract/fabri-text", apiKeyManageModels(apiKeyFullAccess()), g.Admin(), handler.FabriText)
+	// 工作空间模型配置同步：基于用户ID重置空间中所有模型并重新绑定KB。
+	// 需要 SystemAdmin 权限（跨用户/空间操作）。
+	g.apiKeyRoute(r, http.MethodPost, "/initialization/models/sync", apiKeyManageModels(apiKeyFullAccess()), g.SystemAdmin(), handler.SyncWorkspaceModelConfig)
 }
+
 
 // RegisterSystemRoutes registers system information routes
 //
@@ -1010,7 +1014,7 @@ func RegisterSystemAdminRoutes(
 		// absent, matching RegisterTenantRoutes' /audit-log handling.
 		if auditLogHandler != nil {
 			g.apiKeyRoute(adminRoutes, http.MethodGet, "/audit-log",
-				apiKeyPlatform(types.APIKeyCapabilitySystemAuditRead), auditLogHandler.ListSystemAuditLog)
+			apiKeyPlatform(types.APIKeyCapabilitySystemAuditRead), auditLogHandler.ListSystemAuditLog)
 		}
 	}
 }
@@ -1523,11 +1527,11 @@ func embedFrameAncestorsMiddleware(svc interfaces.EmbedChannelService) gin.Handl
 		for _, o := range origins {
 			o = strings.TrimSpace(o)
 			if o == "" {
-				continue
+			continue
 			}
 			if o == "*" {
-				wildcard = true
-				break
+			wildcard = true
+			break
 			}
 			sources = append(sources, o)
 		}
@@ -1649,16 +1653,16 @@ func newFileServeHandler(
 		if resourceCatalog != nil {
 			resolvedPath, resource, err := resourceCatalog.ResolvePath(c.Request.Context(), filePath)
 			if err != nil {
-				c.Status(http.StatusNotFound)
-				return
+			c.Status(http.StatusNotFound)
+			return
 			}
 			if resource != nil {
-				if resource.TenantID != tenant.ID {
-					c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: resource not accessible"})
-					return
-				}
-				filePath = resolvedPath
-				resourceResolved = true
+			if resource.TenantID != tenant.ID {
+				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: resource not accessible"})
+				return
+			}
+			filePath = resolvedPath
+			resourceResolved = true
 			}
 		}
 		backendID, innerPath, scoped := types.ParseStorageBackendPath(filePath)
@@ -1673,15 +1677,15 @@ func newFileServeHandler(
 		// control metadata (some cloud layouts contain other numeric segments).
 		if !resourceResolved {
 			if err := secutils.ValidateStoragePathTenant(filePath, tenant.ID); err != nil {
-				logger.Warnf(
-					context.Background(),
-					"[Router] /files denied cross-tenant or invalid path: tenant_id=%d file_path=%q err=%v",
-					tenant.ID,
-					filePath,
-					err,
-				)
-				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: file path not accessible"})
-				return
+			logger.Warnf(
+				context.Background(),
+				"[Router] /files denied cross-tenant or invalid path: tenant_id=%d file_path=%q err=%v",
+				tenant.ID,
+				filePath,
+				err,
+			)
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: file path not accessible"})
+			return
 			}
 		}
 
@@ -1701,16 +1705,16 @@ func newFileServeHandler(
 		if err != nil {
 			globalStorageType := strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_TYPE")))
 			if globalStorageType == "" {
-				globalStorageType = "local"
+			globalStorageType = "local"
 			}
 			if provider == globalStorageType && globalFileService != nil {
-				logger.Warnf(context.Background(), "[Router] /files tenant storage config missing or invalid, fallback to global file service: tenant_id=%d provider=%s err=%v", tenant.ID, provider, err)
-				fileSvc = globalFileService
-				resolvedProvider = globalStorageType
+			logger.Warnf(context.Background(), "[Router] /files tenant storage config missing or invalid, fallback to global file service: tenant_id=%d provider=%s err=%v", tenant.ID, provider, err)
+			fileSvc = globalFileService
+			resolvedProvider = globalStorageType
 			} else {
-				logger.Warnf(context.Background(), "[Router] /files resolve file service failed without fallback: tenant_id=%d provider=%s global_storage_type=%s err=%v", tenant.ID, provider, globalStorageType, err)
-				c.Status(http.StatusBadRequest)
-				return
+			logger.Warnf(context.Background(), "[Router] /files resolve file service failed without fallback: tenant_id=%d provider=%s global_storage_type=%s err=%v", tenant.ID, provider, globalStorageType, err)
+			c.Status(http.StatusBadRequest)
+			return
 			}
 		}
 
@@ -1797,11 +1801,11 @@ func serveResourceGrants(
 		var fileSvc interfaces.FileService
 		if storageResolver != nil {
 			fileSvc, _, err = storageResolver.ResolveFileService(
-				ctx,
-				tenant,
-				resource.StorageBackendID,
-				provider,
-				localStorageBaseDir(),
+			ctx,
+			tenant,
+			resource.StorageBackendID,
+			provider,
+			localStorageBaseDir(),
 			)
 		} else {
 			fileSvc = globalFileService
@@ -1835,7 +1839,7 @@ func serveResourceGrants(
 		c.Status(http.StatusOK)
 		if c.Request.Method != http.MethodHead {
 			if _, err := io.Copy(c.Writer, reader); err != nil {
-				logger.Warnf(ctx, "[Router] resource grant write failed: resource_id=%s err=%v", resource.ID, err)
+			logger.Warnf(ctx, "[Router] resource grant write failed: resource_id=%s err=%v", resource.ID, err)
 			}
 		}
 	}
@@ -1956,21 +1960,21 @@ func newKBScopedFileServeHandlerWithResources(
 		if resourceCatalog != nil {
 			resolvedPath, resource, err := resourceCatalog.ResolvePath(ctx, filePath)
 			if err != nil {
-				c.Status(http.StatusNotFound)
-				return
+			c.Status(http.StatusNotFound)
+			return
 			}
 			if resource != nil {
-				if resource.TenantID != ownerTenantID {
-					c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: resource not accessible"})
-					return
-				}
-				filePath = resolvedPath
+			if resource.TenantID != ownerTenantID {
+				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: resource not accessible"})
+				return
+			}
+			filePath = resolvedPath
 			}
 		}
 
 		if err := secutils.ValidateKBScopedStoragePath(filePath, ownerTenantID); err != nil {
 			logger.Warnf(ctx, "[Router] /knowledge-bases/:id/files denied path not allowed for KB proxy: owner_tenant_id=%d file_path=%q err=%v",
-				ownerTenantID, filePath, err)
+			ownerTenantID, filePath, err)
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: file path not accessible"})
 			return
 		}
@@ -1978,7 +1982,7 @@ func newKBScopedFileServeHandlerWithResources(
 		tenant, err := tenantService.GetTenantByID(ctx, ownerTenantID)
 		if err != nil || tenant == nil {
 			logger.Warnf(ctx, "[Router] /knowledge-bases/:id/files owner tenant lookup failed: owner_tenant_id=%d err=%v",
-				ownerTenantID, err)
+			ownerTenantID, err)
 			c.Status(http.StatusNotFound)
 			return
 		}
@@ -2004,23 +2008,23 @@ func newKBScopedFileServeHandlerWithResources(
 		if err != nil {
 			globalStorageType := strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_TYPE")))
 			if globalStorageType == "" {
-				globalStorageType = "local"
+			globalStorageType = "local"
 			}
 			if provider == globalStorageType && globalFileService != nil {
-				fileSvc = globalFileService
-				resolvedProvider = globalStorageType
+			fileSvc = globalFileService
+			resolvedProvider = globalStorageType
 			} else {
-				logger.Warnf(ctx, "[Router] /knowledge-bases/:id/files resolve file service failed: owner_tenant_id=%d provider=%s global_storage_type=%s err=%v",
-					ownerTenantID, provider, globalStorageType, err)
-				c.Status(http.StatusBadRequest)
-				return
+			logger.Warnf(ctx, "[Router] /knowledge-bases/:id/files resolve file service failed: owner_tenant_id=%d provider=%s global_storage_type=%s err=%v",
+				ownerTenantID, provider, globalStorageType, err)
+			c.Status(http.StatusBadRequest)
+			return
 			}
 		}
 
 		reader, err := fileSvc.GetFile(ctx, filePath)
 		if err != nil {
 			logger.Warnf(ctx, "[Router] /knowledge-bases/:id/files get file failed: owner_tenant_id=%d provider=%s path=%q err=%v",
-				ownerTenantID, resolvedProvider, filePath, err)
+			ownerTenantID, resolvedProvider, filePath, err)
 			c.Status(http.StatusNotFound)
 			return
 		}
@@ -2089,7 +2093,7 @@ func presignedFileHandler(tenantService interfaces.TenantService, absDir string,
 
 		if filePath == "" || tenantIDStr == "" || expiresStr == "" || sig == "" {
 			logger.Warnf(ctx, "[Router] /files/presigned missing params: client_ip=%s ua=%q file_path=%q tenant_id=%q expires=%q has_sig=%v",
-				clientIP, userAgent, filePath, tenantIDStr, expiresStr, sig != "")
+			clientIP, userAgent, filePath, tenantIDStr, expiresStr, sig != "")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing required parameters"})
 			return
 		}
@@ -2112,7 +2116,7 @@ func presignedFileHandler(tenantService interfaces.TenantService, absDir string,
 		// rotated without invalidating in-flight links.
 		if !secutils.VerifyFileURLSig(filePath, tenantID, expiresStr, sig) {
 			logger.Warnf(ctx, "[Router] /files/presigned sig invalid or expired: client_ip=%s ua=%q tenant_id=%d file_path=%q expires=%s",
-				clientIP, userAgent, tenantID, filePath, expiresStr)
+			clientIP, userAgent, tenantID, filePath, expiresStr)
 			c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired signature"})
 			return
 		}
@@ -2139,7 +2143,7 @@ func presignedFileHandler(tenantService interfaces.TenantService, absDir string,
 		}
 		if err != nil {
 			logger.Warnf(ctx, "[Router] /files/presigned resolve file service failed: client_ip=%s tenant_id=%d provider=%s err=%v",
-				clientIP, tenantID, provider, err)
+			clientIP, tenantID, provider, err)
 			c.Status(http.StatusBadRequest)
 			return
 		}
@@ -2154,7 +2158,7 @@ func presignedFileHandler(tenantService interfaces.TenantService, absDir string,
 		reader, err := fileSvc.GetFile(ctx, filePath)
 		if err != nil {
 			logger.Warnf(ctx, "[Router] /files/presigned get file failed: client_ip=%s tenant_id=%d provider=%s path=%q err=%v",
-				clientIP, tenantID, resolvedProvider, filePath, err)
+			clientIP, tenantID, resolvedProvider, filePath, err)
 			c.Status(http.StatusNotFound)
 			return
 		}
@@ -2204,51 +2208,51 @@ func servePresignedPreview(r *gin.Engine, cfg *config.Config, storageResolver in
 			ctx := c.Request.Context()
 			filePath := strings.TrimSpace(c.Query("file_path"))
 			if filePath == "" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "missing required parameter: file_path"})
-				return
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing required parameter: file_path"})
+			return
 			}
 			if strings.Contains(filePath, "..") {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file path"})
-				return
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file path"})
+			return
 			}
 
 			tenant, _ := ctx.Value(types.TenantInfoContextKey).(*types.Tenant)
 			if tenant == nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized: workspace context missing"})
-				return
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized: workspace context missing"})
+			return
 			}
 
 			backendID, innerPath, scoped := types.ParseStorageBackendPath(filePath)
 			providerPath := filePath
 			if scoped {
-				providerPath = innerPath
+			providerPath = innerPath
 			}
 			provider := types.ParseProviderScheme(providerPath)
 			var fileSvc interfaces.FileService
 			var resolvedProvider string
 			var err error
 			if storageResolver != nil {
-				fileSvc, resolvedProvider, err = storageResolver.ResolveFileService(ctx, tenant, backendID, provider, absDir)
+			fileSvc, resolvedProvider, err = storageResolver.ResolveFileService(ctx, tenant, backendID, provider, absDir)
 			} else {
-				fileSvc, resolvedProvider, err = filesvc.NewFileServiceFromStorageConfig(provider, tenant.StorageEngineConfig, absDir)
+			fileSvc, resolvedProvider, err = filesvc.NewFileServiceFromStorageConfig(provider, tenant.StorageEngineConfig, absDir)
 			}
 			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error":    err.Error(),
-					"provider": provider,
-					"hint":     "workspace storage config is missing or incomplete for this provider",
-				})
-				return
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":    err.Error(),
+				"provider": provider,
+				"hint":     "workspace storage config is missing or incomplete for this provider",
+			})
+			return
 			}
 
 			httpURL, err := fileSvc.GetFileURL(ctx, filePath)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":    err.Error(),
-					"provider": resolvedProvider,
-					"hint":     "GetFileURL failed; for local storage this usually means APP_EXTERNAL_URL is unset",
-				})
-				return
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":    err.Error(),
+				"provider": resolvedProvider,
+				"hint":     "GetFileURL failed; for local storage this usually means APP_EXTERNAL_URL is unset",
+			})
+			return
 			}
 
 			// Detect the "no-op" case where local storage falls back to the
@@ -2257,15 +2261,15 @@ func servePresignedPreview(r *gin.Engine, cfg *config.Config, storageResolver in
 			rewritten := httpURL != filePath
 			hint := ""
 			if !rewritten {
-				hint = "URL unchanged; for local storage set APP_EXTERNAL_URL to enable presigned HTTP URLs"
+			hint = "URL unchanged; for local storage set APP_EXTERNAL_URL to enable presigned HTTP URLs"
 			}
 
 			c.JSON(http.StatusOK, gin.H{
-				"file_path": filePath,
-				"provider":  resolvedProvider,
-				"url":       httpURL,
-				"rewritten": rewritten,
-				"hint":      hint,
+			"file_path": filePath,
+			"provider":  resolvedProvider,
+			"url":       httpURL,
+			"rewritten": rewritten,
+			"hint":      hint,
 			})
 		})
 }

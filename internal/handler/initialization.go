@@ -249,9 +249,9 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 
 	// 返回成功响应（含 JWT 令牌）
 	c.JSON(http.StatusOK, dto.NewAuthLoginResponse(&types.LoginResponse{
-		Success: true,
-		Message: "用户初始化成功",
-		User:    user,
+		Success:      true,
+		Message:      "用户初始化成功",
+		User:         user,
 		ActiveTenant: createdTenant,
 		Memberships: []types.Membership{
 			{
@@ -1113,11 +1113,11 @@ type SyncModelConfigRequest struct {
 
 // syncTenantResult 单个工作空间的同步结果
 type syncTenantResult struct {
-	TenantID      uint64         `json:"tenant_id"`
-	TenantName    string         `json:"tenant_name"`
-	Models        []*types.Model `json:"models"`
-	KBsUpdated    int            `json:"knowledge_bases_updated"`
-	KBTotal       int            `json:"knowledge_bases_total"`
+	TenantID   uint64         `json:"tenant_id"`
+	TenantName string         `json:"tenant_name"`
+	Models     []*types.Model `json:"models"`
+	KBsUpdated int            `json:"knowledge_bases_updated"`
+	KBTotal    int            `json:"knowledge_bases_total"`
 }
 
 // SyncWorkspaceModelConfig 同步工作空间模型配置
