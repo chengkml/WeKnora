@@ -2451,3 +2451,50 @@ func (h *SystemHandler) AdminDeleteUser(c *gin.Context) {
 type adminDeleteUserRequest struct {
 	UserID string `json:"user_id"`
 }
+
+// AdminDeleteTenantRequest is the request payload for system-admin
+// workspace deletion.
+type AdminDeleteTenantRequest struct {
+	TenantID uint64 `json:"tenant_id"`
+}
+
+// AdminDeleteTenant godoc
+// @Summary      Delete a workspace (SystemAdmin)
+// @Description  Permanently delete a workspace by ID. SystemAdmin only.
+// @Tags         System Admin
+// @Accept       json
+// @Produce      json
+// @Param        body body AdminDeleteTenantRequest true "Tenant ID to delete"
+// @Success      200 {object} map[string]interface{}
+// @Router       /system/admin/tenants/delete [post]
+func (h *SystemHandler) AdminDeleteTenant(c *gin.Context) {
+	ctx := logger.CloneContext(c.Request.Context())
+	var req AdminDeleteTenantRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(apperrors.NewValidationError("Invalid request data").WithDetails(err.Error()))
+		return
+	}
+
+	if req.TenantID == 0 {
+		c.Error(apperrors.NewValidationError("tenant_id is required"))
+		return
+	}
+
+	if err := h.tenantSvc.DeleteTenant(ctx, req.TenantID); err != nil {
+		c.Error(apperrors.NewInternalServerError("Failed to delete workspace").WithDetails(err.Error()))
+		return
+	}
+
+	// Audit trail
+	if h.auditSvc != nil {
+		actorID, _ := types.UserIDFromContext(ctx)
+		_ = h.auditSvc.Log(ctx, &types.AuditLog{
+			TenantID: 0, ActorUserID: actorID, ActorRole: systemAuditActorRole(ctx),
+			Action: types.AuditActionSystemSettingChanged,
+			TargetType: "tenant", TargetID: strconv.FormatUint(req.TenantID, 10),
+			Outcome: types.AuditOutcomeSuccess,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Workspace deleted"})
+}

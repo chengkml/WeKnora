@@ -687,15 +687,13 @@ export async function listUsersWithTenants(): Promise<{ success: boolean; data: 
 }
 
 /**
- * Remove a user from a specific workspace. SystemAdmin only.
- * Backend: POST /api/v1/system/admin/users/remove-from-tenant
+ * Permanently delete a workspace by ID. SystemAdmin only.
+ * Backend: POST /api/v1/system/admin/tenants/delete
  */
-export async function removeUserFromTenant(
-  userId: string,
+export async function adminDeleteTenant(
   tenantId: number,
 ): Promise<{ success: boolean; message?: string }> {
-  return await post('/api/v1/system/admin/users/remove-from-tenant', {
-    user_id: userId,
+  return await post('/api/v1/system/admin/tenants/delete', {
     tenant_id: tenantId,
   }) as unknown as { success: boolean; message?: string }
 }

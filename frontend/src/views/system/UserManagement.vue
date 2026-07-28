@@ -105,26 +105,25 @@
                 </span>
                 <span class="tenant-grid-cell tenant-grid-cell--actions">
                   <t-popconfirm
-                    :content="t('system.globalSettings.sections.userManagement.removeFromTenant.confirmBody', {
-                      username: row.username || row.email,
+                    :content="t('system.globalSettings.sections.userManagement.deleteTenant.confirmBody', {
                       workspace: tenant.tenant_name || `#${tenant.tenant_id}`,
                     })"
                     :confirm-btn="{
-                      content: t('system.globalSettings.sections.userManagement.removeFromTenant.confirmBtn'),
+                      content: t('system.globalSettings.sections.userManagement.deleteTenant.confirmBtn'),
                       theme: 'danger',
                     }"
                     :cancel-btn="t('common.cancel')"
                     placement="left"
-                    @confirm="handleRemoveFromTenant(row.id, tenant)"
+                    @confirm="handleDeleteTenant(tenant)"
                   >
                     <t-button
                       theme="danger"
                       variant="text"
                       size="small"
-                      :loading="removingKey === `${row.id}-${tenant.tenant_id}`"
+                      :loading="deletingTenantId === tenant.tenant_id"
                     >
-                      <template #icon><t-icon name="user-clear" /></template>
-                      {{ t('system.globalSettings.sections.userManagement.removeFromTenant.confirmBtn') }}
+                      <template #icon><t-icon name="delete" /></template>
+                      {{ t('system.globalSettings.sections.userManagement.deleteTenant.confirmBtn') }}
                     </t-button>
                   </t-popconfirm>
                 </span>
@@ -144,7 +143,7 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import {
   listUsersWithTenants,
-  removeUserFromTenant,
+  adminDeleteTenant,
   adminDeleteUser,
   type UserWithTenantInfo,
   type UserTenantBrief,
@@ -157,7 +156,7 @@ const users = ref<UserWithTenantInfo[]>([])
 const loading = ref(false)
 const error = ref('')
 const expandedRowKeys = ref<string[]>([])
-const removingKey = ref<string | null>(null)
+const deletingTenantId = ref<number | null>(null)
 const deletingUserId = ref<string | null>(null)
 
 const currentUserId = computed(() => authStore.currentUserId)
@@ -247,22 +246,21 @@ async function loadUsers() {
   }
 }
 
-async function handleRemoveFromTenant(userId: string, tenant: UserTenantBrief) {
-  const key = `${userId}-${tenant.tenant_id}`
-  removingKey.value = key
+async function handleDeleteTenant(tenant: UserTenantBrief) {
+  deletingTenantId.value = tenant.tenant_id
   try {
-    const resp = await removeUserFromTenant(userId, tenant.tenant_id)
+    const resp = await adminDeleteTenant(tenant.tenant_id)
     if (resp.success) {
-      MessagePlugin.success(t('system.globalSettings.sections.userManagement.removeFromTenant.success'))
+      MessagePlugin.success(t('system.globalSettings.sections.userManagement.deleteTenant.success'))
       // Reload to reflect changes
       await loadUsers()
     } else {
-      MessagePlugin.error(resp.message || t('system.globalSettings.sections.userManagement.removeFromTenant.failed'))
+      MessagePlugin.error(resp.message || t('system.globalSettings.sections.userManagement.deleteTenant.failed'))
     }
   } catch (err: any) {
-    MessagePlugin.error(err?.message || t('system.globalSettings.sections.userManagement.removeFromTenant.failed'))
+    MessagePlugin.error(err?.message || t('system.globalSettings.sections.userManagement.deleteTenant.failed'))
   } finally {
-    removingKey.value = null
+    deletingTenantId.value = null
   }
 }
 

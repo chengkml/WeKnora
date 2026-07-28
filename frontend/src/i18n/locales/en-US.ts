@@ -3659,12 +3659,12 @@ export default {
             viewer: 'Viewer',
             owner: 'Owner',
           },
-          removeFromTenant: {
-            confirmTitle: 'Remove user from workspace',
-            confirmBody: 'Remove {username} from "{workspace}"? The user will lose access to all resources in this workspace.',
-            confirmBtn: 'Remove',
-            success: 'User removed from workspace successfully',
-            failed: 'Failed to remove user from workspace',
+          deleteTenant: {
+            confirmTitle: 'Delete workspace',
+            confirmBody: 'Permanently delete workspace "{workspace}"? This action cannot be undone. All data and memberships will be removed.',
+            confirmBtn: 'Delete workspace',
+            success: 'Workspace deleted successfully',
+            failed: 'Failed to delete workspace',
           },
           deleteUser: {
             confirmTitle: 'Delete user account',

@@ -2645,12 +2645,12 @@ export default {
             viewer: "查看者",
             owner: "所有者",
           },
-          removeFromTenant: {
-            confirmTitle: "从工作空间移除用户",
-            confirmBody: '确定将 {username} 从 "{workspace}" 移除？用户将失去该工作空间下所有资源的访问权限。',
-            confirmBtn: "移除",
-            success: "用户已从工作空间移除",
-            failed: "从工作空间移除用户失败",
+          deleteTenant: {
+            confirmTitle: "删除工作空间",
+            confirmBody: '确定永久删除工作空间 "{workspace}"？此操作不可撤销，所有数据和成员将被移除。',
+            confirmBtn: "删除工作空间",
+            success: "工作空间已删除",
+            failed: "删除工作空间失败",
           },
           deleteUser: {
             confirmTitle: "删除用户账户",
