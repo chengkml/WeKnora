@@ -214,7 +214,7 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 	// 免认证的初始化接口没有这些上下文，需注入。
 	kbCtx := context.WithValue(ctx, types.TenantIDContextKey, createdTenant.ID)
 	kbCtx = context.WithValue(kbCtx, types.UserIDContextKey, user.ID)
-		kbCtx = context.WithValue(kbCtx, types.TenantInfoContextKey, createdTenant)
+	kbCtx = context.WithValue(kbCtx, types.TenantInfoContextKey, createdTenant)
 	kb := &types.KnowledgeBase{
 		Name:        "个人知识库",
 		Description: "个人知识库",

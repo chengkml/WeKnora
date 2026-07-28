@@ -64,6 +64,9 @@ type SystemHandler struct {
 	// singleton tenant.StorageEngineConfig. Optional — nil in partially-wired
 	// unit tests, in which case only the legacy config is consulted.
 	storageBackendRepo interfaces.StorageBackendRepository
+	// memberSvc is used by the SystemAdmin user management endpoints to
+	// resolve each user's tenant memberships.
+	memberSvc interfaces.TenantMemberService
 }
 
 // NewSystemHandler creates a new system handler
@@ -78,6 +81,7 @@ func NewSystemHandler(cfg *config.Config,
 	taskInspector interfaces.TaskInspector,
 	knowledgeSvc interfaces.KnowledgeService,
 	storageBackendRepo interfaces.StorageBackendRepository,
+	memberSvc interfaces.TenantMemberService,
 ) *SystemHandler {
 	return &SystemHandler{
 		cfg:                cfg,
@@ -91,6 +95,7 @@ func NewSystemHandler(cfg *config.Config,
 		taskInspector:      taskInspector,
 		knowledgeSvc:       knowledgeSvc,
 		storageBackendRepo: storageBackendRepo,
+		memberSvc:          memberSvc,
 	}
 }
 
@@ -2301,4 +2306,148 @@ func (h *SystemHandler) ResetSystemSetting(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ---- SystemAdmin user management ----
+
+// ListUsersWithTenants godoc
+// @Summary      List all users with their workspace memberships
+// @Description  Returns every user in the system, enriched with each user's
+// @Description  tenant memberships (tenant_id, tenant_name, role). SystemAdmin only.
+// @Tags         System Admin
+// @Produce      json
+// @Success      200 {object} map[string]interface{}
+// @Router       /system/admin/users [get]
+func (h *SystemHandler) ListUsersWithTenants(c *gin.Context) {
+	ctx := logger.CloneContext(c.Request.Context())
+	users, err := h.userSvc.ListUsers(ctx, 0, 0)
+	if err != nil {
+		c.Error(apperrors.NewInternalServerError("Failed to list users").WithDetails(err.Error()))
+		return
+	}
+
+	// Collect all unique tenant IDs
+	tenantIDs := make(map[uint64]struct{})
+	for _, u := range users {
+		if u.TenantID > 0 {
+			tenantIDs[u.TenantID] = struct{}{}
+		}
+	}
+
+	tidSlice := make([]uint64, 0, len(tenantIDs))
+	for tid := range tenantIDs {
+		tidSlice = append(tidSlice, tid)
+	}
+	tenantMap, _ := h.tenantSvc.GetTenantsByIDs(ctx, tidSlice)
+
+	// Build result
+	result := make([]types.UserWithTenants, 0, len(users))
+	for _, u := range users {
+		item := types.UserWithTenants{
+			ID:            u.ID,
+			Username:      u.Username,
+			Email:         u.Email,
+			IsSystemAdmin: u.IsSystemAdmin,
+			IsActive:      u.IsActive,
+			CreatedAt:     u.CreatedAt.Format(time.RFC3339),
+			Tenants:       nil,
+		}
+		if u.TenantID > 0 {
+			item.HomeTenantID = &u.TenantID
+		}
+
+		members, err := h.memberSvc.ListByUser(ctx, u.ID)
+		if err == nil && len(members) > 0 {
+			for _, m := range members {
+				brief := types.UserTenantBrief{
+					TenantID: m.TenantID,
+					Role:     string(m.Role),
+				}
+				if t, ok := tenantMap[m.TenantID]; ok {
+					brief.TenantName = t.Name
+				}
+				item.Tenants = append(item.Tenants, brief)
+			}
+		}
+
+		result = append(result, item)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
+}
+
+// AdminDeleteUserTenant godoc
+// @Summary      Remove a user from a workspace (SystemAdmin)
+// @Description  SystemAdmin can remove any user from any workspace.
+// @Tags         System Admin
+// @Accept       json
+// @Produce      json
+// @Param        body body adminDeleteUserTenantRequest true "User and tenant IDs"
+// @Success      200 {object} map[string]interface{}
+// @Router       /system/admin/users/remove-from-tenant [post]
+func (h *SystemHandler) AdminDeleteUserTenant(c *gin.Context) {
+	ctx := logger.CloneContext(c.Request.Context())
+	var req adminDeleteUserTenantRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(apperrors.NewValidationError("Invalid request data").WithDetails(err.Error()))
+		return
+	}
+
+	if req.UserID == "" || req.TenantID == 0 {
+		c.Error(apperrors.NewValidationError("user_id and tenant_id are required"))
+		return
+	}
+
+	if err := h.memberSvc.RemoveMember(ctx, req.UserID, req.TenantID); err != nil {
+		c.Error(apperrors.NewInternalServerError("Failed to remove user from workspace").WithDetails(err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "User removed from workspace"})
+}
+
+type adminDeleteUserTenantRequest struct {
+	UserID   string `json:"user_id"`
+	TenantID uint64 `json:"tenant_id"`
+}
+
+// AdminDeleteUser godoc
+// @Summary      Delete a user account (SystemAdmin)
+// @Description  Permanently delete a user account. SystemAdmin only.
+// @Description  Cannot delete own account.
+// @Tags         System Admin
+// @Accept       json
+// @Produce      json
+// @Param        body body adminDeleteUserRequest true "User ID to delete"
+// @Success      200 {object} map[string]interface{}
+// @Router       /system/admin/users/delete [post]
+func (h *SystemHandler) AdminDeleteUser(c *gin.Context) {
+	ctx := logger.CloneContext(c.Request.Context())
+	var req adminDeleteUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(apperrors.NewValidationError("Invalid request data").WithDetails(err.Error()))
+		return
+	}
+
+	if req.UserID == "" {
+		c.Error(apperrors.NewValidationError("user_id is required"))
+		return
+	}
+
+	actorID, _ := types.UserIDFromContext(ctx)
+	if req.UserID == actorID {
+		c.Error(apperrors.NewBadRequestError("Cannot delete your own account"))
+		return
+	}
+
+	if err := h.userSvc.DeleteUser(ctx, req.UserID); err != nil {
+		c.Error(apperrors.NewInternalServerError("Failed to delete user").WithDetails(err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "User deleted"})
+}
+
+type adminDeleteUserRequest struct {
+	UserID string `json:"user_id"`
 }
