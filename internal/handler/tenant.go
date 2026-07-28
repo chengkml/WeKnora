@@ -30,6 +30,7 @@ type TenantHandler struct {
 	userService   interfaces.UserService
 	memberService interfaces.TenantMemberService
 	kbService     interfaces.KnowledgeBaseService
+	modelService  interfaces.ModelService
 	config        *config.Config
 	// systemSettingSvc resolves runtime tenant policies and limits.
 	// Reading goes DB > ENV >
@@ -61,6 +62,7 @@ func NewTenantHandler(
 	userService interfaces.UserService,
 	memberService interfaces.TenantMemberService,
 	kbService interfaces.KnowledgeBaseService,
+	modelService interfaces.ModelService,
 	config *config.Config,
 	systemSettingSvc interfaces.SystemSettingService,
 ) *TenantHandler {
@@ -70,6 +72,7 @@ func NewTenantHandler(
 		userService:      userService,
 		memberService:    memberService,
 		kbService:        kbService,
+		modelService:     modelService,
 		config:           config,
 		systemSettingSvc: systemSettingSvc,
 	}
@@ -554,6 +557,79 @@ func (h *TenantHandler) GetTenant(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    dto.NewTenantResponse(ctx, tenant),
+	})
+}
+
+// CheckTenantConfig 检查工作空间的模型配置情况
+//
+//	@Summary      检查工作空间模型配置
+//	@Description  检查工作空间下是否已配置 LLM 大语言模型和 Embedding 嵌入模型
+//	@Tags         空间管理
+//	@Accept       json
+//	@Produce      json
+//	@Param        id   path      int  true  "空间ID"
+//	@Success      200  {object}  map[string]interface{}  "检查结果"
+//	@Failure      400  {object}  errors.AppError         "请求参数错误"
+//	@Security     Bearer
+//	@Router       /tenants/{id}/config-check [get]
+func (h *TenantHandler) CheckTenantConfig(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		logger.Errorf(ctx, "Invalid workspace ID: %s", secutils.SanitizeForLog(c.Param("id")))
+		c.Error(errors.NewBadRequestError("Invalid workspace ID"))
+		return
+	}
+
+	// Override the context tenant to match the path ID so model listing and
+	// tenant lookup use the correct namespace (especially for cross-tenant
+	// superusers who bypass PathTenantMatch).
+	ctx = context.WithValue(ctx, types.TenantIDContextKey, id)
+
+	tenant, err := h.service.GetTenantByID(ctx, id)
+	if err != nil {
+		if appErr, ok := errors.IsAppError(err); ok {
+			c.Error(appErr)
+		} else {
+			c.Error(errors.NewInternalServerError("Failed to retrieve workspace").WithDetails(err.Error()))
+		}
+		return
+	}
+
+	models, err := h.modelService.ListModels(ctx)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to list models for workspace %d: %v", id, err)
+		c.Error(errors.NewInternalServerError("Failed to list models"))
+		return
+	}
+
+	hasChatModel := false
+	chatModelCount := 0
+	hasEmbeddingModel := false
+	embeddingModelCount := 0
+
+	for _, m := range models {
+		switch m.Type {
+		case types.ModelTypeKnowledgeQA, types.ModelTypeVLLM:
+			hasChatModel = true
+			chatModelCount++
+		case types.ModelTypeEmbedding:
+			hasEmbeddingModel = true
+			embeddingModelCount++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"tenant_id":            id,
+			"tenant_name":          tenant.Name,
+			"has_chat_model":       hasChatModel,
+			"has_embedding_model":  hasEmbeddingModel,
+			"chat_model_count":     chatModelCount,
+			"embedding_model_count": embeddingModelCount,
+		},
 	})
 }
 

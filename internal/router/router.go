@@ -707,6 +707,7 @@ func RegisterTenantRoutes(
 			g.apiKeyRoute(tenantByID, http.MethodGet, "",
 				apiKeyPlatform(types.APIKeyCapabilitySystemTenantsRead, types.APIKeyCapabilitySystemTenantsManage),
 				g.Viewer(), handler.GetTenant)
+			tenantByID.GET("/config-check", g.Viewer(), handler.CheckTenantConfig)
 			g.apiKeyRoute(tenantByID, http.MethodPut, "",
 				apiKeyPlatform(types.APIKeyCapabilitySystemTenantsManage), g.Owner(), handler.UpdateTenant)
 			g.apiKeyRoute(tenantByID, http.MethodDelete, "",
