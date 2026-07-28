@@ -100,6 +100,8 @@ func isTenantOptionalAPI(path, method string) bool {
 		return true
 	case path == "/api/v1/tenants" && method == http.MethodPost:
 		return true
+	case path == "/api/v1/initialization/models/sync" && method == http.MethodPost:
+		return true
 	case strings.HasPrefix(path, "/api/v1/me/invitations"):
 		return true
 	default:
