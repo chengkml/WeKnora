@@ -60,6 +60,9 @@ var noAuthAPI = map[string][]string{
 	// before GET to validate Content-Type / Content-Length when rendering
 	// image previews — both verbs must be allowed for image links to work.
 	"/api/v1/files/presigned": {"GET", "HEAD"},
+	// 用户初始化接口：首次进入系统时创建用户、工作空间和个人知识库，
+	// 调用时用户尚未注册/登录，因此无需认证。
+	"/api/v1/initialization/user/init": {"POST"},
 }
 
 // 检查请求是否在无需认证的API列表中
