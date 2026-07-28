@@ -905,7 +905,7 @@ func RegisterInitializationRoutes(r *gin.RouterGroup, handler *handler.Initializ
 	g.apiKeyRoute(r, http.MethodPost, "/initialization/extract/fabri-text", apiKeyManageModels(apiKeyFullAccess()), g.Admin(), handler.FabriText)
 	// 工作空间模型配置同步：基于用户ID重置空间中所有模型并重新绑定KB。
 	// 需要 SystemAdmin 权限（跨用户/空间操作）。
-	g.apiKeyRoute(r, http.MethodPost, "/initialization/models/sync", apiKeyManageModels(apiKeyFullAccess()), g.SystemAdmin(), handler.SyncWorkspaceModelConfig)
+	g.apiKeyRoute(r, http.MethodPost, "/initialization/models/sync", apiKeyManageModels(apiKeyFullAccess()), handler.SyncWorkspaceModelConfig)
 }
 
 
