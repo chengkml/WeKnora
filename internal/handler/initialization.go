@@ -1303,7 +1303,9 @@ func buildSyncModelDescriptors(req *SyncModelConfigRequest) []modelDescriptor {
 	return descriptors
 }
 
-// syncSingleTenantModels 同步单个工作空间的模型配置
+// syncSingleTenantModels 同步单个工作空间的模型配置。
+// 先按 DisplayName 映射知识库已有模型到新模型，未匹配或知识库缺少的模型类型，
+// 自动从候选模型中多选一测试连通性后配置。
 func (h *InitializationHandler) syncSingleTenantModels(
 	ctx context.Context,
 	tenantID uint64,
@@ -1340,46 +1342,65 @@ func (h *InitializationHandler) syncSingleTenantModels(
 		createdModels = append(createdModels, model)
 	}
 
-	// 3. Build model lookup by type
-	modelByType := make(map[types.ModelType]*types.Model)
+	// 3. Build lookup maps
+	// old model ID -> old model (for DisplayName matching)
+	oldModelByID := make(map[string]*types.Model)
+	for _, m := range existingModels {
+		oldModelByID[m.ID] = m
+	}
+	// new model type -> []*types.Model (preserve creation order)
+	newModelsByType := make(map[types.ModelType][]*types.Model)
 	for _, m := range createdModels {
-		modelByType[m.Type] = m
+		newModelsByType[m.Type] = append(newModelsByType[m.Type], m)
 	}
 
-	// 4. Update KB model references
+	// Resolve tenant-level WeKnoraCloud credentials for model connectivity testing
+	var appID, appSecret string
+	if tenant != nil && tenant.Credentials != nil {
+		if creds := tenant.Credentials.GetWeKnoraCloud(); creds != nil {
+			appID = creds.AppID
+			appSecret = creds.AppSecret
+		}
+	}
+
+	// 4. Update KB model references — match by DisplayName first,
+	//    then auto-assign with connectivity test for remaining / missing types.
 	updatedCount := 0
 	for _, kb := range kbs {
 		needsUpdate := false
 
-		// LLM model — if KB had a summary model, remap it
-		if kb.SummaryModelID != "" {
-			if m, ok := modelByType[types.ModelTypeKnowledgeQA]; ok {
-				kb.SummaryModelID = m.ID
-				needsUpdate = true
-			} else if m := firstModelOfType(createdModels, types.ModelTypeKnowledgeQA); m != nil {
-				kb.SummaryModelID = m.ID
-				needsUpdate = true
-			}
+		// LLM model
+		if newModel := matchModelByDisplayName(kb.SummaryModelID, oldModelByID, newModelsByType[types.ModelTypeKnowledgeQA]); newModel != nil {
+			kb.SummaryModelID = newModel.ID
+			needsUpdate = true
+		} else if candidates := newModelsByType[types.ModelTypeKnowledgeQA]; len(candidates) > 0 {
+			picked := h.pickBestModelByType(tenantCtx, candidates, types.ModelTypeKnowledgeQA, appID, appSecret)
+			kb.SummaryModelID = picked.ID
+			needsUpdate = true
 		}
 
 		// Embedding model
-		if kb.EmbeddingModelID != "" {
-			if m, ok := modelByType[types.ModelTypeEmbedding]; ok {
-				kb.EmbeddingModelID = m.ID
-				needsUpdate = true
-			} else if m := firstModelOfType(createdModels, types.ModelTypeEmbedding); m != nil {
-				kb.EmbeddingModelID = m.ID
-				needsUpdate = true
-			}
+		if newModel := matchModelByDisplayName(kb.EmbeddingModelID, oldModelByID, newModelsByType[types.ModelTypeEmbedding]); newModel != nil {
+			kb.EmbeddingModelID = newModel.ID
+			needsUpdate = true
+		} else if candidates := newModelsByType[types.ModelTypeEmbedding]; len(candidates) > 0 {
+			picked := h.pickBestModelByType(tenantCtx, candidates, types.ModelTypeEmbedding, appID, appSecret)
+			kb.EmbeddingModelID = picked.ID
+			needsUpdate = true
 		}
 
 		// VLM model
 		if kb.VLMConfig.Enabled && kb.VLMConfig.ModelID != "" {
-			if m, ok := modelByType[types.ModelTypeVLLM]; ok {
-				kb.VLMConfig.ModelID = m.ID
+			if newModel := matchModelByDisplayName(kb.VLMConfig.ModelID, oldModelByID, newModelsByType[types.ModelTypeVLLM]); newModel != nil {
+				kb.VLMConfig.ModelID = newModel.ID
 				needsUpdate = true
-			} else if m := firstModelOfType(createdModels, types.ModelTypeVLLM); m != nil {
-				kb.VLMConfig.ModelID = m.ID
+			}
+		}
+		if !kb.VLMConfig.Enabled || kb.VLMConfig.ModelID == "" {
+			if candidates := newModelsByType[types.ModelTypeVLLM]; len(candidates) > 0 {
+				picked := h.pickBestModelByType(tenantCtx, candidates, types.ModelTypeVLLM, appID, appSecret)
+				kb.VLMConfig.ModelID = picked.ID
+				kb.VLMConfig.Enabled = true
 				needsUpdate = true
 			}
 		}
@@ -1412,14 +1433,76 @@ func (h *InitializationHandler) syncSingleTenantModels(
 	}, nil
 }
 
-// firstModelOfType returns the first model in the slice matching the given type.
-func firstModelOfType(models []*types.Model, modelType types.ModelType) *types.Model {
-	for _, m := range models {
-		if m.Type == modelType {
+// matchModelByDisplayName 根据知识库当前配置的旧模型ID，通过 DisplayName 在候选
+// 新模型中查找匹配。返回匹配的新模型；未找到返回 nil。
+func matchModelByDisplayName(oldModelID string, oldModels map[string]*types.Model, candidates []*types.Model) *types.Model {
+	if oldModelID == "" || len(candidates) == 0 {
+		return nil
+	}
+	old, ok := oldModels[oldModelID]
+	if !ok || old == nil || old.DisplayName == "" {
+		return nil
+	}
+	for _, m := range candidates {
+		if m.DisplayName == old.DisplayName {
 			return m
 		}
 	}
 	return nil
+}
+
+// pickBestModelByType 从候选模型中选出最佳匹配。
+//   - 只有一个候选时直接返回。
+//   - 多个候选时逐个测试连通性（chat/embedding），取第一个测试通过的。
+//   - 全部失败则返回第一个候选（避免阻塞同步流程）。
+func (h *InitializationHandler) pickBestModelByType(ctx context.Context, candidates []*types.Model, modelType types.ModelType, appID, appSecret string) *types.Model {
+	if len(candidates) == 0 {
+		return nil
+	}
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+
+	logger.Infof(ctx, "Testing %d candidates for model type %s", len(candidates), modelType)
+	for _, m := range candidates {
+		if h.testModelByType(ctx, m, appID, appSecret) {
+			logger.Infof(ctx, "Candidate model %s (%s) passed connectivity test", m.ID, m.Name)
+			return m
+		}
+		logger.Warnf(ctx, "Candidate model %s (%s) failed connectivity test, trying next", m.ID, m.Name)
+	}
+
+	logger.Warnf(ctx, "All %d candidates failed connectivity test for %s, using first", len(candidates), modelType)
+	return candidates[0]
+}
+
+// testModelByType 按模型类型执行最小化连通性测试。
+// chat 和 rerank 发送最小请求验证端点可达、鉴权通过；
+// embedding 执行一次 embed 调用验证服务正常；
+// VLLM 等不便自动化测试的类型直接判定通过。
+func (h *InitializationHandler) testModelByType(ctx context.Context, model *types.Model, appID, appSecret string) bool {
+	if model == nil {
+		return false
+	}
+
+	switch model.Type {
+	case types.ModelTypeKnowledgeQA:
+		ok, _ := h.checkChatModelConnection(ctx, model, appID, appSecret)
+		return ok
+	case types.ModelTypeEmbedding:
+		emb, err := embedding.NewEmbedder(embedding.ConfigFromModel(model, appID, appSecret), h.pooler, h.ollamaService)
+		if err != nil {
+			return false
+		}
+		_, err = emb.Embed(ctx, "hello")
+		return err == nil
+	case types.ModelTypeRerank:
+		ok, _ := h.checkRerankModelConnection(ctx, model, appID, appSecret)
+		return ok
+	default:
+		// VLLM and others — skip connectivity test, accept directly
+		return true
+	}
 }
 
 // CheckOllamaStatus godoc
