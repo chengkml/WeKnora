@@ -158,6 +158,40 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 			}
 		}
 
+		// 检查用户是否有个人知识库，没有则创建
+		if activeTenant != nil {
+			kbCtx := context.WithValue(ctx, types.TenantIDContextKey, activeTenant.ID)
+			kbCtx = context.WithValue(kbCtx, types.UserIDContextKey, existingUser.ID)
+			kbCtx = context.WithValue(kbCtx, types.TenantInfoContextKey, activeTenant)
+
+			kbs, err := h.kbService.ListKnowledgeBases(kbCtx)
+			if err == nil && len(kbs) == 0 {
+				logger.Infof(ctx, "No personal knowledge base found for user %s, creating one", req.UserID)
+				kb := &types.KnowledgeBase{
+					Name:        "个人知识库",
+					Description: "个人知识库",
+					Type:        "document",
+					TenantID:    activeTenant.ID,
+					CreatorID:   existingUser.ID,
+					ChunkingConfig: types.ChunkingConfig{
+						ChunkSize:    1000,
+						ChunkOverlap: 200,
+						Separators:   []string{"\n\n", "\n", "。", "！", "？", ";", "；"},
+					},
+					IndexingStrategy: types.IndexingStrategy{
+						VectorEnabled:  true,
+						KeywordEnabled: false,
+						WikiEnabled:    true,
+						GraphEnabled:   false,
+					},
+					CreatedAt: time.Now(),
+					UpdatedAt: time.Now(),
+				}
+				if _, createErr := h.kbService.CreateKnowledgeBase(kbCtx, kb); createErr != nil {
+					logger.Warnf(ctx, "Failed to create personal knowledge base for existing user: %v", createErr)
+				}
+			}
+		}
 		accessToken, refreshToken, tokenErr := h.userService.GenerateTokens(ctx, existingUser)
 		if tokenErr != nil {
 			logger.Errorf(ctx, "Failed to generate tokens for existing user: %v", tokenErr)
