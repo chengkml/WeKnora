@@ -2030,6 +2030,7 @@ func (h *InitializationHandler) buildConfigResponse(ctx context.Context, models 
 			config["llm"] = map[string]interface{}{
 				"source":    string(model.Source),
 				"modelName": model.Name,
+				"modelId":   model.ID,
 				"baseUrl":   baseURL,
 				"credentials": map[string]bool{
 					"apiKey": model.Parameters.APIKey != "" && !model.IsBuiltin,
@@ -2039,6 +2040,7 @@ func (h *InitializationHandler) buildConfigResponse(ctx context.Context, models 
 			config["embedding"] = map[string]interface{}{
 				"source":    string(model.Source),
 				"modelName": model.Name,
+				"modelId":   model.ID,
 				"baseUrl":   baseURL,
 				"dimension": model.Parameters.EmbeddingParameters.Dimension,
 				"credentials": map[string]bool{
@@ -2049,6 +2051,7 @@ func (h *InitializationHandler) buildConfigResponse(ctx context.Context, models 
 			config["rerank"] = map[string]interface{}{
 				"enabled":   true,
 				"modelName": model.Name,
+				"modelId":   model.ID,
 				"baseUrl":   baseURL,
 				"credentials": map[string]bool{
 					"apiKey": model.Parameters.APIKey != "" && !model.IsBuiltin,
