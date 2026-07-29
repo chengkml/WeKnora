@@ -70,9 +70,10 @@ func (r *modelRepository) Update(ctx context.Context, m *types.Model) error {
 	).Select("*").Updates(m).Error
 }
 
-// Delete deletes a model
+// Delete hard-deletes a model (not soft-delete) so that old models
+// from previous sync rounds do not accumulate in the database.
 func (r *modelRepository) Delete(ctx context.Context, tenantID uint64, id string) error {
-	return r.db.WithContext(ctx).Where(
+	return r.db.WithContext(ctx).Unscoped().Where(
 		"id = ? AND tenant_id = ?", id, tenantID,
 	).Delete(&types.Model{}).Error
 }
