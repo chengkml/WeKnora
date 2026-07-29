@@ -867,16 +867,17 @@ func validateNodeExtractConfig(ctx context.Context, req *InitializationRequest) 
 	return nil
 }
 
-type modelDescriptor struct {
-	modelType     types.ModelType
-	name          string
-	source        types.ModelSource
-	description   string
-	baseURL       string
-	apiKey        string
-	dimension     int
-	interfaceType string
-}
+	type modelDescriptor struct {
+		modelType     types.ModelType
+		name          string
+		source        types.ModelSource
+		description   string
+		baseURL       string
+		apiKey        string
+		dimension     int
+		displayName   string
+		interfaceType string
+	}
 
 func buildModelDescriptors(req *InitializationRequest) []modelDescriptor {
 	descriptors := []modelDescriptor{
@@ -983,6 +984,7 @@ func (descriptor modelDescriptor) toModel() *types.Model {
 	model := &types.Model{
 		Type:        descriptor.modelType,
 		Name:        descriptor.name,
+		DisplayName: descriptor.displayName,
 		Source:      descriptor.source,
 		Description: descriptor.description,
 		Parameters: types.ModelParameters{
@@ -1112,15 +1114,16 @@ func extractModelIDs(processedModels []*types.Model) (embeddingModelID, llmModel
 	return
 }
 
-// SyncModelConfigItem 同步接口中单个模型的配置项
-type SyncModelConfigItem struct {
-	Name      string `json:"name"      binding:"required"`
-	Source    string `json:"source"    binding:"required"`
-	BaseURL   string `json:"baseUrl"`
-	APIKey    string `json:"apiKey"`
-	Provider  string `json:"provider"`
-	Dimension int    `json:"dimension"`
-}
+	// SyncModelConfigItem 同步接口中单个模型的配置项
+	type SyncModelConfigItem struct {
+		Name        string `json:"name"        binding:"required"`
+		DisplayName string `json:"displayName"`
+		Source      string `json:"source"      binding:"required"`
+		BaseURL     string `json:"baseUrl"`
+		APIKey      string `json:"apiKey"`
+		Provider    string `json:"provider"`
+		Dimension   int    `json:"dimension"`
+	}
 
 // SyncModelConfigRequest 工作空间模型配置同步请求
 type SyncModelConfigRequest struct {
@@ -1259,6 +1262,7 @@ func buildSyncModelDescriptors(req *SyncModelConfigRequest) []modelDescriptor {
 			description: "LLM Model (synced)",
 			baseURL:     utils.SanitizeForLog(req.LLM.BaseURL),
 			apiKey:      req.LLM.APIKey,
+			displayName: req.LLM.DisplayName,
 		},
 		{
 			modelType:   types.ModelTypeEmbedding,
@@ -1268,6 +1272,7 @@ func buildSyncModelDescriptors(req *SyncModelConfigRequest) []modelDescriptor {
 			baseURL:     utils.SanitizeForLog(req.Embedding.BaseURL),
 			apiKey:      req.Embedding.APIKey,
 			dimension:   req.Embedding.Dimension,
+			displayName: req.Embedding.DisplayName,
 		},
 	}
 
@@ -1279,6 +1284,7 @@ func buildSyncModelDescriptors(req *SyncModelConfigRequest) []modelDescriptor {
 			description: "Rerank Model (synced)",
 			baseURL:     utils.SanitizeForLog(req.Rerank.BaseURL),
 			apiKey:      req.Rerank.APIKey,
+			displayName: req.Rerank.DisplayName,
 		})
 	}
 
@@ -1290,6 +1296,7 @@ func buildSyncModelDescriptors(req *SyncModelConfigRequest) []modelDescriptor {
 			description: "VLM Model (synced)",
 			baseURL:     utils.SanitizeForLog(req.VLM.BaseURL),
 			apiKey:      req.VLM.APIKey,
+			displayName: req.VLM.DisplayName,
 		})
 	}
 
