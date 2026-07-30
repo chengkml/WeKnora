@@ -710,7 +710,8 @@ const sendMsg = async (value, modelId = '', mentionedItems = [], imageFiles = []
             await Promise.all(localAttachments.map(async (attachment) => {
                 attachment.status = 'uploading';
                 const upload = await uploadTemporaryAttachment(
-                    session_id.value, attachment.file, selectedAgentId, 'auto'
+                    session_id.value, attachment.file, selectedAgentId, 'auto',
+                    (progress) => { attachment.progress = progress; },
                 );
                 attachment.documentId = upload.data.id;
                 attachment.status = upload.data.status;

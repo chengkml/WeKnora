@@ -266,7 +266,6 @@ export function postUpload(
   return instance.post(url, data, {
     ...config,
     headers: {
-      "Content-Type": "multipart/form-data",
       "X-Request-ID": `${generateRandomString(12)}`,
       ...(config.headers || {}),
     },

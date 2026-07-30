@@ -134,6 +134,7 @@ const emitFiles = () => emit('update:files', [...attachments.value]);
 
 const uploadAttachment = async (attachment: AttachmentFile) => {
   if (!props.sessionId) return;
+  const attachmentId = attachment.id;
   try {
     const response = await uploadTemporaryAttachment(
       props.sessionId,
@@ -141,25 +142,30 @@ const uploadAttachment = async (attachment: AttachmentFile) => {
       props.agentId,
       'auto',
       (progress) => {
-        attachment.progress = progress;
+        const target = attachments.value.find(item => item.id === attachmentId);
+        if (target) target.progress = progress;
         emitFiles();
       },
     );
-    attachment.documentId = response.data.id;
-    if (disposed || !attachments.value.some(item => item.id === attachment.id)) {
+    const target = attachments.value.find(item => item.id === attachmentId);
+    if (disposed || !target) {
       await deleteTemporaryAttachment(props.sessionId, response.data.id).catch(() => undefined);
       return;
     }
-    attachment.status = response.data.status;
-    attachment.progress = 100;
+    target.documentId = response.data.id;
+    target.status = response.data.status;
+    target.progress = 100;
     emitFiles();
-    if (attachment.status !== 'ready' && attachment.status !== 'failed') {
-      scheduleStatusPoll(attachment);
+    if (target.status !== 'ready' && target.status !== 'failed') {
+      scheduleStatusPoll(target);
     }
   } catch (error: any) {
-    attachment.status = 'failed';
-    attachment.error = error?.message || t('chat.attachmentUploadFailed');
-    emitFiles();
+    const target = attachments.value.find(item => item.id === attachmentId);
+    if (target) {
+      target.status = 'failed';
+      target.error = error?.message || t('chat.attachmentUploadFailed');
+      emitFiles();
+    }
   }
 };
 

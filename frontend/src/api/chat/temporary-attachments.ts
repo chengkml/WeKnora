@@ -37,7 +37,7 @@ export function uploadTemporaryAttachment(
     `/api/v1/sessions/${sessionId}/attachments`,
     form,
     (event) => {
-      if (event.total) onProgress?.(Math.round((event.loaded * 100) / event.total));
+      if (event.total > 0) onProgress?.(Math.round((event.loaded * 100) / event.total));
     },
   );
 }
