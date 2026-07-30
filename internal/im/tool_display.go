@@ -183,6 +183,66 @@ func imGetWikiPageText(args any) string {
 	return strings.Join(slugs, "、")
 }
 
+// imGetWikiPageSlugs extracts individual wiki slugs from tool arguments as a slice.
+func imGetWikiPageSlugs(args any) []string {
+	if args == nil {
+		return nil
+	}
+	parsed := args
+	if s, ok := args.(string); ok {
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(s), &obj); err != nil {
+			return nil
+		}
+		parsed = obj
+	}
+	record, ok := parsed.(map[string]any)
+	if !ok {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	var slugs []string
+	for _, slug := range collectQueryStrings(record["slug"]) {
+		if _, dup := seen[slug]; dup {
+			continue
+		}
+		seen[slug] = struct{}{}
+		slugs = append(slugs, slug)
+	}
+	for _, slug := range collectQueryStrings(record["slugs"]) {
+		if _, dup := seen[slug]; dup {
+			continue
+		}
+		seen[slug] = struct{}{}
+		slugs = append(slugs, slug)
+	}
+	return slugs
+}
+
+// imGetWikiPageTitleLabel returns display labels for wiki_read_page, prioritizing
+// Chinese titles from the backend's titles map over raw slug values.
+func imGetWikiPageTitleLabel(args any, data map[string]interface{}) string {
+	// Priority: titles map from backend Data
+	if titlesRaw, ok := data["titles"]; ok {
+		if titles, ok := titlesRaw.(map[string]interface{}); ok && len(titles) > 0 {
+			slugs := imGetWikiPageSlugs(args)
+			if len(slugs) > 0 {
+				labels := make([]string, 0, len(slugs))
+				for _, slug := range slugs {
+					if title, ok := titles[slug].(string); ok && title != "" {
+						labels = append(labels, title)
+					} else {
+						labels = append(labels, slug)
+					}
+				}
+				return strings.Join(labels, "、")
+			}
+		}
+	}
+	// Fallback: slug text from args
+	return imGetWikiPageText(args)
+}
+
 func imGetGrepPatterns(args any) []string {
 	if args == nil {
 		return nil
@@ -340,6 +400,9 @@ func imAgentToolTitle(step IMToolStep) string {
 			if title, ok := step.Data["title"].(string); ok {
 				pageLabel = strings.TrimSpace(title)
 			}
+		}
+		if pageLabel == "" {
+			pageLabel = imGetWikiPageTitleLabel(step.Arguments, step.Data)
 		}
 		if pageLabel == "" {
 			pageLabel = imGetWikiPageText(step.Arguments)

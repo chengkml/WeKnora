@@ -498,7 +498,7 @@ import i18n from '@/i18n';
 import { hydrateProtectedFileImages, clearProtectedFileFailureCache, sanitizeMarkdownHTML } from '@/utils/security';
 import { unwrapFinalAnswerWrappers, thinkingEqualsAnswer } from '@/utils/finalAnswer';
 import { getAgentToolIconName } from '@/utils/agent-tool-icons';
-import { getQueryText, getWikiPageText } from '@/utils/agent-tool-display';
+import { getQueryText, getWikiPageText, getWikiPageTitleLabel } from '@/utils/agent-tool-display';
 import {
   buildManualMarkdown,
   copyTextToClipboard,
@@ -2445,6 +2445,7 @@ const getToolTitle = (event: any): string => {
   if (toolName === 'wiki_read_page') {
     const pageLabel = String(
       event.tool_data?.title ||
+      getWikiPageTitleLabel(event.arguments, event.tool_data) ||
       getWikiPageText(event.arguments) ||
       getWikiPageText(event.tool_data)
     ).trim();

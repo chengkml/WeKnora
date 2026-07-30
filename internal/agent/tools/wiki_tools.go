@@ -458,6 +458,8 @@ func (t *wikiReadPageTool) Execute(ctx context.Context, args json.RawMessage) (*
 	// Track slugs that were found in the raw lookup but filtered out by a
 	// knowledge_ids whitelist, so we can surface a clearer error.
 	filteredOut := make(map[string][]string) // slug -> list of KB IDs where filtered
+	// titles maps slug -> page.Title for frontend Chinese title display.
+	titles := make(map[string]string)
 	var fetchTags knowledgeTagsFetcher
 	if t.knowledgeService != nil {
 		fetchTags = t.knowledgeService.GetKnowledgeTags
@@ -498,6 +500,12 @@ func (t *wikiReadPageTool) Execute(ctx context.Context, args json.RawMessage) (*
 				kbID string
 			}{page, actualKBID})
 			foundKBs[slug] = append(foundKBs[slug], actualKBID)
+			// Collect page title for frontend Chinese display.
+			if page.Title != "" {
+				if _, exists := titles[slug]; !exists {
+					titles[slug] = page.Title
+				}
+			}
 			// Also register the page's neighbours so that when the model
 			// echoes a link like `[[summary/xyz]]` from this page's body,
 			// the frontend can resolve it to the same KB without guessing.
@@ -551,6 +559,7 @@ func (t *wikiReadPageTool) Execute(ctx context.Context, args json.RawMessage) (*
 		Data: map[string]interface{}{
 			"found_kbs":       foundKBs,
 			"ambiguous_slugs": ambiguous,
+			"titles":          titles,
 		},
 	}, nil
 }

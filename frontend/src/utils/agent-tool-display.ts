@@ -73,6 +73,55 @@ export function getWikiPageText(args: unknown): string {
   return Array.from(new Set(slugs)).join('、')
 }
 
+/** Extract slugs from tool args as a deduplicated string array. */
+function getWikiSlugs(args: unknown): string[] {
+  if (!args) return []
+
+  let parsedArgs = args
+  if (typeof parsedArgs === 'string') {
+    try {
+      parsedArgs = JSON.parse(parsedArgs)
+    } catch {
+      return []
+    }
+  }
+
+  if (!parsedArgs || typeof parsedArgs !== 'object') return []
+
+  const record = parsedArgs as Record<string, unknown>
+  const slugs = [
+    ...collectQueryStrings(record.slug),
+    ...collectQueryStrings(record.slugs),
+  ]
+  return Array.from(new Set(slugs))
+}
+
+/**
+ * Get the display label for wiki_read_page tool, prioritizing Chinese titles
+ * from the backend's `titles` map over raw slug values.
+ *
+ * @param args - Tool call arguments (contains slug/slugs)
+ * @param toolData - Backend ToolResult.Data (contains `titles` map from slug -> page.Title)
+ * @returns Joined display labels separated by "、"
+ */
+export function getWikiPageTitleLabel(
+  args: unknown,
+  toolData?: Record<string, unknown> | null,
+): string {
+  // Priority: titles map from backend Data
+  const titles = toolData?.titles as Record<string, string> | undefined
+  if (titles && typeof titles === 'object') {
+    const slugs = getWikiSlugs(args)
+    if (slugs.length > 0) {
+      const labels = slugs.map((slug) => titles[slug] || slug)
+      return labels.join('、')
+    }
+  }
+
+  // Fallback: slug text from args
+  return getWikiPageText(args)
+}
+
 export function getRetrievalSearchSource(
   args: unknown,
   toolData?: Record<string, unknown> | null,

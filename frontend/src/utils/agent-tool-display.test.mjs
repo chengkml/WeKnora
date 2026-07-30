@@ -6,6 +6,7 @@ import {
   getQueryText,
   getRagPipelineStepTitle,
   getWikiPageText,
+  getWikiPageTitleLabel,
 } from './agent-tool-display.ts'
 
 const t = (key, params) => {
@@ -48,6 +49,35 @@ test('getWikiPageText supports persisted slugs arrays', () => {
     'entity/知识助理、concept/API管理',
   )
   assert.equal(getWikiPageText('{"slug":"index"}'), 'index')
+})
+
+test('getWikiPageTitleLabel prioritizes titles map from toolData', () => {
+  const labels = getWikiPageTitleLabel(
+    { slugs: ['entity/acme-corp', 'summary/abc123'] },
+    { titles: { 'entity/acme-corp': 'ACME公司', 'summary/abc123': '财务管理制度' } },
+  )
+  assert.equal(labels, 'ACME公司、财务管理制度')
+})
+
+test('getWikiPageTitleLabel falls back to slug when titles map is missing entry', () => {
+  const labels = getWikiPageTitleLabel(
+    { slugs: ['entity/acme-corp', 'concept/rag'] },
+    { titles: { 'entity/acme-corp': 'ACME公司' } },
+  )
+  assert.equal(labels, 'ACME公司、concept/rag')
+})
+
+test('getWikiPageTitleLabel falls back to getWikiPageText when no titles map', () => {
+  const labels = getWikiPageTitleLabel({ slug: 'index' })
+  assert.equal(labels, 'index')
+})
+
+test('getWikiPageTitleLabel handles single slug argument', () => {
+  const labels = getWikiPageTitleLabel(
+    { slug: 'entity/财务制度' },
+    { titles: { 'entity/财务制度': '财务管理制度V2' } },
+  )
+  assert.equal(labels, '财务管理制度V2')
 })
 
 test('getKnowledgeSearchSummaryHtml includes file count when present', () => {
