@@ -3,10 +3,12 @@ import i18n from '@/i18n'
 
 const t = (key: string) => i18n.global.t(key)
 
-// 用户登录接口
+// 用户登录接口。主身份是 user_id；username/email 供旧客户端兼容。
 export interface LoginRequest {
-  email: string
+  user_id: string
   password: string
+  username?: string
+  email?: string
 }
 
 export interface LoginResponse {
@@ -68,10 +70,11 @@ export interface OIDCConfigResponse {
   message?: string
 }
 
-// 用户注册接口
+// 用户注册接口。user_id 为登录身份（映射到 users.id）；email 可选。
 export interface RegisterRequest {
+  user_id: string
   username: string
-  email: string
+  email?: string
   password: string
 }
 

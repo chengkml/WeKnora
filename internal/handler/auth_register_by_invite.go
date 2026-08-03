@@ -20,10 +20,11 @@ import (
 // IS the authorisation; the email is whatever account the invitee
 // wants to register.
 type registerByInviteRequest struct {
-	Token    string `json:"token"    binding:"required"`
-	Email    string `json:"email"    binding:"required,email"`
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required,min=6"`
+	Token    string `json:"token"     binding:"required"`
+	UserID   string `json:"user_id"   binding:"required,min=2,max=50"`
+	Email    string `json:"email"     binding:"required,email"`
+	Username string `json:"username"  binding:"required"`
+	Password string `json:"password"  binding:"required,min=6"`
 }
 
 // invitationLookupResponse is the public projection of a share-link
@@ -137,13 +138,14 @@ func (h *AuthHandler) RegisterByInvite(c *gin.Context) {
 	req.Token = strings.TrimSpace(req.Token)
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 	req.Username = strings.TrimSpace(req.Username)
+	req.UserID = strings.TrimSpace(req.UserID)
 	// Password is intentionally NOT sanitized: SanitizeForLog strips
 	// \n, \r, \t and control chars to make a string safe to write into
 	// a log line — applying it to a real password would silently
 	// rewrite the stored credential and lock the user out. Passwords
 	// must never be logged, so they don't need that defence here.
-	if req.Token == "" || req.Email == "" || req.Username == "" || req.Password == "" {
-		c.Error(apperrors.NewValidationError("token, email, username and password are required"))
+	if req.Token == "" || req.Email == "" || req.Username == "" || req.UserID == "" || req.Password == "" {
+		c.Error(apperrors.NewValidationError("token, email, username, user_id and password are required"))
 		return
 	}
 
@@ -170,6 +172,7 @@ func (h *AuthHandler) RegisterByInvite(c *gin.Context) {
 	}
 
 	user, err := h.userService.Register(ctx, &types.RegisterRequest{
+		UserID:             req.UserID,
 		Username:           req.Username,
 		Email:              req.Email,
 		Password:           req.Password,

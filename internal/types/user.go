@@ -76,8 +76,10 @@ type User struct {
 	ID string `json:"id"         gorm:"type:varchar(36);primaryKey"`
 	// Username of the user
 	Username string `json:"username"   gorm:"type:varchar(100);uniqueIndex;not null"`
-	// Email address of the user
-	Email string `json:"email"      gorm:"type:varchar(255);uniqueIndex;not null"`
+	// Email address of the user (optional; keeps its unique index so a
+	// provided email stays non-duplicated, but may be empty for users who
+	// register with only a user id)
+	Email string `json:"email"      gorm:"type:varchar(255);uniqueIndex"`
 	// Hashed password of the user
 	PasswordHash string `json:"-"          gorm:"type:varchar(255);not null"`
 	// Avatar URL of the user
@@ -129,9 +131,11 @@ type AuthToken struct {
 }
 
 // LoginRequest represents a login request.
-// Accepts either Email (original) or Username (duowen_harness compatible).
-// At least one is required; if both are provided Email takes precedence.
+// Primary identity is UserID (maps to users.id). Username is accepted as a
+// fallback for legacy clients; Email is retained for backward compatibility
+// with the original email login (e.g. harness). At least one is required.
 type LoginRequest struct {
+	UserID   string `json:"user_id,omitempty"`
 	Email    string `json:"email,omitempty"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password" binding:"required,min=6"`
@@ -178,11 +182,15 @@ type OIDCUserInfo struct {
 	Claims   map[string]interface{} `json:"claims,omitempty"`
 }
 
-// RegisterRequest represents a registration request
+// RegisterRequest represents a registration request.
+// UserID is the caller-chosen unique identifier and becomes users.id.
+// Email is optional: when omitted a user can still register with just
+// user_id + username + password.
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required,min=2,max=50"`
-	Email    string `json:"email"    binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	UserID   string `json:"user_id"   binding:"required,min=2,max=50"`
+	Username string `json:"username"  binding:"required,min=2,max=50"`
+	Email    string `json:"email"     binding:"omitempty,email"`
+	Password string `json:"password"  binding:"required,min=6"`
 
 	// TenantProvisioning is server-controlled registration context. It is
 	// deliberately excluded from JSON so a public caller cannot choose its

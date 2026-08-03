@@ -111,20 +111,28 @@ func NewUserService(
 func (s *userService) Register(ctx context.Context, req *types.RegisterRequest) (*types.User, error) {
 	logger.Info(ctx, "Start user registration")
 
-	// Validate input
-	if req.Username == "" || req.Email == "" || req.Password == "" {
-		return nil, errors.New("username, email and password are required")
+	// Validate input. UserID (mapped to users.id) is the primary identity;
+	// username is still required; email is optional.
+	if req.UserID == "" || req.Username == "" || req.Password == "" {
+		return nil, errors.New("user_id, username and password are required")
 	}
 
-	// Check if user already exists
-	existingUser, _ := s.userRepo.GetUserByEmail(ctx, req.Email)
-	if existingUser != nil {
-		return nil, errors.New("user with this email already exists")
+	// Check if user already exists — user_id (primary key), then username,
+	// then email (only when provided).
+	if existingUser, _ := s.userRepo.GetUserByID(ctx, req.UserID); existingUser != nil {
+		return nil, errors.New("user id already exists")
 	}
 
-	existingUser, _ = s.userRepo.GetUserByUsername(ctx, req.Username)
+	existingUser, _ := s.userRepo.GetUserByUsername(ctx, req.Username)
 	if existingUser != nil {
 		return nil, errors.New("user with this username already exists")
+	}
+
+	if req.Email != "" {
+		existingUser, _ = s.userRepo.GetUserByEmail(ctx, req.Email)
+		if existingUser != nil {
+			return nil, errors.New("user with this email already exists")
+		}
 	}
 
 	// Hash password
@@ -159,9 +167,10 @@ func (s *userService) Register(ctx context.Context, req *types.RegisterRequest) 
 		}
 	}
 
-	// Create user
+	// Create user. ID is the caller-chosen user id so external systems can
+	// address this user by it (and jWT claims carry it directly).
 	user := &types.User{
-		ID:           uuid.New().String(),
+		ID:           req.UserID,
 		Username:     req.Username,
 		Email:        req.Email,
 		PasswordHash: string(hashedPassword),
@@ -207,17 +216,18 @@ func (s *userService) Register(ctx context.Context, req *types.RegisterRequest) 
 func (s *userService) Login(ctx context.Context, req *types.LoginRequest) (*types.LoginResponse, error) {
 	logger.Info(ctx, "Start user login")
 
-	// Resolve user by email first, then by username (for duowen_harness compatibility).
+	// Resolve user by user_id first (primary identity), then username as a
+	// fallback, then email for backward compatibility (e.g. harness email login).
 	var user *types.User
 	var err error
-	identity := strings.TrimSpace(req.Email)
+	identity := strings.TrimSpace(req.UserID)
 	if identity != "" {
-		user, err = s.userRepo.GetUserByEmail(ctx, identity)
+		user, err = s.userRepo.GetUserByID(ctx, identity)
 		if err != nil && !errors.Is(err, apprepo.ErrUserNotFound) {
-			logger.Errorf(ctx, "Failed to get user by email: %v", err)
+			logger.Errorf(ctx, "Failed to get user by id: %v", err)
 			return &types.LoginResponse{
 				Success: false,
-				Message: "Invalid email or password",
+				Message: "Invalid user id or password",
 			}, nil
 		}
 	}
@@ -229,7 +239,20 @@ func (s *userService) Login(ctx context.Context, req *types.LoginRequest) (*type
 				logger.Errorf(ctx, "Failed to get user by username: %v", err)
 				return &types.LoginResponse{
 					Success: false,
-					Message: "Invalid email or password",
+					Message: "Invalid user id or password",
+				}, nil
+			}
+		}
+	}
+	if user == nil {
+		identity = strings.TrimSpace(req.Email)
+		if identity != "" {
+			user, err = s.userRepo.GetUserByEmail(ctx, identity)
+			if err != nil && !errors.Is(err, apprepo.ErrUserNotFound) {
+				logger.Errorf(ctx, "Failed to get user by email: %v", err)
+				return &types.LoginResponse{
+					Success: false,
+					Message: "Invalid user id or password",
 				}, nil
 			}
 		}
@@ -238,7 +261,7 @@ func (s *userService) Login(ctx context.Context, req *types.LoginRequest) (*type
 		logger.Warn(ctx, "User not found")
 		return &types.LoginResponse{
 			Success: false,
-			Message: "Invalid email or password",
+			Message: "Invalid user id or password",
 		}, nil
 	}
 

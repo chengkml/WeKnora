@@ -162,19 +162,19 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.Error(appErr)
 		return
 	}
+	req.UserID = secutils.SanitizeForLog(req.UserID)
 	req.Username = secutils.SanitizeForLog(req.Username)
 	req.Email = secutils.SanitizeForLog(req.Email)
 	req.Password = secutils.SanitizeForLog(req.Password)
 
-	// Validate required fields
-	if req.Username == "" || req.Email == "" || req.Password == "" {
+	// Validate required fields. user_id is the primary identity; email is
+	// optional — a user may register with only user_id + username + password.
+	if req.UserID == "" || req.Username == "" || req.Password == "" {
 		logger.Error(ctx, "Missing required registration fields")
-		appErr := errors.NewValidationError("Username, email and password are required")
+		appErr := errors.NewValidationError("User id, username and password are required")
 		c.Error(appErr)
 		return
 	}
-	req.Username = secutils.SanitizeForLog(req.Username)
-	req.Email = secutils.SanitizeForLog(req.Email)
 	req.TenantProvisioning = h.resolveDefaultTenantMode(ctx)
 	// Call service to register user
 	user, err := h.userService.Register(ctx, &req)
@@ -192,7 +192,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		User:    user,
 	}
 
-	logger.Infof(ctx, "User registered successfully: %s", secutils.SanitizeForLog(user.Email))
+	logger.Infof(ctx, "User registered successfully: %s", secutils.SanitizeForLog(user.ID))
 	c.JSON(http.StatusCreated, response)
 }
 
@@ -219,12 +219,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Accept email or username; at least one must be provided.
-	req.Email = strings.TrimSpace(req.Email)
+	// Accept user id / username / email; at least one must be provided.
+	req.UserID = strings.TrimSpace(req.UserID)
 	req.Username = strings.TrimSpace(req.Username)
-	if req.Email == "" && req.Username == "" {
-		logger.Error(ctx, "Missing email and username")
-		appErr := errors.NewValidationError("Email or username is required")
+	req.Email = strings.TrimSpace(req.Email)
+	if req.UserID == "" && req.Username == "" && req.Email == "" {
+		logger.Error(ctx, "Missing user id, username and email")
+		appErr := errors.NewValidationError("User id, username or email is required")
 		c.Error(appErr)
 		return
 	}
@@ -235,11 +236,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	loginID := req.Email
+	loginID := req.UserID
 	if loginID == "" {
 		loginID = req.Username
 	}
-	email := secutils.SanitizeForLog(loginID)
+	if loginID == "" {
+		loginID = req.Email
+	}
+	ident := secutils.SanitizeForLog(loginID)
 
 	// Call service to authenticate user
 	response, err := h.userService.Login(ctx, &req)
@@ -259,7 +263,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// User is already in the correct format from service
 
-	logger.Infof(ctx, "User logged in successfully, email: %s", email)
+	logger.Infof(ctx, "User logged in successfully, identity: %s", ident)
 	c.JSON(http.StatusOK, dto.NewAuthLoginResponse(response))
 }
 

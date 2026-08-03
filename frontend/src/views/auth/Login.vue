@@ -186,9 +186,9 @@
           <div class="form-content">
             <t-form ref="formRef" :data="formData" :rules="formRules" @submit="handleLogin" layout="vertical"
               label-align="top">
-              <t-form-item :label="$t('auth.email')" name="email">
-                <t-input v-model="formData.email" :placeholder="$t('auth.emailPlaceholder')" type="text"
-                  autocomplete="email" size="large" :disabled="loading" />
+              <t-form-item :label="$t('auth.userId')" name="user_id">
+                <t-input v-model="formData.user_id" :placeholder="$t('auth.userIdPlaceholder')" type="text"
+                  autocomplete="username" size="large" :disabled="loading" />
               </t-form-item>
 
               <t-form-item :label="$t('auth.password')" name="password">
@@ -269,13 +269,18 @@
           <div class="form-content">
             <t-form ref="registerFormRef" :data="registerData" :rules="registerRules" @submit="handleRegister"
               layout="vertical" label-align="top">
+              <t-form-item :label="$t('auth.userId')" name="user_id">
+                <t-input v-model="registerData.user_id" :placeholder="$t('auth.userIdPlaceholder')" size="large"
+                  :disabled="loading" />
+              </t-form-item>
+
               <t-form-item :label="$t('auth.username')" name="username">
                 <t-input v-model="registerData.username" :placeholder="$t('auth.usernamePlaceholder')" size="large"
                   :disabled="loading" />
               </t-form-item>
 
               <t-form-item :label="$t('auth.email')" name="email">
-                <t-input v-model="registerData.email" :placeholder="$t('auth.emailPlaceholder')" type="text"
+                <t-input v-model="registerData.email" :placeholder="$t('auth.emailOptionalPlaceholder')" type="text"
                   autocomplete="email" size="large" :disabled="loading" />
               </t-form-item>
 
@@ -434,12 +439,13 @@ const currentLangOption = computed(() => languageOptions.find(l => l.value === c
 
 // Login form data
 const formData = reactive<{ [key: string]: any }>({
-  email: '',
+  user_id: '',
   password: '',
 })
 
 // Register form data
 const registerData = reactive<{ [key: string]: any }>({
+  user_id: '',
   username: '',
   email: '',
   password: '',
@@ -448,9 +454,15 @@ const registerData = reactive<{ [key: string]: any }>({
 
 // Login form validation rules
 const formRules = computed(() => ({
-  email: [
-    { required: true, message: t('auth.emailRequired'), type: 'error' },
-    { email: true, message: t('auth.emailInvalid'), type: 'error' }
+  user_id: [
+    { required: true, message: t('auth.userIdRequired'), type: 'error' },
+    { min: 2, message: t('auth.userIdMinLength'), type: 'error' },
+    { max: 50, message: t('auth.userIdMaxLength'), type: 'error' },
+    {
+      pattern: /^[a-zA-Z0-9_-]+$/,
+      message: t('auth.userIdInvalid'),
+      type: 'error'
+    }
   ],
   password: [
     { required: true, message: t('auth.passwordRequired'), type: 'error' },
@@ -463,6 +475,16 @@ const formRules = computed(() => ({
 
 // Register form validation rules
 const registerRules = computed(() => ({
+  user_id: [
+    { required: true, message: t('auth.userIdRequired'), type: 'error' },
+    { min: 2, message: t('auth.userIdMinLength'), type: 'error' },
+    { max: 50, message: t('auth.userIdMaxLength'), type: 'error' },
+    {
+      pattern: /^[a-zA-Z0-9_-]+$/,
+      message: t('auth.userIdInvalid'),
+      type: 'error'
+    }
+  ],
   username: [
     { required: true, message: t('auth.usernameRequired'), type: 'error' },
     { min: 2, message: t('auth.usernameMinLength'), type: 'error' },
@@ -474,8 +496,7 @@ const registerRules = computed(() => ({
     }
   ],
   email: [
-    { required: true, message: t('auth.emailRequired'), type: 'error' },
-    { email: true, message: t('auth.emailInvalid'), type: 'error' }
+    { validator: (val: string) => val === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val), message: t('auth.emailInvalid'), type: 'error' }
   ],
   password: [
     { required: true, message: t('auth.passwordRequired'), type: 'error' },
@@ -641,7 +662,7 @@ const handleLogin = async () => {
     loading.value = true
 
     const response = await login({
-      email: formData.email,
+      user_id: formData.user_id,
       password: formData.password,
     })
 
@@ -673,6 +694,7 @@ const handleRegister = async () => {
     if (inviteToken.value) {
       const response = await registerByInvite({
         token: inviteToken.value,
+        user_id: registerData.user_id,
         username: registerData.username,
         email: registerData.email,
         password: registerData.password,
@@ -690,6 +712,7 @@ const handleRegister = async () => {
     }
 
     const response = await register({
+      user_id: registerData.user_id,
       username: registerData.username,
       email: registerData.email,
       password: registerData.password
@@ -698,9 +721,9 @@ const handleRegister = async () => {
     if (response.success) {
       MessagePlugin.success(t('auth.registerSuccess'))
 
-      // Switch to login mode and fill in email
+      // Switch to login mode and fill in user_id
       isRegisterMode.value = false
-      formData.email = registerData.email
+      formData.user_id = registerData.user_id
 
       // Clear register form
       Object.keys(registerData).forEach(key => {
