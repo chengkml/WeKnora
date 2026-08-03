@@ -141,12 +141,18 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 		return
 	}
 
-	// Step 1: 查重 — 使用用户ID去系统查询是否存在该用户
-	existingUser, err := h.userService.GetUserByID(ctx, req.UserID)
-	if err != nil {
-		// 如果用户不存在，这是正常情况（首次初始化）
-		logger.Infof(ctx, "User not found, proceeding with initialization: %s", req.UserID)
-	} else if existingUser != nil {
+	// Step 1: 查重 — 按 id、email、username 依次查找已有用户
+	// 当 harness 传入的 userId 与 WeKnora 里的用户 id 不一致时（例如
+	// 历史数据通过其他路径创建），通过 email 或 username 兜底命中。
+	existingUser, _ := h.userService.GetUserByID(ctx, req.UserID)
+	if existingUser == nil {
+		existingUser, _ = h.userService.GetUserByEmail(ctx, req.Email)
+	}
+	if existingUser == nil && req.Username != "" {
+		existingUser, _ = h.userService.GetUserByUsername(ctx, req.Username)
+	}
+
+	if existingUser != nil {
 		// 用户已存在，需生成 JWT token 供调用方使用
 		logger.Infof(ctx, "User already initialized: %s", req.UserID)
 
