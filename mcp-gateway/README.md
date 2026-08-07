@@ -1,7 +1,8 @@
 # WeKnora MCP Gateway
 
 A standalone MCP (Model Context Protocol) Gateway that provides
-read-only access to WeKnora knowledge bases over **Streamable HTTP** transport.
+access to WeKnora knowledge bases over **Streamable HTTP** transport —
+including full read/write Wiki page and folder management.
 Runs as a **separate container** from the WeKnora Go backend.
 
 ## Architecture
@@ -46,7 +47,8 @@ X-API-Key: <weknora tenant api key>              # selects the WeKnora tenant
 
 - Missing/ wrong Bearer → `401 {"error":"unauthorized"}`
 - Missing `X-API-Key` on any `/mcp` request → `401 {"error":"missing X-API-Key header"}`
-- The tenant API key needs at least the `retrieve` capability.
+- The tenant API key needs at least the `retrieve` capability for read tools;
+  Wiki **write** tools additionally require "write" / owner capability on the KB.
 
 ## Tools
 
@@ -61,6 +63,53 @@ All tools are **read-only**:
 | `list_chunks` | `knowledge_id` | List text chunks of a document |
 | `wiki_search` | `kb_id`, `query` | Full-text wiki search |
 | `wiki_read_page` | `kb_id`, `slug` | Read a wiki page by slug |
+
+The following Wiki tools extend the gateway with **full read/write** access to a
+knowledge base's Wiki knowledge base (pages, folders, graph, link maintenance,
+logs, and issues). All are KB-scoped via `kb_id`; **write** operations require
+the session API key to have "write" / owner capability on the KB
+(guarded by `OwnedWikiKBOrAdmin + KBAccessWrite`).
+
+### Wiki page management
+
+| Tool | Access | Required args | Description |
+|---|---|---|---|
+| `create_wiki_page` | write | `kb_id`, `slug`, `title`, `content` | Create a wiki page (also accepts `summary`, `page_type`, `aliases`, `source_refs`, `folder_id`) |
+| `update_wiki_page` | write | `kb_id`, `slug` | Update an existing wiki page by slug (pass only fields to change) |
+| `delete_wiki_page` | write | `kb_id`, `slug` | Soft-delete a wiki page |
+| `move_wiki_page` | write | `kb_id`, `slug` | Move a page into a folder (`folder_id`, empty = root) |
+| `list_wiki_pages` | read | `kb_id` | Paginated list of wiki pages |
+
+### Wiki folder management
+
+| Tool | Access | Required args | Description |
+|---|---|---|---|
+| `list_wiki_folders` | read | `kb_id` | List child folders of `parent_id` (empty = root) |
+| `create_wiki_folder` | write | `kb_id`, `name` | Create a new empty folder |
+| `update_wiki_folder` | write | `kb_id`, `folder_id` | Rename and/or reparent (`name`, `parent_id`, `move_parent`) |
+| `delete_wiki_folder` | write | `kb_id`, `folder_id` | Delete an empty folder |
+
+### Wiki graph / stats / index / log
+
+| Tool | Access | Required args | Description |
+|---|---|---|---|
+| `wiki_graph` | read | `kb_id` | Wiki link graph (`mode` overview/ego, `center`, `depth`, `limit`, `types`) |
+| `wiki_stats` | read | `kb_id` | Aggregate wiki statistics |
+| `wiki_index_view` | read | `kb_id` | Cursor-paginated wiki index view |
+| `wiki_log` | read | `kb_id` | Newest-first operation log (`cursor`, `limit`) |
+
+### Wiki link maintenance & issues
+
+| Tool | Access | Required args | Description |
+|---|---|---|---|
+| `wiki_rebuild_links` | write | `kb_id` | Re-parse all pages and rebuild link references |
+| `wiki_lint` | read | `kb_id` | Wiki health check report |
+| `wiki_auto_fix` | write | `kb_id` | Auto-fix fixable issues (broken links, etc.) |
+| `wiki_list_issues` | read | `kb_id` | List wiki page issues (`slug`, `status` filters) |
+| `wiki_update_issue_status` | write | `kb_id`, `issue_id`, `status` | Set issue status: `pending` / `ignored` / `resolved` |
+
+> Note: DELETE operations return HTTP 204 — the client maps an empty response
+> to `{"success": true}` so callers don't hit a JSON-decoding error.
 
 ## Configuration
 

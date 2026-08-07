@@ -261,6 +261,324 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["kb_id", "slug"],
             },
         ),
+        # --- Wiki page management ---
+        types.Tool(
+            name="create_wiki_page",
+            description="Create a new wiki page in the knowledge base. Requires "
+            "\"write\" capability on the API key. Pass page fields (slug, title, "
+            "content, etc.).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "slug": {"type": "string", "description": "URL-friendly page slug"},
+                    "title": {"type": "string", "description": "Human-readable title"},
+                    "summary": {"type": "string", "description": "One-line summary"},
+                    "content": {"type": "string", "description": "Full markdown content"},
+                    "page_type": {
+                        "type": "string",
+                        "description": "summary | entity | concept | synthesis "
+                        "| comparison (default entity)",
+                    },
+                    "aliases": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Alternate names / abbreviations",
+                    },
+                    "source_refs": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Source knowledge ID references",
+                    },
+                    "folder_id": {
+                        "type": "string",
+                        "description": "Folder to file the page under (empty = root)",
+                    },
+                },
+                "required": ["kb_id", "slug", "title", "content"],
+            },
+        ),
+        types.Tool(
+            name="update_wiki_page",
+            description="Update an existing wiki page (by slug) with new fields. "
+            "\"write\" capability required.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "slug": {"type": "string", "description": "Wiki page slug (URL path)"},
+                    "title": {"type": "string", "description": "Human-readable title"},
+                    "summary": {"type": "string", "description": "One-line summary"},
+                    "content": {"type": "string", "description": "Full markdown content"},
+                    "page_type": {
+                        "type": "string",
+                        "description": "summary | entity | concept | synthesis | comparison",
+                    },
+                    "aliases": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Alternate names / abbreviations",
+                    },
+                    "source_refs": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Source knowledge ID references",
+                    },
+                    "folder_id": {
+                        "type": "string",
+                        "description": "Folder to file the page under (empty = root)",
+                    },
+                },
+                "required": ["kb_id", "slug"],
+            },
+        ),
+        types.Tool(
+            name="delete_wiki_page",
+            description="Soft-delete a wiki page by slug. \"write\" capability required.",
+            inputSchema={
+                "type": "object",
+                "properties": {**_KB_ID_PROP, "slug": {"type": "string"}},
+                "required": ["kb_id", "slug"],
+            },
+        ),
+        types.Tool(
+            name="move_wiki_page",
+            description="Relocate a wiki page into a folder (folder_id \"\" = root). "
+            "\"write\" capability required.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "slug": {"type": "string", "description": "Page slug to move"},
+                    "folder_id": {
+                        "type": "string",
+                        "description": "Destination folder_id (empty = root)",
+                    },
+                },
+                "required": ["kb_id", "slug"],
+            },
+        ),
+        types.Tool(
+            name="list_wiki_pages",
+            description="Paginated list of wiki pages in a knowledge base.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "page": {"type": "integer", "default": 1},
+                    "page_size": {"type": "integer", "default": 20},
+                },
+                "required": ["kb_id"],
+            },
+        ),
+        # --- Wiki folder management ---
+        types.Tool(
+            name="list_wiki_folders",
+            description="List direct child folders of a parent folder "
+            "(empty parent_id = root level).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "parent_id": {
+                        "type": "string",
+                        "description": "Parent folder id (empty = root)",
+                    },
+                },
+                "required": ["kb_id"],
+            },
+        ),
+        types.Tool(
+            name="create_wiki_folder",
+            description="Create a new empty wiki folder. \"write\" capability required.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "name": {"type": "string", "description": "Folder name"},
+                    "parent_id": {
+                        "type": "string",
+                        "description": "Parent folder id (empty = root)",
+                    },
+                },
+                "required": ["kb_id", "name"],
+            },
+        ),
+        types.Tool(
+            name="update_wiki_folder",
+            description="Rename and/or reparent a wiki folder. Set move_parent to "
+            "true to apply a new parent_id. \"write\" capability required.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "folder_id": {"type": "string", "description": "Folder to update"},
+                    "name": {"type": "string", "description": "New folder name"},
+                    "parent_id": {
+                        "type": "string",
+                        "description": "New parent folder id (empty = root)",
+                    },
+                    "move_parent": {
+                        "type": "boolean",
+                        "description": "Apply parent_id only when true",
+                    },
+                },
+                "required": ["kb_id", "folder_id"],
+            },
+        ),
+        types.Tool(
+            name="delete_wiki_folder",
+            description="Delete an empty wiki folder (no pages, no child folders). "
+            "\"write\" capability required.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "folder_id": {"type": "string", "description": "Folder to delete"},
+                },
+                "required": ["kb_id", "folder_id"],
+            },
+        ),
+        # --- Wiki graph / stats / index ---
+        types.Tool(
+            name="wiki_graph",
+            description="Return a slice of the wiki link graph for visualization. "
+            "mode=overview (default) returns the most-connected pages; mode=ego "
+            "returns the neighborhood of a center slug (center required in ego mode).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "mode": {
+                        "type": "string",
+                        "description": "overview (default) | ego",
+                        "default": "overview",
+                    },
+                    "center": {
+                        "type": "string",
+                        "description": "Center slug for ego mode",
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "description": "Ego BFS depth (1-3, default 1)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max nodes (default 500, max 2000)",
+                    },
+                    "types": {
+                        "type": "string",
+                        "description": "Comma-separated page_type allow-list",
+                    },
+                },
+                "required": ["kb_id"],
+            },
+        ),
+        types.Tool(
+            name="wiki_stats",
+            description="Return aggregate statistics about the wiki.",
+            inputSchema={
+                "type": "object",
+                "properties": {**_KB_ID_PROP},
+                "required": ["kb_id"],
+            },
+        ),
+        types.Tool(
+            name="wiki_index_view",
+            description="Get the wiki index view (cursor-paginated directory listing "
+            "of pages).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "limit": {"type": "integer", "default": 50},
+                    "types": {
+                        "type": "string",
+                        "description": "Comma-separated page_type allow-list",
+                    },
+                },
+                "required": ["kb_id"],
+            },
+        ),
+        # --- Wiki link maintenance ---
+        types.Tool(
+            name="wiki_rebuild_links",
+            description="Re-parse all pages and rebuild bidirectional link "
+            "references. \"write\" capability required.",
+            inputSchema={
+                "type": "object",
+                "properties": {**_KB_ID_PROP},
+                "required": ["kb_id"],
+            },
+        ),
+        types.Tool(
+            name="wiki_lint",
+            description="Run a comprehensive health check over the wiki.",
+            inputSchema={
+                "type": "object",
+                "properties": {**_KB_ID_PROP},
+                "required": ["kb_id"],
+            },
+        ),
+        types.Tool(
+            name="wiki_auto_fix",
+            description="Automatically fix fixable wiki issues (broken links, etc.). "
+            "\"write\" capability required.",
+            inputSchema={
+                "type": "object",
+                "properties": {**_KB_ID_PROP},
+                "required": ["kb_id"],
+            },
+        ),
+        # --- Wiki log / issues ---
+        types.Tool(
+            name="wiki_log",
+            description="Get a paginated feed of wiki operation events "
+            "(newest-first, cursor-paginated).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "limit": {"type": "integer", "default": 50},
+                    "cursor": {"type": "string", "description": "Opaque next_cursor"},
+                },
+                "required": ["kb_id"],
+            },
+        ),
+        types.Tool(
+            name="wiki_list_issues",
+            description="List issues flagged on wiki pages (optionally filtered by "
+            "slug or status).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "slug": {"type": "string", "description": "Filter by page slug"},
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by status (pending | ignored | resolved)",
+                    },
+                },
+                "required": ["kb_id"],
+            },
+        ),
+        types.Tool(
+            name="wiki_update_issue_status",
+            description="Set a wiki issue status: pending | ignored | resolved. "
+            "\"write\" capability required.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "issue_id": {"type": "string", "description": "Issue UUID"},
+                    "status": {
+                        "type": "string",
+                        "description": "pending | ignored | resolved",
+                    },
+                },
+                "required": ["kb_id", "issue_id", "status"],
+            },
+        ),
     ]
 
 
@@ -316,6 +634,101 @@ async def handle_call_tool(
             )
         elif name == "wiki_read_page":
             result = client.wiki_read_page(args["kb_id"], args["slug"])
+        elif name == "create_wiki_page":
+            result = client.create_wiki_page(
+                args["kb_id"],
+                {
+                    "slug": args["slug"],
+                    "title": args["title"],
+                    "content": args["content"],
+                    "summary": args.get("summary", ""),
+                    "page_type": args.get("page_type", "entity"),
+                    "aliases": args.get("aliases", []),
+                    "source_refs": args.get("source_refs", []),
+                    "folder_id": args.get("folder_id", ""),
+                },
+            )
+        elif name == "update_wiki_page":
+            # Only forward fields the caller actually passed.
+            page = {}
+            for f in (
+                "title", "summary", "content", "page_type",
+                "aliases", "source_refs", "folder_id",
+            ):
+                if f in args:
+                    page[f] = args[f]
+            result = client.update_wiki_page(
+                args["kb_id"], args["slug"], page
+            )
+        elif name == "delete_wiki_page":
+            result = client.delete_wiki_page(args["kb_id"], args["slug"])
+        elif name == "move_wiki_page":
+            result = client.move_wiki_page(
+                args["kb_id"], args["slug"], args.get("folder_id", "")
+            )
+        elif name == "list_wiki_pages":
+            result = client.list_wiki_pages(
+                args["kb_id"],
+                page=args.get("page", 1),
+                page_size=args.get("page_size", 20),
+            )
+        elif name == "list_wiki_folders":
+            result = client.list_wiki_folders(
+                args["kb_id"], args.get("parent_id", "")
+            )
+        elif name == "create_wiki_folder":
+            result = client.create_wiki_folder(
+                args["kb_id"], args["name"], args.get("parent_id", "")
+            )
+        elif name == "update_wiki_folder":
+            result = client.update_wiki_folder(
+                args["kb_id"],
+                args["folder_id"],
+                name=args.get("name"),
+                parent_id=args.get("parent_id"),
+                move_parent=args.get("move_parent", False),
+            )
+        elif name == "delete_wiki_folder":
+            result = client.delete_wiki_folder(args["kb_id"], args["folder_id"])
+        elif name == "wiki_graph":
+            result = client.wiki_graph(
+                args["kb_id"],
+                mode=args.get("mode", "overview"),
+                center=args.get("center", ""),
+                depth=args.get("depth"),
+                limit=args.get("limit"),
+                types=args.get("types", ""),
+            )
+        elif name == "wiki_stats":
+            result = client.wiki_stats(args["kb_id"])
+        elif name == "wiki_index_view":
+            result = client.wiki_index_view(
+                args["kb_id"],
+                limit=args.get("limit", 50),
+                types=args.get("types", ""),
+            )
+        elif name == "wiki_rebuild_links":
+            result = client.wiki_rebuild_links(args["kb_id"])
+        elif name == "wiki_lint":
+            result = client.wiki_lint(args["kb_id"])
+        elif name == "wiki_auto_fix":
+            result = client.wiki_auto_fix(args["kb_id"])
+        elif name == "wiki_log":
+            result = client.wiki_log(
+                args["kb_id"],
+                limit=args.get("limit", 50),
+                cursor=args.get("cursor", ""),
+            )
+        elif name == "wiki_list_issues":
+            result = client.wiki_list_issues(
+                args["kb_id"],
+                slug=args.get("slug", ""),
+                status=args.get("status", ""),
+            )
+        elif name == "wiki_update_issue_status":
+            result = client.wiki_update_issue_status(
+                args["kb_id"], args["issue_id"], args["status"]
+            )
         else:
             raise ValueError(f"Unknown tool: {name}")
 
