@@ -153,8 +153,25 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 	}
 
 	if existingUser != nil {
-		// 用户已存在，需生成 JWT token 供调用方使用
-		logger.Infof(ctx, "User already initialized: %s", req.UserID)
+		// 用户已存在，需生成 JWT token 供调用方使用。
+		// 先校验密码：密码不匹配时用本次请求的密码修正用户的密码，
+		// 确保已存在用户的密码始终与调用方传参一致，再继续后续逻辑。
+		passwordOk := bcrypt.CompareHashAndPassword([]byte(existingUser.PasswordHash), []byte(req.Password)) == nil
+		if !passwordOk {
+			logger.Infof(ctx, "Password mismatch for existing user %s, resetting password", req.UserID)
+			hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+			if hashErr != nil {
+				logger.Errorf(ctx, "Failed to re-hash password for existing user: %v", hashErr)
+				c.Error(errors.NewInternalServerError("密码处理失败"))
+				return
+			}
+			existingUser.PasswordHash = string(hashedPassword)
+			if updateErr := h.userService.UpdateUser(ctx, existingUser); updateErr != nil {
+				logger.Errorf(ctx, "Failed to update password for existing user: %v", updateErr)
+				c.Error(errors.NewInternalServerError("更新用户密码失败: " + updateErr.Error()))
+				return
+			}
+		}
 
 		var activeTenant *types.Tenant
 		if existingUser.TenantID > 0 {
