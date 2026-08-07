@@ -67,6 +67,7 @@ type InitializationHandler struct {
 	storageResolver  interfaces.StorageBackendResolver
 	userService      interfaces.UserService
 	tenantMemberSvc  interfaces.TenantMemberService
+	apiKeyService    interfaces.TenantAPIKeyService
 }
 
 // NewInitializationHandler 创建初始化处理器
@@ -83,6 +84,7 @@ func NewInitializationHandler(
 	storageResolver interfaces.StorageBackendResolver,
 	userService interfaces.UserService,
 	tenantMemberSvc interfaces.TenantMemberService,
+	apiKeyService interfaces.TenantAPIKeyService,
 ) *InitializationHandler {
 	return &InitializationHandler{
 		config:           config,
@@ -97,6 +99,7 @@ func NewInitializationHandler(
 		storageResolver:  storageResolver,
 		userService:      userService,
 		tenantMemberSvc:  tenantMemberSvc,
+		apiKeyService:    apiKeyService,
 	}
 }
 
@@ -116,6 +119,40 @@ type UserInitResponse struct {
 	Tenant        *types.Tenant        `json:"tenant,omitempty"`
 	KnowledgeBase *types.KnowledgeBase `json:"knowledge_base,omitempty"`
 	AlreadyInit   bool                 `json:"already_init"`
+}
+
+// mcpTenantAPIKeyName 是初始化流程默认创建的面向知识检索(RAG)的 tenant API key 名称。
+// 业务侧(如 MCP 服务)通过这个名字找到对应的凭据，所以保持稳定。
+const mcpTenantAPIKeyName = "DuowenWiki_Kb_MCP"
+
+// ensureTenantRetrieveAPIKey 确保指定 tenant 存在一个命名为 mcpTenantAPIKeyName 的
+// retrieve 能力 API key。若已存在则复用（幂等），否则创建。
+// 返回 API key 的明文 token（供调用方带回），创建/幂等失败返回错误。
+func (h *InitializationHandler) ensureTenantRetrieveAPIKey(ctx context.Context, tenantID uint64) (string, error) {
+	if h.apiKeyService == nil {
+		return "", nil
+	}
+	keys, err := h.apiKeyService.ListAPIKeys(ctx, tenantID)
+	if err != nil {
+		return "", err
+	}
+	for _, key := range keys {
+		if key != nil && key.Name == mcpTenantAPIKeyName && key.RevokedAt == nil {
+			return key.APIKey, nil
+		}
+	}
+	result, err := h.apiKeyService.CreateAPIKey(ctx, interfaces.TenantAPIKeyCreateRequest{
+		TenantID:         tenantID,
+		ScopeType:        types.APIKeyScopeTenant,
+		Name:             mcpTenantAPIKeyName,
+		FullAccess:       false,
+		KnowledgeBaseIDs: nil, // 空则允许访问所有知识库
+		Capabilities:     []string{"retrieve"},
+	})
+	if err != nil {
+		return "", err
+	}
+	return result.Token, nil
 }
 
 // UserInitialize godoc
@@ -324,8 +361,17 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 		return
 	}
 
+	// Step 6: 确保存在面向知识检索(RAG)的 tenant API key，并把明文 token 带回给调用方。
+	// 失败不阻断初始化（空间和用户已可用），仅记日志。
+	var mbRetrieveAPIKey string
+	if apiKeyToken, keyErr := h.ensureTenantRetrieveAPIKey(ctx, createdTenant.ID); keyErr != nil {
+		logger.Errorf(ctx, "Failed to ensure retrieve API key for tenant %d: %v", createdTenant.ID, keyErr)
+	} else {
+		mbRetrieveAPIKey = apiKeyToken
+	}
+
 	// 返回成功响应（含 JWT 令牌）
-	c.JSON(http.StatusOK, dto.NewAuthLoginResponse(&types.LoginResponse{
+	loginResp := dto.NewAuthLoginResponse(&types.LoginResponse{
 		Success:      true,
 		Message:      "用户初始化成功",
 		User:         user,
@@ -339,7 +385,21 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 		},
 		Token:        accessToken,
 		RefreshToken: refreshToken,
-	}))
+	})
+	if mbRetrieveAPIKey != "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success":       true,
+			"message":       "用户初始化成功",
+			"user":          loginResp.User,
+			"active_tenant": loginResp.ActiveTenant,
+			"memberships":   loginResp.Memberships,
+			"token":         loginResp.Token,
+			"refresh_token": loginResp.RefreshToken,
+			"api_key":       mbRetrieveAPIKey,
+		})
+	} else {
+		c.JSON(http.StatusOK, loginResp)
+	}
 }
 
 // KBModelConfigRequest 知识库模型配置请求（简化版，只传模型ID）
@@ -924,17 +984,17 @@ func validateNodeExtractConfig(ctx context.Context, req *InitializationRequest) 
 	return nil
 }
 
-	type modelDescriptor struct {
-		modelType     types.ModelType
-		name          string
-		source        types.ModelSource
-		description   string
-		baseURL       string
-		apiKey        string
-		dimension     int
-		displayName   string
-		interfaceType string
-	}
+type modelDescriptor struct {
+	modelType     types.ModelType
+	name          string
+	source        types.ModelSource
+	description   string
+	baseURL       string
+	apiKey        string
+	dimension     int
+	displayName   string
+	interfaceType string
+}
 
 func buildModelDescriptors(req *InitializationRequest) []modelDescriptor {
 	descriptors := []modelDescriptor{
@@ -1171,16 +1231,16 @@ func extractModelIDs(processedModels []*types.Model) (embeddingModelID, llmModel
 	return
 }
 
-	// SyncModelConfigItem 同步接口中单个模型的配置项
-	type SyncModelConfigItem struct {
-		Name        string `json:"name"        binding:"required"`
-		DisplayName string `json:"displayName"`
-		Source      string `json:"source"      binding:"required"`
-		BaseURL     string `json:"baseUrl"`
-		APIKey      string `json:"apiKey"`
-		Provider    string `json:"provider"`
-		Dimension   int    `json:"dimension"`
-	}
+// SyncModelConfigItem 同步接口中单个模型的配置项
+type SyncModelConfigItem struct {
+	Name        string `json:"name"        binding:"required"`
+	DisplayName string `json:"displayName"`
+	Source      string `json:"source"      binding:"required"`
+	BaseURL     string `json:"baseUrl"`
+	APIKey      string `json:"apiKey"`
+	Provider    string `json:"provider"`
+	Dimension   int    `json:"dimension"`
+}
 
 // SyncModelConfigRequest 工作空间模型配置同步请求
 type SyncModelConfigRequest struct {
