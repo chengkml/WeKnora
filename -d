@@ -1,0 +1,5 @@
+{"error":{"code":1010,"details":"EOF","message":"Invalid login parameters"},"success":false}--_curl_--
+>       "email": "admin@asiainfo.com"
+--_curl_--
+>       "password": "admin123"
+>     
