@@ -128,8 +128,14 @@ func (s *knowledgeService) DeleteKnowledge(ctx context.Context, id string) error
 			}
 			embeddingModel, err := s.modelService.GetEmbeddingModel(ctx, knowledge.EmbeddingModelID)
 			if err != nil {
-				logger.GetLogger(ctx).WithField("error", err).Errorf("DeleteKnowledge delete knowledge embedding failed")
-				return err
+				// The embedding model this knowledge was parsed with no longer exists
+				// (removed from settings, or the KB was reconfigured to a new model).
+				// Without the model we can't know its dimension to clean up vectors, so
+				// there is nothing meaningful to do here. Blocking the whole delete on
+				// a stale model reference would leave the document permanently undeletable.
+				logger.GetLogger(ctx).WithField("error", err).WithField("model_id", knowledge.EmbeddingModelID).
+					Warnf("DeleteKnowledge: embedding model not found, skipping vector store cleanup")
+				return nil
 			}
 			if err := retrieveEngine.DeleteByKnowledgeIDList(ctx, []string{knowledge.ID}, embeddingModel.GetDimensions(), knowledge.Type); err != nil {
 				logger.GetLogger(ctx).WithField("error", err).Errorf("DeleteKnowledge delete knowledge embedding failed")
@@ -526,8 +532,13 @@ func (s *knowledgeService) DeleteKnowledgeList(ctx context.Context, ids []string
 			}
 			embeddingModel, err := s.modelService.GetEmbeddingModel(ctx, key.EmbeddingModelID)
 			if err != nil {
-				logger.GetLogger(ctx).WithField("error", err).Errorf("DeleteKnowledge get embedding model failed")
-				return err
+				// The embedding model these knowledge entries were parsed with no
+				// longer exists. We can't know its dimension to clean up vectors, so
+				// skip this group instead of failing the whole delete and leaving the
+				// knowledge entries permanently stuck in a deleting/failed state.
+				logger.GetLogger(ctx).WithField("error", err).WithField("model_id", key.EmbeddingModelID).
+					Warnf("DeleteKnowledgeList: embedding model not found, skipping vector store cleanup for %d entries", len(knowledgeIDs))
+				continue
 			}
 			if err := retrieveEngine.DeleteByKnowledgeIDList(ctx, knowledgeIDs, embeddingModel.GetDimensions(), key.Type); err != nil {
 				logger.GetLogger(ctx).
