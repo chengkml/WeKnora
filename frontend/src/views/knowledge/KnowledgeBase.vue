@@ -1471,7 +1471,6 @@ const executeUploadBatch = async (
           MessagePlugin.error(errorMessage);
         }
       }
-      }
     } catch (error: any) {
       failCount++;
       if (totalCount === 1) {
