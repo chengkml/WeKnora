@@ -951,10 +951,25 @@ function localizedStatus(status: string): string {
   return localized === key ? status : localized
 }
 
+function localizedSubspan(name: string): string {
+  const key = `knowledgeStages.subspan.${name}`
+  const localized = t(key)
+  if (localized !== key) return localized
+
+  const bracketIdx = name.indexOf('[')
+  if (bracketIdx > 0) {
+    const baseKey = `knowledgeStages.subspan.${name.substring(0, bracketIdx)}`
+    const localizedBase = t(baseKey)
+    if (localizedBase !== baseKey) return localizedBase
+  }
+
+  return name
+}
+
 function rowLabel(row: FlatRow): string {
   if (row.isRoot) return t('knowledgeStages.root')
   if (row.isStage) return t(`knowledgeStages.stage.${row.node.name}`)
-  return row.node.name
+  return localizedSubspan(row.node.name)
 }
 
 function rowKindLabel(row: FlatRow): string {
