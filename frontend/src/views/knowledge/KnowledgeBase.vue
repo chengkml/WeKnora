@@ -192,6 +192,10 @@ const supportedFileTypes = computed<Set<string>>(() => {
       }
     }
   }
+  // zip 由后端原生批量解压导入（CreateKnowledgeFromZip），不经任何解析引擎，
+  // 因此不随引擎 FileTypes 变化，始终视为可上传类型。否则引擎列表加载完成后
+  // filterUploadFiles 会把它当作不支持类型拦截，导致 zip 无法上传。
+  available.add('zip')
   return available
 })
 
