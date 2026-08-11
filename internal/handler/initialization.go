@@ -259,7 +259,17 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 			return
 		}
 
-		c.JSON(http.StatusOK, dto.NewAuthLoginResponse(&types.LoginResponse{
+		// 确保存在面向知识检索(RAG)的 tenant API key
+		var mbRetrieveAPIKey string
+		if activeTenant != nil {
+			if apiKeyToken, keyErr := h.ensureTenantRetrieveAPIKey(ctx, activeTenant.ID); keyErr != nil {
+				logger.Errorf(ctx, "Failed to ensure retrieve API key for tenant %d: %v", activeTenant.ID, keyErr)
+			} else {
+				mbRetrieveAPIKey = apiKeyToken
+			}
+		}
+
+		loginResp := dto.NewAuthLoginResponse(&types.LoginResponse{
 			Success:      true,
 			Message:      "用户已初始化",
 			User:         existingUser,
@@ -267,7 +277,22 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 			Memberships:  []types.Membership{},
 			Token:        accessToken,
 			RefreshToken: refreshToken,
-		}))
+		})
+
+		if mbRetrieveAPIKey != "" {
+			c.JSON(http.StatusOK, gin.H{
+				"success":       true,
+				"message":       "用户已初始化",
+				"user":          loginResp.User,
+				"active_tenant": loginResp.ActiveTenant,
+				"memberships":   loginResp.Memberships,
+				"token":         loginResp.Token,
+				"refresh_token": loginResp.RefreshToken,
+				"api_key":       mbRetrieveAPIKey,
+			})
+		} else {
+			c.JSON(http.StatusOK, loginResp)
+		}
 		return
 	}
 
