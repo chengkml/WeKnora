@@ -333,3 +333,38 @@ class WeKnoraGatewayClient:
             f"/knowledgebase/{kb_id}/wiki/issues/{issue_id}/status",
             json={"status": status},
         )
+
+
+def probe_api_key(base_url: str, api_key: str, timeout: float = 10.0) -> bool:
+    """Validate an API key against the backend without raising.
+
+    Probes ``GET {base_url}/knowledge-bases`` (the retrieve-capability
+    endpoint the MCP gateway uses as its session-establishment gate):
+
+      * 200 → the key is valid and may establish a session
+      * 401 (invalid key) / 403 (valid but lacks retrieve capability) → rejected
+      * any other status / network error → rejected (fail closed)
+
+    Intended to be called from an async handler via ``asyncio.to_thread`` so
+    the synchronous ``requests`` call does not block the event loop.
+    """
+    url = f"{base_url.rstrip('/')}/knowledge-bases"
+    verify_ssl = os.getenv("WEKNORA_VERIFY_SSL", "true").lower() != "false"
+    try:
+        resp = requests.get(
+            url,
+            headers={"X-API-Key": api_key},
+            timeout=timeout,
+            verify=verify_ssl,
+        )
+    except RequestException as exc:
+        logger.warning("API key probe failed (%s) — fail closed", exc)
+        return False
+    if resp.status_code == 200:
+        return True
+    if resp.status_code in (401, 403):
+        return False
+    logger.warning(
+        "API key probe returned %s — fail closed", resp.status_code
+    )
+    return False

@@ -6,27 +6,30 @@ Single Starlette process exposing ONE MCP endpoint:
 
     /mcp            → Streamable HTTP（POST/GET/DELETE 单端点双向）
 
-Two-layer auth (both via headers, no query params):
+Single-layer auth (header-only):
 
-    Authorization: Bearer <MCP_GATEWAY_AUTH_TOKEN>   — gateway-level shared secret
-    X-API-Key: <weknora tenant api key>              — selects the WeKnora tenant
+    X-API-Key: <weknora tenant api key>              — authenticates + selects the WeKnora tenant
 
-The X-API-Key is bound to the MCP session via contextvars: the session's
-server-run task is created on the initialize request and inherits the
-context (task creation copies contextvars), so every tool call in that
-session resolves (or creates) a WeKnoraGatewayClient for that key — one
-gateway process serves every tenant. Knowledge-base scoping is explicit:
-KB tools take a required ``kb_id`` argument (call ``list_knowledge_bases`` first).
+The X-API-Key is pre-validated at session establishment (backend probe +
+short TTL cache) so invalid keys never reach the tool surface; data access
+is still enforced by the backend on every request. The key is bound to the
+MCP session via contextvars: the session's server-run task is created on the
+initialize request and inherits the context (task creation copies
+contextvars), so every tool call in that session resolves (or creates) a
+WeKnoraGatewayClient for that key — one gateway process serves every tenant.
+Knowledge-base scoping is explicit: KB tools take a required ``kb_id``
+argument (call ``list_knowledge_bases`` first).
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextvars
+import hashlib
 import logging
 import os
-import secrets
-import sys
 import threading
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -39,7 +42,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
-from knora_client import WeKnoraGatewayClient
+from knora_client import WeKnoraGatewayClient, probe_api_key
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -53,25 +56,6 @@ logger = logging.getLogger("mcp-gateway")
 # ---------------------------------------------------------------------------
 
 WEKNORA_BASE_URL = os.getenv("WEKNORA_BASE_URL", "http://localhost:8080/api/v1")
-
-# Gateway-level auth token.  When set, *every* request must carry
-# ``Authorization: Bearer <token>``.
-MCP_GATEWAY_AUTH_TOKEN = os.getenv("MCP_GATEWAY_AUTH_TOKEN", "").strip()
-
-
-def require_gateway_auth() -> str:
-    """Exit if the gateway auth token is missing (always required)."""
-    if not MCP_GATEWAY_AUTH_TOKEN:
-        logger.error(
-            "MCP_GATEWAY_AUTH_TOKEN is required. "
-            "Set a strong shared secret; clients must send "
-            "Authorization: Bearer <token>."
-        )
-        sys.exit(1)
-    logger.info(
-        "MCP_GATEWAY_AUTH_TOKEN is configured; all requests will be authenticated."
-    )
-    return MCP_GATEWAY_AUTH_TOKEN
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +89,48 @@ def current_client() -> WeKnoraGatewayClient:
             client = WeKnoraGatewayClient(WEKNORA_BASE_URL, api_key)
             _client_cache[api_key] = client
         return client
+
+
+# ---------------------------------------------------------------------------
+# Session-establishment key validation (backend probe + TTL cache)
+# ---------------------------------------------------------------------------
+
+# Cache keyed by sha256(api_key). A TTL miss only affects whether a NEW session
+# may be established; per-request data access is still enforced by the backend,
+# so a revoked key stops working immediately for existing sessions regardless
+# of this cache.
+_valid_cache: dict[str, tuple[bool, float]] = {}
+_valid_cache_lock = threading.Lock()
+_VALID_TTL = 300  # 秒
+
+
+async def _key_valid(api_key: str) -> bool:
+    """Return whether the API key may establish a session."""
+    key_id = hashlib.sha256(api_key.encode()).hexdigest()
+    now = time.time()
+    with _valid_cache_lock:
+        hit = _valid_cache.get(key_id)
+        if hit and hit[1] > now:
+            return hit[0]
+
+    # Probe off the event loop — knora_client is synchronous and a blocking
+    # request here would stall every session on this single-process gateway.
+    ok = await asyncio.to_thread(_probe_key, api_key)
+
+    with _valid_cache_lock:
+        _valid_cache[key_id] = (ok, now + _VALID_TTL)
+    if not ok:
+        logger.warning("Rejected session for invalid/insufficient API key")
+    return ok
+
+
+def _probe_key(api_key: str) -> bool:
+    """Validate a key against the backend (200=valid, 401/403=rejected).
+
+    Runs on a worker thread via :func:`_key_valid`; any non-200 result is
+    fail-closed so a briefly-unavailable backend never grants access.
+    """
+    return probe_api_key(WEKNORA_BASE_URL, api_key)
 
 
 # ---------------------------------------------------------------------------
@@ -762,19 +788,6 @@ def _headers(scope: dict) -> dict[str, str]:
     }
 
 
-async def _bearer_ok(scope: dict) -> bool:
-    """Check Bearer token against the gateway auth token."""
-    if not MCP_GATEWAY_AUTH_TOKEN:
-        return True
-    auth = _headers(scope).get("authorization", "")
-    if auth.lower().startswith("bearer "):
-        provided = auth[7:].strip()
-        return bool(provided) and secrets.compare_digest(
-            provided, MCP_GATEWAY_AUTH_TOKEN
-        )
-    return False
-
-
 def _api_key_from(scope: dict) -> str:
     """Read the WeKnora API key from the X-API-Key header (header-only)."""
     return _headers(scope).get("x-api-key", "").strip()
@@ -803,18 +816,21 @@ async def _send_401(send: Any) -> None:
 async def mcp_streamable(scope: dict, receive: Any, send: Any) -> None:
     """Handle ``/mcp`` — Streamable HTTP endpoint（POST/GET/DELETE）。
 
-    双层鉴权：Bearer 网关令牌 + X-API-Key 租户 key（每个请求都带）。
-    initialize 请求会创建会话的 server-run task（task 创建时复制当前
-    context），contextvar 绑定的租户 key 随之固定到该会话；后续请求经
-    memory stream 在同一 task 内执行，工具调用读到的即本会话 key。
+    单层鉴权：X-API-Key 租户 key（每个请求都带）。会话建立前先做前置验证
+    （后端探针 + TTL 缓存），无效或权限不足的 key 直接 401，进不了
+    initialize / tools/list，枚举面关闭。initialize 请求会创建会话的
+    server-run task（task 创建时复制当前 context），contextvar 绑定的租户
+    key 随之固定到该会话；后续请求经 memory stream 在同一 task 内执行，
+    工具调用读到的即本会话 key，且每次工具调用仍由后端实时强验。
     """
-    if not await _bearer_ok(scope):
-        await _send_401(send)
-        return
-
     api_key = _api_key_from(scope)
     if not api_key:
         await _send_json(send, 401, b'{"error":"missing X-API-Key header"}')
+        return
+
+    # 前置验证：无效 key 不允许建立会话
+    if not await _key_valid(api_key):
+        await _send_401(send)
         return
 
     token = _api_key_context.set(api_key)
@@ -841,8 +857,7 @@ async def health_check(request: Any) -> JSONResponse:
 
 @asynccontextmanager
 async def _lifespan(_app: Starlette) -> AsyncIterator[None]:
-    """Application lifespan: validate config + run session manager task group."""
-    require_gateway_auth()
+    """Application lifespan: run the session manager task group."""
     async with _session_manager.run():
         yield
 

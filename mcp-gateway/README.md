@@ -36,19 +36,23 @@ MCP Client ──Streamable──►│  weknora-mcp-gateway  │──REST─�
 > The legacy SSE transport (`GET /mcp/sse` + `POST /mcp/messages`) was removed
 > in 2026-07; clients must use `transport: "streamable-http"` against `/mcp`.
 
-## Authentication (two layers, both header-only)
+## Authentication (single layer, header-only)
 
-Every request must carry **both** headers:
+Every `/mcp` request must carry the caller's WeKnora tenant API key:
 
 ```
-Authorization: Bearer <MCP_GATEWAY_AUTH_TOKEN>   # gateway-level shared secret
-X-API-Key: <weknora tenant api key>              # selects the WeKnora tenant
+X-API-Key: <weknora tenant api key>              # authenticates + selects the WeKnora tenant
 ```
 
-- Missing/ wrong Bearer → `401 {"error":"unauthorized"}`
+- The gateway pre-validates the key at **session establishment** (backend
+  probe, short TTL cache) — invalid keys are rejected with
+  `401 {"error":"unauthorized"}` before any `initialize` / `tools/list`.
 - Missing `X-API-Key` on any `/mcp` request → `401 {"error":"missing X-API-Key header"}`
-- The tenant API key needs at least the `retrieve` capability for read tools;
+- Data access is still enforced by the WeKnora backend on **every** request:
+  the tenant API key needs at least the `retrieve` capability for read tools;
   Wiki **write** tools additionally require "write" / owner capability on the KB.
+- The former gateway-level `Authorization: Bearer <MCP_GATEWAY_AUTH_TOKEN>`
+  shared secret has been removed — clients must send **only** `X-API-Key`.
 
 ## Tools
 
@@ -116,11 +120,12 @@ the session API key to have "write" / owner capability on the KB
 | Env var | Required | Default | Description |
 |---|---|---|---|
 | `WEKNORA_BASE_URL` | ✅ | `http://localhost:8080/api/v1` | Go backend URL |
-| `MCP_GATEWAY_AUTH_TOKEN` | ✅ | — | Shared secret for MCP clients |
 | `MCP_HOST` | ❌ | `0.0.0.0` | Gateway listen address |
 | `MCP_PORT` | ❌ | `8000` | Gateway listen port |
 | `WEKNORA_VERIFY_SSL` | ❌ | `true` | Set to `false` to disable SSL verification |
 
+> `MCP_GATEWAY_AUTH_TOKEN` was removed: the gateway no longer uses a shared
+> Bearer secret — clients authenticate with `X-API-Key` only.
 > `WEKNORA_API_KEY` was removed: the gateway no longer holds a global key.
 
 ## Build & Run
@@ -137,7 +142,6 @@ unchanged (`python server.py`).
 ```bash
 pip install -r requirements.txt
 WEKNORA_BASE_URL=http://localhost:8080/api/v1 \
-  MCP_GATEWAY_AUTH_TOKEN=dev-secret \
   python server.py
 ```
 
@@ -150,7 +154,6 @@ WEKNORA_BASE_URL=http://localhost:8080/api/v1 \
       "url": "http://gateway:8000/mcp",
       "transport": "streamable-http",
       "headers": {
-        "Authorization": "Bearer <gateway-token>",
         "X-API-Key": "<tenant api key>"
       }
     }

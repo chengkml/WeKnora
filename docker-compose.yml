@@ -1015,9 +1015,7 @@ services:
       - "${MCP_GATEWAY_PORT:-8001}:8000"
     environment:
       - WEKNORA_BASE_URL=http://app:8080/api/v1
-      - WEKNORA_API_KEY=${WEKNORA_API_KEY:-}
-      # MCP 客户端认证用的共享密钥（Authorization: Bearer）；dev 默认值仅用于本地开发
-      - MCP_GATEWAY_AUTH_TOKEN=${MCP_GATEWAY_AUTH_TOKEN:-dev-mcp-gateway-token}
+      # 单层认证：客户端携带 X-API-Key（租户 API key），网关在会话建立时向后端探针验证。
       - WEKNORA_VERIFY_SSL=${WEKNORA_VERIFY_SSL:-true}
     depends_on:
       app:
