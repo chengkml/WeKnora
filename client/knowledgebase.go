@@ -278,6 +278,61 @@ func (c *Client) CreateKnowledgeBase(ctx context.Context, knowledgeBase *Knowled
 	return &response.Data, nil
 }
 
+// CreateKnowledgeBaseModelConfig is one model configuration block inside
+// CreateKnowledgeBaseWithModelsRequest. Fields mirror the model creation
+// request (POST /api/v1/models).
+type CreateKnowledgeBaseModelConfig struct {
+	Name           string      `json:"name"`
+	DisplayName    string      `json:"display_name"`
+	Type           ModelType   `json:"type"`
+	Source         ModelSource `json:"source"`
+	Provider       string      `json:"provider"`
+	Description    string      `json:"description"`
+	BaseURL        string      `json:"base_url"`
+	APIKey         string      `json:"api_key"`
+	InterfaceType  string      `json:"interface_type"`
+	Dimension      int         `json:"dimension"`
+	SupportsVision bool        `json:"supports_vision"`
+}
+
+// CreateKnowledgeBaseWithModelsRequest defines the request body for the
+// combined create-knowledge-base-with-models endpoint.
+type CreateKnowledgeBaseWithModelsRequest struct {
+	// KnowledgeBase carries the knowledge base parameters.
+	KnowledgeBase *KnowledgeBase `json:"knowledge_base"`
+	// Models carries the model configurations to create/reuse and bind.
+	Models []CreateKnowledgeBaseModelConfig `json:"models"`
+}
+
+// CreateKnowledgeBaseWithModelsResponse is the data payload returned by the
+// combined endpoint: the created knowledge base plus the bound models.
+type CreateKnowledgeBaseWithModelsResponse struct {
+	KnowledgeBase KnowledgeBase `json:"knowledge_base"`
+	Models        []Model       `json:"models"`
+}
+
+// CreateKnowledgeBaseWithModels creates a knowledge base and creates or
+// reuses the workspace models described by the request, then binds them.
+func (c *Client) CreateKnowledgeBaseWithModels(
+	ctx context.Context,
+	request *CreateKnowledgeBaseWithModelsRequest,
+) (*CreateKnowledgeBaseWithModelsResponse, error) {
+	resp, err := c.doRequest(ctx, http.MethodPost, "/api/v1/knowledge-bases/with-models", request, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response struct {
+		Success bool                                  `json:"success"`
+		Data    CreateKnowledgeBaseWithModelsResponse `json:"data"`
+	}
+	if err := parseResponse(resp, &response); err != nil {
+		return nil, err
+	}
+
+	return &response.Data, nil
+}
+
 // GetKnowledgeBase gets a knowledge base
 func (c *Client) GetKnowledgeBase(ctx context.Context, knowledgeBaseID string) (*KnowledgeBase, error) {
 	path := fmt.Sprintf("/api/v1/knowledge-bases/%s", knowledgeBaseID)

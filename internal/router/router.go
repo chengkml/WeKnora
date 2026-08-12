@@ -457,6 +457,11 @@ func RegisterKnowledgeBaseRoutes(r *gin.RouterGroup, handler *handler.KnowledgeB
 	{
 		// 创建知识库 — JWT Contributor+；API key 需 manage_kbs 或 full-access。
 		kbManagement.POST("", g.Contributor(), handler.CreateKnowledgeBase)
+		// 按模型配置创建知识库（自动创建/复用工作空间模型并绑定）— 涉及创建模型，
+		// JWT Admin+（与 POST /models 同档）；API key 因同时创建模型与知识库，
+		// 限定 full-access，避免 scoped key 通过本接口越权创建模型。
+		kbManagement.With(apiKeyFullAccess()).
+			POST("/with-models", g.Admin(), handler.CreateKnowledgeBaseWithModels)
 		// 获取知识库列表 — Viewer+ for JWT callers; retrieve-capable API keys pass via the gate.
 		kb.GET("", g.Viewer(), handler.ListKnowledgeBases)
 		// 获取知识库详情 — Viewer+ 且对 KB 有 read 权限
