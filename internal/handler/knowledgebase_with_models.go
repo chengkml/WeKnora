@@ -99,19 +99,6 @@ func (h *KnowledgeBaseHandler) CreateKnowledgeBaseWithModels(c *gin.Context) {
 		return
 	}
 
-	// SSRF validation for every model BaseURL
-	for i := range req.Models {
-		baseURL := req.Models[i].BaseURL
-		if baseURL == "" {
-			continue
-		}
-		if err := secutils.ValidateURLForSSRF(baseURL); err != nil {
-			logger.Warnf(ctx, "SSRF validation failed for model BaseURL: %v", err)
-			c.Error(apperrors.NewBadRequestError(secutils.FormatSSRFError("Base URL", baseURL, err)))
-			return
-		}
-	}
-
 	// List existing workspace models once and reuse them by dedup key
 	// (tenant + type + provider + name) instead of creating duplicates.
 	existingModels, err := h.modelService.ListModels(ctx)

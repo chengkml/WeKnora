@@ -84,15 +84,6 @@ func (h *ModelHandler) CreateModel(c *gin.Context) {
 	logger.Infof(ctx, "Creating model, Tenant ID: %d, Model name: %s, Model type: %s",
 		tenantID, secutils.SanitizeForLog(req.Name), secutils.SanitizeForLog(string(req.Type)))
 
-	// SSRF validation for model BaseURL
-	if req.Parameters.BaseURL != "" {
-		if err := secutils.ValidateURLForSSRF(req.Parameters.BaseURL); err != nil {
-			logger.Warnf(ctx, "SSRF validation failed for model BaseURL: %v", err)
-			c.Error(errors.NewBadRequestError(secutils.FormatSSRFError("Base URL", req.Parameters.BaseURL, err)))
-			return
-		}
-	}
-
 	model := &types.Model{
 		TenantID:    tenantID,
 		Name:        secutils.SanitizeForLog(req.Name),
