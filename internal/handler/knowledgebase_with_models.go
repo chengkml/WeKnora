@@ -155,6 +155,7 @@ func (h *KnowledgeBaseHandler) CreateKnowledgeBaseWithModels(c *gin.Context) {
 			c.Error(apperrors.NewInternalServerError(err.Error()))
 			return
 		}
+		logger.Infof(ctx, "Model created: type=%s name=%s id=%s", model.Type, model.Name, model.ID)
 		createdModels = append(createdModels, model)
 		boundModels = append(boundModels, model)
 	}
@@ -162,16 +163,21 @@ func (h *KnowledgeBaseHandler) CreateKnowledgeBaseWithModels(c *gin.Context) {
 	// Bind the models to the knowledge base by type, mirroring
 	// initialization.go's applyKnowledgeBaseInitialization.
 	for _, m := range boundModels {
+		logger.Infof(ctx, "Processing model for binding: type=%s name=%s id=%s", m.Type, m.Name, m.ID)
 		switch m.Type {
 		case types.ModelTypeEmbedding:
 			kb.EmbeddingModelID = m.ID
+			logger.Infof(ctx, "Bound embedding model: id=%s", m.ID)
 		case types.ModelTypeKnowledgeQA:
 			kb.SummaryModelID = m.ID
+			logger.Infof(ctx, "Bound summary model: id=%s", m.ID)
 		case types.ModelTypeVLLM:
 			kb.VLMConfig.Enabled = true
 			kb.VLMConfig.ModelID = m.ID
+			logger.Infof(ctx, "Bound VLM model: id=%s", m.ID)
 		}
 	}
+	logger.Infof(ctx, "Knowledge base model binding complete: embedding_model_id=%s summary_model_id=%s", kb.EmbeddingModelID, kb.SummaryModelID)
 
 	logger.Infof(ctx, "Creating knowledge base with models, name: %s", secutils.SanitizeForLog(kb.Name))
 	createdKB, err := h.service.CreateKnowledgeBase(ctx, &kb)
