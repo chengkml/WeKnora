@@ -81,6 +81,7 @@ jobs:
           cache-from: type=gha,scope=weknora-app-${{ matrix.arch_tag }}
           cache-to: type=gha,mode=max,scope=weknora-app-${{ matrix.arch_tag }}
           sbom: false
+          provenance: false
 
   # ===================================================================
   # Docreader: 需要本地 protoc 安装，用原生 runner 各自构建
@@ -126,6 +127,7 @@ jobs:
           cache-from: type=gha,scope=weknora-docreader-${{ matrix.arch_tag }}
           cache-to: type=gha,mode=max,scope=weknora-docreader-${{ matrix.arch_tag }}
           sbom: false
+          provenance: false
 
   # ===================================================================
   # UI: multi-platform build in one shot (nginx + static files, fast)
@@ -181,6 +183,7 @@ jobs:
           cache-from: type=gha,scope=weknora-ui
           cache-to: type=gha,mode=max,scope=weknora-ui
           sbom: false
+          provenance: false
 
   # ===================================================================
   # MCP Gateway: Python 项目，多架构并行构建
@@ -226,6 +229,7 @@ jobs:
           cache-from: type=gha,scope=weknora-mcp-gateway-${{ matrix.arch_tag }}
           cache-to: type=gha,mode=max,scope=weknora-mcp-gateway-${{ matrix.arch_tag }}
           sbom: false
+          provenance: false
 
   # ===================================================================
   # Manifest: 合并多架构镜像到 latest 标签
