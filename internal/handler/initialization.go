@@ -109,6 +109,10 @@ type UserInitRequest struct {
 	Username string `json:"username" binding:"required"`
 	Email    string `json:"email"    binding:"required"`
 	Password string `json:"password" binding:"required"`
+	// Models 为可选的模型配置块（结构同 with-models）。仅在「用户无知识库、
+	// 需新建默认个人知识库」时消费：upsert 到工作空间并绑定，默认库创建即可用；
+	// 已有知识库的重复调用完全忽略该字段（幂等，零副作用）。
+	Models []CreateKnowledgeBaseModelConfig `json:"models,omitempty"`
 }
 
 // UserInitResponse 用户初始化响应
@@ -153,6 +157,43 @@ func (h *InitializationHandler) ensureTenantRetrieveAPIKey(ctx context.Context, 
 		return "", err
 	}
 	return result.Token, nil
+}
+
+// upsertAndBindInitModels 把 user/init 携带的模型配置 upsert 到工作空间并绑定
+// 到待创建的知识库。cfgs 为空时原样返回（兼容未携带模型的旧调用方）。
+// ctx 须已注入租户上下文（kbCtx）。
+func (h *InitializationHandler) upsertAndBindInitModels(
+	ctx context.Context,
+	kb *types.KnowledgeBase,
+	tenantID uint64,
+	cfgs []CreateKnowledgeBaseModelConfig,
+) error {
+	if len(cfgs) == 0 {
+		return nil
+	}
+	existingModels, err := h.modelService.ListModels(ctx)
+	if err != nil {
+		return err
+	}
+	var bound []*types.Model
+	for i := range cfgs {
+		model := modelFromConfig(cfgs[i], tenantID)
+		if model.Source == types.ModelSourceLocal {
+			return fmt.Errorf(
+				"local (Ollama) models are downloaded asynchronously and cannot be bound immediately; " +
+					"please pre-create the local model via POST /api/v1/models or use a remote model")
+		}
+		b, created, err := upsertWorkspaceModel(ctx, h.modelService, existingModels, model)
+		if err != nil {
+			return err
+		}
+		if created {
+			existingModels = append(existingModels, b)
+		}
+		bound = append(bound, b)
+	}
+	bindModelsToKnowledgeBase(kb, bound)
+	return nil
 }
 
 // UserInitialize godoc
@@ -246,6 +287,11 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 					},
 					CreatedAt: time.Now(),
 					UpdatedAt: time.Now(),
+				}
+				if err := h.upsertAndBindInitModels(kbCtx, kb, activeTenant.ID, req.Models); err != nil {
+					logger.Errorf(ctx, "Failed to upsert init models for user %s: %v", req.UserID, err)
+					c.Error(errors.NewInternalServerError("初始化模型配置失败: " + err.Error()))
+					return
 				}
 				if _, createErr := h.kbService.CreateKnowledgeBase(kbCtx, kb); createErr != nil {
 					logger.Warnf(ctx, "Failed to create personal knowledge base for existing user: %v", createErr)
@@ -368,6 +414,12 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 		},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
+	}
+
+	if err := h.upsertAndBindInitModels(kbCtx, kb, createdTenant.ID, req.Models); err != nil {
+		logger.Errorf(ctx, "Failed to upsert init models for user %s: %v", req.UserID, err)
+		c.Error(errors.NewInternalServerError("初始化模型配置失败: " + err.Error()))
+		return
 	}
 
 	createdKB, err := h.kbService.CreateKnowledgeBase(kbCtx, kb)
@@ -623,6 +675,10 @@ func (h *InitializationHandler) UpdateKBConfig(c *gin.Context) {
 
 	// 更新知识库的模型ID
 	kb.SummaryModelID = req.LLMModelID
+	// synthesis 与对话模型显式同值（与 with-models 绑定策略一致，wiki 合成永远跟随对话模型）
+	if kb.WikiConfig != nil {
+		kb.WikiConfig.SynthesisModelID = req.LLMModelID
+	}
 	if req.EmbeddingModelID != "" {
 		kb.EmbeddingModelID = req.EmbeddingModelID
 	}

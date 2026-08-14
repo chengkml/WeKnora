@@ -113,6 +113,68 @@ func (h *ModelHandler) CreateModel(c *gin.Context) {
 	})
 }
 
+// UpsertModel godoc
+// @Summary      创建或更新工作空间模型
+// @Description  按去重键 (type + provider + name) 在当前工作空间 upsert 模型：不存在则创建；存在但参数漂移（base_url/interface_type/dimension/supports_vision）则更新；api_key 非空且不同则轮换凭证。仅支持 remote 模型。请求体与 with-models 的 models[] 元素同构（CreateKnowledgeBaseModelConfig 平铺结构）。
+// @Tags         模型管理
+// @Accept       json
+// @Produce      json
+// @Param        request  body      CreateKnowledgeBaseModelConfig  true  "模型配置"
+// @Success      200      {object}  map[string]interface{}  "复用或更新的模型（created=false）"
+// @Success      201      {object}  map[string]interface{}  "新建的模型（created=true）"
+// @Failure      400      {object}  errors.AppError         "请求参数错误"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /models/upsert [post]
+func (h *ModelHandler) UpsertModel(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var cfg CreateKnowledgeBaseModelConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		logger.Error(ctx, "Failed to parse request parameters", err)
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		logger.Error(ctx, "Tenant ID is empty")
+		c.Error(errors.NewBadRequestError("Workspace ID cannot be empty"))
+		return
+	}
+	if cfg.Source == types.ModelSourceLocal {
+		c.Error(errors.NewBadRequestError(
+			"local (Ollama) models are downloaded asynchronously; please use POST /api/v1/models"))
+		return
+	}
+
+	model := modelFromConfig(cfg, tenantID)
+
+	existingModels, err := h.service.ListModels(ctx)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	bound, created, err := upsertWorkspaceModel(ctx, h.service, existingModels, model)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	c.JSON(status, gin.H{
+		"success": true,
+		"data": gin.H{
+			"model":   dto.NewModelResponse(ctx, bound),
+			"created": created,
+		},
+	})
+}
+
 // GetModel godoc
 // @Summary      获取模型详情
 // @Description  根据ID获取模型详情

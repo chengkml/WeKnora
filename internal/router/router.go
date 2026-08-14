@@ -789,6 +789,8 @@ func RegisterModelRoutes(
 		models.GET("/providers", g.Viewer(), handler.ListModelProviders)
 		// 创建模型 — Admin+
 		models.POST("", g.Admin(), handler.CreateModel)
+		// 创建或更新模型（按 type+provider+name 去重 upsert）— Admin+（与 POST /models 同档）
+		models.POST("/upsert", g.Admin(), handler.UpsertModel)
 		// 获取模型列表 — Viewer+
 		models.GET("", g.Viewer(), handler.ListModels)
 		// 调试已保存模型会发起真实上游调用并产生费用 — Admin+

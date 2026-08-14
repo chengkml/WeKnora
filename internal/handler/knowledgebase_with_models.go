@@ -18,10 +18,13 @@ import (
 // create-knowledge-base-with-models endpoint. It carries the knowledge base
 // parameters plus the model configurations to bind to the new knowledge base.
 //
-// Model handling follows the "create if missing, reuse if present" policy:
-// each model config is matched against the caller's workspace by the dedup
-// key (tenant + type + provider + name); a match reuses the existing model,
-// otherwise the model is created in the workspace first and then bound.
+// Model handling follows an upsert policy: each model config is matched
+// against the caller's workspace by the dedup key (tenant + type + provider +
+// name); a miss creates the model, a hit with drifted parameters (base_url /
+// interface_type / dimension / supports_vision) updates it in place, and a
+// non-empty changed api_key is rotated via the credentials subresource.
+// Binding a KnowledgeQA model also writes WikiConfig.SynthesisModelID with
+// the same model ID (wiki synthesis always follows the chat model).
 type CreateKnowledgeBaseWithModelsRequest struct {
 	// KnowledgeBase carries the knowledge base parameters
 	// (name, type, chunking_config, etc.).
@@ -112,30 +115,7 @@ func (h *KnowledgeBaseHandler) CreateKnowledgeBaseWithModels(c *gin.Context) {
 	var boundModels []*types.Model
 	for i := range req.Models {
 		cfg := req.Models[i]
-		model := &types.Model{
-			TenantID:    tenantID,
-			Name:        secutils.SanitizeForLog(cfg.Name),
-			DisplayName: secutils.SanitizeForLog(cfg.DisplayName),
-			Type:        types.ModelType(secutils.SanitizeForLog(string(cfg.Type))),
-			Source:      cfg.Source,
-			Description: secutils.SanitizeForLog(cfg.Description),
-			Parameters: types.ModelParameters{
-				BaseURL:             cfg.BaseURL,
-				APIKey:              cfg.APIKey,
-				InterfaceType:       cfg.InterfaceType,
-				Provider:            cfg.Provider,
-				SupportsVision:      cfg.SupportsVision,
-				EmbeddingParameters: types.EmbeddingParameters{
-					Dimension: cfg.Dimension,
-				},
-			},
-		}
-
-		existing := findModelByDedupKey(existingModels, model)
-		if existing != nil {
-			boundModels = append(boundModels, existing)
-			continue
-		}
+		model := modelFromConfig(cfg, tenantID)
 
 		// Local (Ollama) models download asynchronously; binding a
 		// downloading model to a knowledge base would leave it unusable.
@@ -149,34 +129,27 @@ func (h *KnowledgeBaseHandler) CreateKnowledgeBaseWithModels(c *gin.Context) {
 			return
 		}
 
-		if err := h.modelService.CreateModel(ctx, model); err != nil {
+		// upsert：无则创建，有则比对参数漂移并更新（含 api_key 轮换）
+		bound, created, err := upsertWorkspaceModel(ctx, h.modelService, existingModels, model)
+		if err != nil {
 			logger.ErrorWithFields(ctx, err, nil)
 			rollbackCreatedModels(ctx, h.modelService, createdModels)
 			c.Error(apperrors.NewInternalServerError(err.Error()))
 			return
 		}
-		logger.Infof(ctx, "Model created: type=%s name=%s id=%s", model.Type, model.Name, model.ID)
-		createdModels = append(createdModels, model)
-		boundModels = append(boundModels, model)
+		if created {
+			createdModels = append(createdModels, bound)
+			existingModels = append(existingModels, bound)
+		}
+		boundModels = append(boundModels, bound)
 	}
 
 	// Bind the models to the knowledge base by type, mirroring
 	// initialization.go's applyKnowledgeBaseInitialization.
 	for _, m := range boundModels {
 		logger.Infof(ctx, "Processing model for binding: type=%s name=%s id=%s", m.Type, m.Name, m.ID)
-		switch m.Type {
-		case types.ModelTypeEmbedding:
-			kb.EmbeddingModelID = m.ID
-			logger.Infof(ctx, "Bound embedding model: id=%s", m.ID)
-		case types.ModelTypeKnowledgeQA:
-			kb.SummaryModelID = m.ID
-			logger.Infof(ctx, "Bound summary model: id=%s", m.ID)
-		case types.ModelTypeVLLM:
-			kb.VLMConfig.Enabled = true
-			kb.VLMConfig.ModelID = m.ID
-			logger.Infof(ctx, "Bound VLM model: id=%s", m.ID)
-		}
 	}
+	bindModelsToKnowledgeBase(&kb, boundModels)
 	logger.Infof(ctx, "Knowledge base model binding complete: embedding_model_id=%s summary_model_id=%s", kb.EmbeddingModelID, kb.SummaryModelID)
 
 	logger.Infof(ctx, "Creating knowledge base with models, name: %s", secutils.SanitizeForLog(kb.Name))
