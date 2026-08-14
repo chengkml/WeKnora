@@ -67,3 +67,9 @@ password:
 
 # WeChat Mini Program local/private configuration
 miniprogram/project.private.config.json
+
+# 本地开发手册（非上游文档）
+docs/开发态启动手册.md
+
+# 本地开发基础设施
+docker-compose.local.yml
