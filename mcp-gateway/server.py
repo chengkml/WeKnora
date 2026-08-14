@@ -318,7 +318,13 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "folder_id": {
                         "type": "string",
-                        "description": "Folder to file the page under (empty = root)",
+                        "description": "Primary folder to file the page under (empty = root)",
+                    },
+                    "folder_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Full set of folders to mount the page under "
+                        "(overrides folder_id; must include the primary folder)",
                     },
                 },
                 "required": ["kb_id", "slug", "title", "content"],
@@ -352,7 +358,13 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "folder_id": {
                         "type": "string",
-                        "description": "Folder to file the page under (empty = root)",
+                        "description": "Primary folder to file the page under (empty = root)",
+                    },
+                    "folder_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Full set of folders to mount the page under "
+                        "(overrides folder_id; must include the primary folder)",
                     },
                 },
                 "required": ["kb_id", "slug"],
@@ -661,25 +673,25 @@ async def handle_call_tool(
         elif name == "wiki_read_page":
             result = client.wiki_read_page(args["kb_id"], args["slug"])
         elif name == "create_wiki_page":
-            result = client.create_wiki_page(
-                args["kb_id"],
-                {
-                    "slug": args["slug"],
-                    "title": args["title"],
-                    "content": args["content"],
-                    "summary": args.get("summary", ""),
-                    "page_type": args.get("page_type", "entity"),
-                    "aliases": args.get("aliases", []),
-                    "source_refs": args.get("source_refs", []),
-                    "folder_id": args.get("folder_id", ""),
-                },
-            )
+            page = {
+                "slug": args["slug"],
+                "title": args["title"],
+                "content": args["content"],
+                "summary": args.get("summary", ""),
+                "page_type": args.get("page_type", "entity"),
+                "aliases": args.get("aliases", []),
+                "source_refs": args.get("source_refs", []),
+            }
+            if "folder_ids" in args:
+                page["folder_ids"] = args["folder_ids"]
+            page["folder_id"] = args.get("folder_id", "")
+            result = client.create_wiki_page(args["kb_id"], page)
         elif name == "update_wiki_page":
             # Only forward fields the caller actually passed.
             page = {}
             for f in (
                 "title", "summary", "content", "page_type",
-                "aliases", "source_refs", "folder_id",
+                "aliases", "source_refs", "folder_id", "folder_ids",
             ):
                 if f in args:
                     page[f] = args[f]

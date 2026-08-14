@@ -78,8 +78,8 @@ the session API key to have "write" / owner capability on the KB
 
 | Tool | Access | Required args | Description |
 |---|---|---|---|
-| `create_wiki_page` | write | `kb_id`, `slug`, `title`, `content` | Create a wiki page (also accepts `summary`, `page_type`, `aliases`, `source_refs`, `folder_id`) |
-| `update_wiki_page` | write | `kb_id`, `slug` | Update an existing wiki page by slug (pass only fields to change) |
+| `create_wiki_page` | write | `kb_id`, `slug`, `title`, `content` | Create a wiki page (also accepts `summary`, `page_type`, `aliases`, `source_refs`, `folder_id`, `folder_ids`) |
+| `update_wiki_page` | write | `kb_id`, `slug` | Update an existing wiki page by slug (pass only fields to change; supports `folder_ids` array) |
 | `delete_wiki_page` | write | `kb_id`, `slug` | Soft-delete a wiki page |
 | `move_wiki_page` | write | `kb_id`, `slug` | Move a page into a folder (`folder_id`, empty = root) |
 | `list_wiki_pages` | read | `kb_id` | Paginated list of wiki pages |

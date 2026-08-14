@@ -1062,10 +1062,37 @@ func (r *wikiPageRepository) ListRecentForSuggestions(
 	return pages, nil
 }
 
-// Delete soft-deletes a wiki page by knowledge base ID and slug
+// deletePageFolderAssociations hard-deletes every wiki_page_folders row pointing
+// at the given page, so a soft-deleted page leaves no orphaned membership rows
+// behind. wiki_page_folders has no soft-delete column and no FK ON DELETE
+// CASCADE, so the cleanup must be explicit and idempotent (deleting a page with
+// no associations is a no-op).
+func (r *wikiPageRepository) deletePageFolderAssociations(ctx context.Context, pageID string) error {
+	if pageID == "" {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Where("page_id = ?", pageID).
+		Delete(&types.WikiPageFolder{}).Error
+}
+
+// Delete soft-deletes a wiki page by knowledge base ID and slug, cleaning up its
+// wiki_page_folders membership rows in the same operation.
 func (r *wikiPageRepository) Delete(ctx context.Context, kbID string, slug string) error {
-	result := r.db.WithContext(ctx).
+	var page types.WikiPage
+	if err := r.db.WithContext(ctx).
 		Where("knowledge_base_id = ? AND slug = ?", kbID, slug).
+		First(&page).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrWikiPageNotFound
+		}
+		return err
+	}
+	if err := r.deletePageFolderAssociations(ctx, page.ID); err != nil {
+		return err
+	}
+	result := r.db.WithContext(ctx).
+		Where("id = ?", page.ID).
 		Delete(&types.WikiPage{})
 	if result.Error != nil {
 		return result.Error
@@ -1076,8 +1103,12 @@ func (r *wikiPageRepository) Delete(ctx context.Context, kbID string, slug strin
 	return nil
 }
 
-// DeleteByID soft-deletes a wiki page by ID
+// DeleteByID soft-deletes a wiki page by ID, cleaning up its wiki_page_folders
+// membership rows in the same operation.
 func (r *wikiPageRepository) DeleteByID(ctx context.Context, id string) error {
+	if err := r.deletePageFolderAssociations(ctx, id); err != nil {
+		return err
+	}
 	result := r.db.WithContext(ctx).
 		Where("id = ?", id).
 		Delete(&types.WikiPage{})
