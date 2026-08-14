@@ -190,9 +190,11 @@ type WikiPageService interface {
 	// folder id and the canonical (cleaned) path. An empty/blank path resolves
 	// to the root ("").
 	FindOrCreateFolderPath(ctx context.Context, kbID string, tenantID uint64, path []string) (string, []string, error)
-	// MovePage relocates a page into folderID ("" = root), recomputing its
-	// cached category path. Returns the updated page.
-	MovePage(ctx context.Context, kbID string, slug string, folderID string) (*types.WikiPage, error)
+	// MovePage relocates a page into a set of folders ([] = wiki root),
+	// recomputing its cached category path from the primary (first) folder.
+	// The given folder ids REPLACE the page's whole membership set. Returns the
+	// updated page.
+	MovePage(ctx context.Context, kbID string, slug string, folderIDs []string) (*types.WikiPage, error)
 
 	// CountByType returns page counts grouped by type for a knowledge
 	// base. Re-exposed at the service layer so the index intro
@@ -327,15 +329,17 @@ type WikiPageRepository interface {
 	// DeleteFolder soft-deletes a folder by id.
 	DeleteFolder(ctx context.Context, kbID string, id string) error
 	// CountPagesInFolder returns the number of live (non-archived) pages
-	// directly in the folder (folder_id = id).
+	// directly in the folder (via the wiki_page_folders join table).
 	CountPagesInFolder(ctx context.Context, kbID string, folderID string) (int64, error)
-	// CountPagesByFolder returns live (non-archived) page counts grouped by
-	// folder_id. When pageTypes is non-empty the count is restricted to those
-	// page types; otherwise all types are counted. Pages at the wiki root carry
-	// the empty-string key.
-	CountPagesByFolder(ctx context.Context, kbID string, pageTypes []string) (map[string]int64, error)
-	// ListPagesByFolderIDs returns all pages whose folder_id is in the set.
-	// Used to recompute cached paths when a folder subtree is moved/renamed.
+	// ListPagesGroupedByFolder returns the live (non-archived) page ids directly
+	// filed under each folder, keyed by folder_id. When pageTypes is non-empty
+	// the membership is restricted to those page types; otherwise all types are
+	// included. A page filed under several folders appears in every one of them.
+	// The directory tree uses this to compute deduplicated recursive counts.
+	ListPagesGroupedByFolder(ctx context.Context, kbID string, pageTypes []string) (map[string]map[string]struct{}, error)
+	// ListPagesByFolderIDs returns all pages filed under any of the given
+	// folders (multi-directory membership). Used to recompute cached paths when
+	// a folder subtree is moved/renamed.
 	ListPagesByFolderIDs(ctx context.Context, kbID string, folderIDs []string) ([]*types.WikiPage, error)
 
 	// ListAll retrieves all wiki pages in a knowledge base (for link rebuilding, graph generation).

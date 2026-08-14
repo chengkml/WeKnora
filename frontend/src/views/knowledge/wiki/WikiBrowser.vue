@@ -333,6 +333,15 @@
                       <t-icon :name="getPageIcon(item.page)"
                         :class="['wiki-page-file-icon', `wiki-page-file-icon--${item.page.page_type}`]" />
                       <span class="wiki-page-item-title">{{ item.page.title }}</span>
+                      <span v-if="props.canEdit" class="wiki-page-item-actions">
+                        <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.moveToFoldersAction')" placement="top">
+                          <button type="button" class="wiki-page-item-action"
+                            :aria-label="$t('knowledgeEditor.wikiBrowser.moveToFoldersAction')"
+                            @click.stop="openMovePageDialog(item.page)">
+                            <t-icon name="folder-add" size="16px" />
+                          </button>
+                        </t-tooltip>
+                      </span>
                     </div>
                   </template>
                 </div>
@@ -687,6 +696,34 @@
         </div>
       </div>
     </teleport>
+
+    <!-- Multi-directory move dialog: select several folders (or none = wiki
+         root) for a page. Replaces the page's whole membership set. -->
+    <t-dialog v-model:visible="movePageDialog.visible" :header="$t('knowledgeEditor.wikiBrowser.moveToFoldersTitle')"
+      :width="420" :confirm-btn="{ theme: 'primary', content: $t('common.confirm'), loading: movePageDialog.submitting }"
+      :cancel-btn="$t('common.cancel')" @confirm="confirmMovePageDialog" @close="cancelMovePageDialog">
+      <div class="wiki-move-folders-hint">
+        {{ $t('knowledgeEditor.wikiBrowser.moveToFoldersHint', { title: movePageDialog.page?.title || '' }) }}
+      </div>
+      <div class="wiki-move-folders-list">
+        <label class="wiki-move-folder-option wiki-move-folder-option--root">
+          <input type="checkbox" :checked="movePageDialog.checked.size === 0" @change="setMovePageFolders([])" />
+          <span class="wiki-move-folder-name">{{ $t('knowledgeEditor.wikiBrowser.rootFolderLabel') }}</span>
+        </label>
+        <label v-for="opt in movePageDialog.folders" :key="opt.id" class="wiki-move-folder-option"
+          :style="{ '--wiki-move-folder-depth': opt.depth }">
+          <input type="checkbox" :checked="movePageDialog.checked.has(opt.id)"
+            @change="toggleMovePageFolder(opt.id)" />
+          <span class="wiki-move-folder-name">{{ opt.path.join(' / ') }}</span>
+        </label>
+        <div v-if="movePageDialog.loading" class="wiki-move-folders-loading">
+          <t-loading size="small" />
+        </div>
+        <div v-else-if="movePageDialog.folders.length === 0" class="wiki-move-folders-empty">
+          {{ $t('knowledgeEditor.wikiBrowser.moveToFoldersEmpty') }}
+        </div>
+      </div>
+    </t-dialog>
   </div>
 </template>
 
@@ -2189,7 +2226,7 @@ async function confirmPendingMove() {
 
   if (item.kind === 'page') {
     try {
-      await moveWikiPage(props.knowledgeBaseId, item.page.slug, folderId)
+      await moveWikiPage(props.knowledgeBaseId, item.page.slug, folderId ? [folderId] : [])
       MessagePlugin.success(t('knowledgeEditor.wikiBrowser.movePageSuccess'))
       await reloadDirectoryForType(activeTab.value)
     } catch (e) {
@@ -2208,6 +2245,121 @@ async function confirmPendingMove() {
     MessagePlugin.error(
       e?.response?.data?.message || t('knowledgeEditor.wikiBrowser.moveFolderFailed'),
     )
+  }
+}
+
+// --- Multi-directory move -------------------------------------------------
+// A page can belong to several folders at once. The hover action on a tree row
+// opens a dialog listing every folder in the KB as checkboxes; confirming sends
+// the whole membership set ([] = wiki root) which REPLACES the page's existing
+// directories. The first selected folder becomes the page's primary directory.
+interface MoveFolderOption {
+  id: string
+  path: string[]
+  depth: number
+}
+
+const movePageDialog = ref<{
+  visible: boolean
+  page: WikiPage | null
+  checked: Set<string>
+  folders: MoveFolderOption[]
+  loading: boolean
+  submitting: boolean
+}>({
+  visible: false,
+  page: null,
+  checked: new Set<string>(),
+  folders: [],
+  loading: false,
+  submitting: false,
+})
+
+// fetchAllWikiFolders walks the directory tree from the root collecting every
+// folder, so the move dialog can offer ALL target directories — not just the
+// ones visible in the active tab.
+async function fetchAllWikiFolders(kbId: string): Promise<MoveFolderOption[]> {
+  const out: MoveFolderOption[] = []
+  const queue: { parentId: string; path: string[]; depth: number }[] = [{ parentId: '', path: [], depth: 0 }]
+  while (queue.length > 0) {
+    const { parentId, path, depth } = queue.shift()!
+    const res = await listWikiFolders(kbId, parentId)
+    const folders = res?.data?.folders || []
+    for (const f of folders) {
+      const nextPath = [...path, f.name]
+      out.push({ id: f.id, path: nextPath, depth: depth + 1 })
+      queue.push({ parentId: f.id, path: nextPath, depth: depth + 1 })
+    }
+  }
+  return out
+}
+
+async function openMovePageDialog(page: WikiPage) {
+  if (!props.canEdit) return
+  movePageDialog.value = {
+    ...movePageDialog.value,
+    visible: true,
+    page,
+    checked: new Set<string>(page.folder_ids || (page.folder_id ? [page.folder_id] : [])),
+    folders: [],
+    loading: true,
+    submitting: false,
+  }
+  try {
+    movePageDialog.value.folders = await fetchAllWikiFolders(props.knowledgeBaseId)
+  } catch (e) {
+    console.error('Failed to load wiki folders for move dialog:', e)
+  } finally {
+    movePageDialog.value.loading = false
+  }
+}
+
+function cancelMovePageDialog() {
+  movePageDialog.value.visible = false
+  movePageDialog.value.page = null
+  movePageDialog.value.checked = new Set<string>()
+}
+
+function setMovePageFolders(ids: string[]) {
+  movePageDialog.value.checked = new Set(ids)
+}
+
+function toggleMovePageFolder(id: string) {
+  const checked = new Set(movePageDialog.value.checked)
+  if (checked.has(id)) checked.delete(id)
+  else checked.add(id)
+  movePageDialog.value.checked = checked
+}
+
+async function confirmMovePageDialog() {
+  const page = movePageDialog.value.page
+  if (!page) return
+  // Order the submitted ids so the page's current primary folder (when still
+  // selected) stays primary — otherwise the tree-order would silently change
+  // the page's breadcrumb on an unrelated edit.
+  const primary = page.folder_id || ''
+  const ordered: string[] = []
+  const seen = new Set<string>()
+  if (primary && movePageDialog.value.checked.has(primary)) {
+    ordered.push(primary)
+    seen.add(primary)
+  }
+  for (const f of movePageDialog.value.folders) {
+    if (seen.has(f.id) || !movePageDialog.value.checked.has(f.id)) continue
+    ordered.push(f.id)
+    seen.add(f.id)
+  }
+  movePageDialog.value.submitting = true
+  try {
+    await moveWikiPage(props.knowledgeBaseId, page.slug, ordered)
+    MessagePlugin.success(t('knowledgeEditor.wikiBrowser.movePageSuccess'))
+    cancelMovePageDialog()
+    await reloadDirectoryForType(activeTab.value)
+  } catch (e) {
+    console.error('Failed to move wiki page to folders:', e)
+    MessagePlugin.error(t('knowledgeEditor.wikiBrowser.movePageFailed'))
+  } finally {
+    movePageDialog.value.submitting = false
   }
 }
 
@@ -5028,6 +5180,99 @@ onUnmounted(() => {
 
 .wiki-page-item--tree .wiki-page-item-title {
   font-weight: 500;
+}
+
+// Hover "move to folder(s)" action on tree page rows. Hidden until the row is
+// hovered or active so the sidebar stays visually quiet.
+.wiki-page-item--tree .wiki-page-item-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.wiki-page-item--tree:hover .wiki-page-item-actions,
+.wiki-page-item--tree.active .wiki-page-item-actions {
+  opacity: 1;
+}
+
+.wiki-page-item-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--td-text-color-placeholder);
+  cursor: pointer;
+  padding: 0;
+
+  &:hover {
+    color: var(--td-brand-color);
+    background: var(--td-bg-color-container-hover);
+  }
+}
+
+// Multi-directory move dialog.
+.wiki-move-folders-hint {
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  margin-bottom: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-move-folders-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--td-component-border);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.wiki-move-folder-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--td-bg-color-container-hover);
+  }
+}
+
+.wiki-move-folder-option--root {
+  border-bottom: 1px solid var(--td-component-border);
+}
+
+.wiki-move-folder-option input[type='checkbox'] {
+  margin: 0;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.wiki-move-folder-name {
+  font-size: 13px;
+  color: var(--td-text-color-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: calc(var(--wiki-move-folder-depth, 0) * 14px);
+}
+
+.wiki-move-folders-loading,
+.wiki-move-folders-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--td-text-color-placeholder);
+  font-size: 13px;
 }
 
 // ── Right Content ──

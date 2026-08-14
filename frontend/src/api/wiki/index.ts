@@ -32,6 +32,8 @@ export interface WikiPage {
   version: number;
   created_at: string;
   updated_at: string;
+  folder_id?: string;
+  folder_ids?: string[];
 }
 
 export interface WikiPageListResponse {
@@ -163,10 +165,12 @@ export function deleteWikiFolder(kbId: string, folderId: string) {
   return del(`/api/v1/knowledgebase/${kbId}/wiki/folders/${folderId}`);
 }
 
-// moveWikiPage relocates a page into folderId ("" = root). The slug is sent in
-// the body because wiki slugs are hierarchical.
-export function moveWikiPage(kbId: string, slug: string, folderId: string) {
-  return put(`/api/v1/knowledgebase/${kbId}/wiki/move-page`, { slug, folder_id: folderId });
+// moveWikiPage relocates a page into a set of folders ([] = wiki root). The
+// slug is sent in the body because wiki slugs are hierarchical. The given
+// folder ids replace the page's whole membership set — the first folder
+// becomes the page's primary directory (driving its breadcrumb).
+export function moveWikiPage(kbId: string, slug: string, folderIds: string[]) {
+  return put(`/api/v1/knowledgebase/${kbId}/wiki/move-page`, { slug, folder_ids: folderIds });
 }
 
 export function createWikiPage(kbId: string, data: Partial<WikiPage>) {

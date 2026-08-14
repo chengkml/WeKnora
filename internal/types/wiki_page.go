@@ -175,6 +175,14 @@ type WikiPage struct {
 	// recomputed from this folder's chain on every write so list/index/search
 	// queries don't have to join wiki_folders.
 	FolderID string `json:"folder_id,omitempty" gorm:"column:folder_id;type:varchar(36);index;default:''"`
+	// FolderIDs is the full set of folders this page belongs to, including the
+	// primary FolderID. Kept in the wiki_page_folders join table (mirrored by
+	// FolderID for the derived cache). This field is NOT persisted on the
+	// wiki_pages row — it is carried on requests (multi-directory assignment)
+	// and hydrated on reads so API responses expose every directory a page
+	// belongs to. FolderID (the first entry when non-empty) remains the primary
+	// folder used to compute CategoryPath / WikiPath / Depth.
+	FolderIDs StringArray `json:"folder_ids,omitempty" gorm:"-"`
 	// CategoryPath is the directory breadcrumb that groups this page in the
 	// wiki browser, e.g. ["AI", "LLM 应用", "RAG"]. Derived cache of the
 	// folder chain identified by FolderID.
@@ -253,6 +261,57 @@ func (WikiFolder) TableName() string {
 	return "wiki_folders"
 }
 
+// WikiPageFolder is one row of the many-to-many membership between wiki pages
+// and directories (wiki_folders). A page may belong to several folders; its
+// primary placement is still mirrored on WikiPage.FolderID (which drives the
+// derived CategoryPath/WikiPath/Depth caches), while the full membership set
+// lives here. The join uses a hard primary key — no soft delete — so a page's
+// membership is always replaceable without tombstone collisions.
+type WikiPageFolder struct {
+	PageID           string    `json:"page_id" gorm:"type:varchar(36);primaryKey"`
+	FolderID         string    `json:"folder_id" gorm:"type:varchar(36);primaryKey;index"`
+	KnowledgeBaseID  string    `json:"knowledge_base_id" gorm:"type:varchar(36);index"`
+	TenantID         uint64    `json:"tenant_id" gorm:"index"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// TableName specifies the database table name
+func (WikiPageFolder) TableName() string {
+	return "wiki_page_folders"
+}
+
+// NormalizePageFolderMembership cleans and deduplicates a page's folder
+// membership, guaranteeing the primary folder (page.FolderID, falling back to
+// the first entry of folderIDs) is first. Root ("" / WikiFolderRootID) is
+// never a member. Used everywhere a page's folder set crosses the service /
+// repository boundary so the stored FolderID column and the join table never
+// drift.
+func NormalizePageFolderMembership(primary string, folderIDs []string) (ids []string, primaryOut string) {
+	seen := make(map[string]struct{}, len(folderIDs)+1)
+	ids = make([]string, 0, len(folderIDs)+1)
+	add := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" || id == WikiFolderRootID {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	primary = strings.TrimSpace(primary)
+	if primary == "" && len(folderIDs) > 0 {
+		primary = strings.TrimSpace(folderIDs[0])
+	}
+	add(primary)
+	for _, f := range folderIDs {
+		add(f)
+	}
+	return ids, primary
+}
+
 // WikiFolderNode is one directory node returned to the browser, enriched with
 // the live page count directly under it and whether it has child folders so
 // the UI can render an expand affordance without a second round-trip.
@@ -284,12 +343,17 @@ type WikiFolderUpdateRequest struct {
 	MoveParent bool   `json:"move_parent,omitempty"`
 }
 
-// WikiPageMoveRequest relocates the page identified by Slug into FolderID
-// ("" = root). Slug is carried in the body (not the path) because wiki slugs
-// are hierarchical ("entity/acme") and would collide with gin's catch-all.
+// WikiPageMoveRequest relocates the page identified by Slug into one or more
+// folders ([] = wiki root). Slug is carried in the body (not the path) because
+// wiki slugs are hierarchical ("entity/acme") and would collide with gin's
+// catch-all. FolderIDs replaces the page's whole membership set; the first
+// entry becomes the primary FolderID (driving the derived path caches).
+// FolderID is kept for backward compatibility — callers still sending the
+// single-value field are honored when FolderIDs is absent.
 type WikiPageMoveRequest struct {
-	Slug     string `json:"slug" binding:"required"`
-	FolderID string `json:"folder_id"`
+	Slug      string   `json:"slug" binding:"required"`
+	FolderID  string   `json:"folder_id"`
+	FolderIDs []string `json:"folder_ids"`
 }
 
 // WikiExtractionGranularity controls how aggressive Pass 0 (candidate slug

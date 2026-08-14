@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -35,9 +36,18 @@ func (r *wikiPageRepository) wikiCategoryRankOrder() string {
 	return "CASE WHEN COALESCE(jsonb_array_length(category_path), 0) > 0 THEN 0 ELSE 1 END ASC"
 }
 
-// Create inserts a new wiki page record
+// Create inserts a new wiki page record.
 func (r *wikiPageRepository) Create(ctx context.Context, page *types.WikiPage) error {
-	return r.db.WithContext(ctx).Create(page).Error
+	if page == nil {
+		return nil
+	}
+	ids, primary := types.NormalizePageFolderMembership(page.FolderID, page.FolderIDs)
+	page.FolderID = primary
+	page.FolderIDs = types.StringArray(ids)
+	if err := r.db.WithContext(ctx).Create(page).Error; err != nil {
+		return err
+	}
+	return r.replacePageFolders(ctx, page, ids)
 }
 
 // Update updates an existing wiki page record with optimistic locking.
@@ -98,6 +108,9 @@ func (r *wikiPageRepository) UpdateAutoLinkedContent(ctx context.Context, page *
 //
 // Used by link maintenance, re-ingest (same-content case), and status changes.
 func (r *wikiPageRepository) UpdateMeta(ctx context.Context, page *types.WikiPage) error {
+	ids, primary := types.NormalizePageFolderMembership(page.FolderID, page.FolderIDs)
+	page.FolderID = primary
+	page.FolderIDs = types.StringArray(ids)
 	result := r.db.WithContext(ctx).
 		Model(page).
 		Where("id = ?", page.ID).
@@ -122,7 +135,7 @@ func (r *wikiPageRepository) UpdateMeta(ctx context.Context, page *types.WikiPag
 	if result.RowsAffected == 0 {
 		return ErrWikiPageNotFound
 	}
-	return nil
+	return r.replacePageFolders(ctx, page, ids)
 }
 
 // GetByID retrieves a wiki page by its unique ID
@@ -132,6 +145,9 @@ func (r *wikiPageRepository) GetByID(ctx context.Context, id string) (*types.Wik
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrWikiPageNotFound
 		}
+		return nil, err
+	}
+	if err := r.hydratePageFolders(ctx, []*types.WikiPage{&page}); err != nil {
 		return nil, err
 	}
 	return &page, nil
@@ -146,6 +162,9 @@ func (r *wikiPageRepository) GetBySlug(ctx context.Context, kbID string, slug st
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrWikiPageNotFound
 		}
+		return nil, err
+	}
+	if err := r.hydratePageFolders(ctx, []*types.WikiPage{&page}); err != nil {
 		return nil, err
 	}
 	return &page, nil
@@ -173,25 +192,30 @@ func (r *wikiPageRepository) List(ctx context.Context, req *types.WikiPageListRe
 		)
 	}
 	// Directory filters are pushed to SQL so the DB does the counting and
-	// pagination instead of loading every page of the type into memory. `depth`
-	// is a cached column (= len(category_path)); `category_path` is a JSON column
-	// whose stored text is json.Marshal of the cleaned path, so we compare
-	// against the same encoding. Postgres needs an explicit jsonb cast for array
-	// equality; SQLite stores JSON as TEXT and compares directly.
+	// pagination instead of loading every page of the type into memory.
+	//
+	// `folder_id` is a multi-directory membership filter: a page belongs to a
+	// folder when a wiki_page_folders row links them. Root ("") means pages with
+	// NO folder membership at all.
 	if req.FolderID != nil {
-		query = query.Where("folder_id = ?", *req.FolderID)
-	}
-	if req.CategoryDepth != nil {
-		query = query.Where("depth = ?", *req.CategoryDepth)
-	}
-	if wantPath := types.CleanWikiCategoryPath(req.CategoryPath); len(wantPath) > 0 {
-		if encoded, err := json.Marshal([]string(wantPath)); err == nil {
-			if r.db.Dialector != nil && r.db.Dialector.Name() == "postgres" {
-				query = query.Where("category_path::jsonb = ?::jsonb", string(encoded))
-			} else {
-				query = query.Where("category_path = ?", string(encoded))
-			}
+		if *req.FolderID == "" {
+			query = query.Where("NOT EXISTS (SELECT 1 FROM wiki_page_folders f WHERE f.page_id = wiki_pages.id)")
+		} else {
+			query = query.Where("EXISTS (SELECT 1 FROM wiki_page_folders f WHERE f.page_id = wiki_pages.id AND f.folder_id = ?)", *req.FolderID)
 		}
+	}
+	// A directory-path filter matches every page filed under the folder whose
+	// materialized path equals the requested path (or any of its descendants),
+	// so multi-directory pages surface under ALL of their folders — not just the
+	// primary one (whose category_path cache is single-valued). The path already
+	// encodes the depth, so the cached-depth filter is only meaningful on its own.
+	if wantPath := types.CleanWikiCategoryPath(req.CategoryPath); len(wantPath) > 0 {
+		pathStr := strings.Join([]string(wantPath), "/")
+		likePrefix := escapeLikePattern(pathStr) + "/%"
+		query = query.Where("EXISTS (SELECT 1 FROM wiki_page_folders f JOIN wiki_folders wf ON wf.id = f.folder_id WHERE f.page_id = wiki_pages.id AND (wf.path = ? OR wf.path LIKE ?))",
+			pathStr, likePrefix)
+	} else if req.CategoryDepth != nil {
+		query = query.Where("depth = ?", *req.CategoryDepth)
 	}
 
 	var total int64
@@ -237,6 +261,9 @@ func (r *wikiPageRepository) List(ctx context.Context, req *types.WikiPageListRe
 	if err := query.Find(&pages).Error; err != nil {
 		return nil, 0, err
 	}
+	if err := r.hydratePageFolders(ctx, pages); err != nil {
+		return nil, 0, err
+	}
 	return pages, total, nil
 }
 
@@ -247,6 +274,9 @@ func (r *wikiPageRepository) ListByType(ctx context.Context, kbID string, pageTy
 		Where("knowledge_base_id = ? AND page_type = ?", kbID, pageType).
 		Order("updated_at DESC").
 		Find(&pages).Error; err != nil {
+		return nil, err
+	}
+	if err := r.hydratePageFolders(ctx, pages); err != nil {
 		return nil, err
 	}
 	return pages, nil
@@ -340,6 +370,9 @@ func (r *wikiPageRepository) ListBySourceRef(ctx context.Context, kbID string, s
 			likePattern,
 		).
 		Find(&pages).Error; err != nil {
+		return nil, err
+	}
+	if err := r.hydratePageFolders(ctx, pages); err != nil {
 		return nil, err
 	}
 	return pages, nil
@@ -551,35 +584,48 @@ func (r *wikiPageRepository) CountPagesInFolder(ctx context.Context, kbID string
 	var count int64
 	if err := r.db.WithContext(ctx).
 		Model(&types.WikiPage{}).
-		Where("knowledge_base_id = ? AND folder_id = ? AND status <> ?",
-			kbID, folderID, types.WikiPageStatusArchived).
+		Where("knowledge_base_id = ? AND status <> ? AND EXISTS (SELECT 1 FROM wiki_page_folders f WHERE f.page_id = wiki_pages.id AND f.folder_id = ?)",
+			kbID, types.WikiPageStatusArchived, folderID).
 		Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-func (r *wikiPageRepository) CountPagesByFolder(
+// ListPagesGroupedByFolder returns the live (non-archived) page ids directly
+// filed under each folder, keyed by folder_id. When pageTypes is non-empty the
+// membership is restricted to those page types; otherwise all types are
+// included. The wiki_page_folders join table is the source of truth, so a page
+// belonging to several folders appears in every one of them (page ids within a
+// folder are a set, so nothing is double counted). Used by the directory tree
+// to compute deduplicated recursive page counts.
+func (r *wikiPageRepository) ListPagesGroupedByFolder(
 	ctx context.Context, kbID string, pageTypes []string,
-) (map[string]int64, error) {
-	type folderCount struct {
-		FolderID string
-		Cnt      int64
-	}
-	var rows []folderCount
+) (map[string]map[string]struct{}, error) {
 	q := r.db.WithContext(ctx).
-		Model(&types.WikiPage{}).
-		Select("folder_id, COUNT(*) as cnt").
-		Where("knowledge_base_id = ? AND status <> ?", kbID, types.WikiPageStatusArchived)
+		Table("wiki_page_folders f").
+		Select("f.folder_id, f.page_id").
+		Joins("JOIN wiki_pages wp ON wp.id = f.page_id AND wp.deleted_at IS NULL").
+		Where("f.knowledge_base_id = ? AND wp.status <> ?", kbID, types.WikiPageStatusArchived)
 	if len(pageTypes) > 0 {
-		q = q.Where("page_type IN ?", pageTypes)
+		q = q.Where("wp.page_type IN ?", pageTypes)
 	}
-	if err := q.Group("folder_id").Scan(&rows).Error; err != nil {
+	type row struct {
+		FolderID string
+		PageID   string
+	}
+	var rows []row
+	if err := q.Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	out := make(map[string]int64, len(rows))
-	for _, row := range rows {
-		out[row.FolderID] = row.Cnt
+	out := make(map[string]map[string]struct{})
+	for _, rw := range rows {
+		set := out[rw.FolderID]
+		if set == nil {
+			set = make(map[string]struct{})
+			out[rw.FolderID] = set
+		}
+		set[rw.PageID] = struct{}{}
 	}
 	return out, nil
 }
@@ -592,11 +638,101 @@ func (r *wikiPageRepository) ListPagesByFolderIDs(
 	}
 	var pages []*types.WikiPage
 	if err := r.db.WithContext(ctx).
-		Where("knowledge_base_id = ? AND folder_id IN ?", kbID, folderIDs).
+		Where("knowledge_base_id = ? AND EXISTS (SELECT 1 FROM wiki_page_folders f WHERE f.page_id = wiki_pages.id AND f.folder_id IN ?)", kbID, folderIDs).
 		Find(&pages).Error; err != nil {
 		return nil, err
 	}
+	if err := r.hydratePageFolders(ctx, pages); err != nil {
+		return nil, err
+	}
 	return pages, nil
+}
+
+// replacePageFolders makes the wiki_page_folders rows for page exactly match
+// folderIDs (a full replace: delete then insert). Called from every write path
+// so the join table always mirrors the page's membership set.
+func (r *wikiPageRepository) replacePageFolders(ctx context.Context, page *types.WikiPage, folderIDs []string) error {
+	if page == nil || page.ID == "" {
+		return nil
+	}
+	if err := r.db.WithContext(ctx).
+		Where("page_id = ?", page.ID).
+		Delete(&types.WikiPageFolder{}).Error; err != nil {
+		return err
+	}
+	now := time.Now()
+	for _, fid := range folderIDs {
+		fid = strings.TrimSpace(fid)
+		if fid == "" {
+			continue
+		}
+		row := &types.WikiPageFolder{
+			PageID:          page.ID,
+			FolderID:        fid,
+			KnowledgeBaseID: page.KnowledgeBaseID,
+			TenantID:        page.TenantID,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		}
+		if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// hydratePageFolders populates each page's FolderIDs (the full membership set,
+// with the primary FolderID first when present) from the wiki_page_folders join
+// table. Every read path that returns WikiPage objects runs this so write-back
+// paths (UpdateMeta) never silently drop secondary folder memberships.
+func (r *wikiPageRepository) hydratePageFolders(ctx context.Context, pages []*types.WikiPage) error {
+	if len(pages) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(pages))
+	seen := make(map[string]struct{}, len(pages))
+	for _, p := range pages {
+		if p == nil || p.ID == "" {
+			continue
+		}
+		if _, ok := seen[p.ID]; ok {
+			continue
+		}
+		seen[p.ID] = struct{}{}
+		ids = append(ids, p.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	type row struct {
+		PageID   string `gorm:"column:page_id"`
+		FolderID string `gorm:"column:folder_id"`
+	}
+	var rows []row
+	if err := r.db.WithContext(ctx).
+		Model(&types.WikiPageFolder{}).
+		Select("page_id", "folder_id").
+		Where("page_id IN ?", ids).
+		Order("created_at ASC").
+		Order("folder_id ASC").
+		Scan(&rows).Error; err != nil {
+		return err
+	}
+	byPage := make(map[string][]string, len(rows))
+	for _, rw := range rows {
+		byPage[rw.PageID] = append(byPage[rw.PageID], rw.FolderID)
+	}
+	for _, p := range pages {
+		if p == nil {
+			continue
+		}
+		members, _ := types.NormalizePageFolderMembership(p.FolderID, byPage[p.ID])
+		p.FolderIDs = types.StringArray(members)
+		if len(members) > 0 {
+			p.FolderID = members[0]
+		}
+	}
+	return nil
 }
 
 // ListSummariesByKnowledgeIDs returns summary-page content keyed by the
@@ -786,6 +922,9 @@ func (r *wikiPageRepository) ListPagesCursor(
 	if len(pages) == limit {
 		nextCursor = pages[len(pages)-1].ID
 	}
+	if err := r.hydratePageFolders(ctx, pages); err != nil {
+		return nil, "", err
+	}
 	return pages, nextCursor, nil
 }
 
@@ -886,6 +1025,9 @@ func (r *wikiPageRepository) ListAll(ctx context.Context, kbID string) ([]*types
 		Find(&pages).Error; err != nil {
 		return nil, err
 	}
+	if err := r.hydratePageFolders(ctx, pages); err != nil {
+		return nil, err
+	}
 	return pages, nil
 }
 
@@ -912,6 +1054,9 @@ func (r *wikiPageRepository) ListRecentForSuggestions(
 		Order("updated_at DESC").
 		Limit(limit).
 		Find(&pages).Error; err != nil {
+		return nil, err
+	}
+	if err := r.hydratePageFolders(ctx, pages); err != nil {
 		return nil, err
 	}
 	return pages, nil
@@ -1000,6 +1145,9 @@ func (r *wikiPageRepository) Search(ctx context.Context, kbID string, query stri
 		Order("match_rank DESC, updated_at DESC").
 		Limit(limit).
 		Find(&pages).Error; err != nil {
+		return nil, err
+	}
+	if err := r.hydratePageFolders(ctx, pages); err != nil {
 		return nil, err
 	}
 	return pages, nil

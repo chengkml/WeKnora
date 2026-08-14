@@ -84,6 +84,16 @@ func (s *wikiPageService) CreatePage(ctx context.Context, page *types.WikiPage) 
 	}
 	stripWikiPageInlineChunkCitations(page)
 
+	// Normalize the multi-folder membership so the primary FolderID (which
+	// drives the derived path caches) is derived from the request consistently.
+	if ids, primary := types.NormalizePageFolderMembership(page.FolderID, page.FolderIDs); primary != page.FolderID {
+		page.FolderIDs = types.StringArray(ids)
+		page.FolderID = primary
+	}
+	if err := s.validatePageFolders(ctx, page.KnowledgeBaseID, page.FolderIDs); err != nil {
+		return nil, err
+	}
+
 	// Parse outbound links from content
 	page.OutLinks = s.parseOutLinks(page.Content)
 	if err := s.applyFolderToPage(ctx, page); err != nil {
@@ -141,6 +151,21 @@ func (s *wikiPageService) UpdatePage(ctx context.Context, page *types.WikiPage) 
 	existing.PageMetadata = page.PageMetadata
 	existing.ParentSlug = page.ParentSlug
 	existing.FolderID = page.FolderID
+	// Multi-folder membership: an explicitly provided folder_ids replaces the
+	// whole set; an absent one preserves the page's existing directories so a
+	// content-only update never drops secondary folder memberships.
+	if page.FolderIDs != nil {
+		existing.FolderIDs = page.FolderIDs
+	}
+	if ids, primary := types.NormalizePageFolderMembership(existing.FolderID, existing.FolderIDs); primary != existing.FolderID {
+		existing.FolderIDs = types.StringArray(ids)
+		existing.FolderID = primary
+	}
+	if page.FolderIDs != nil {
+		if err := s.validatePageFolders(ctx, existing.KnowledgeBaseID, existing.FolderIDs); err != nil {
+			return nil, err
+		}
+	}
 	existing.SortOrder = page.SortOrder
 	existing.Status = page.Status
 	existing.UpdatedAt = time.Now()
@@ -1112,6 +1137,24 @@ func (s *wikiPageService) applyFolderToPage(ctx context.Context, page *types.Wik
 	return nil
 }
 
+// validatePageFolders verifies every non-empty folder id in a page's requested
+// membership set actually exists in the knowledge base, so a stray id can never
+// leave an orphan join row that distorts directory counts.
+func (s *wikiPageService) validatePageFolders(ctx context.Context, kbID string, folderIDs []string) error {
+	for _, fid := range folderIDs {
+		if strings.TrimSpace(fid) == "" {
+			continue
+		}
+		if _, err := s.repo.GetFolderByID(ctx, kbID, fid); err != nil {
+			if errors.Is(err, repository.ErrWikiFolderNotFound) {
+				return fmt.Errorf("wiki page references unknown folder %q", fid)
+			}
+			return fmt.Errorf("resolve page folder: %w", err)
+		}
+	}
+	return nil
+}
+
 // GetFolder retrieves a single folder by id.
 func (s *wikiPageService) GetFolder(ctx context.Context, kbID string, id string) (*types.WikiFolder, error) {
 	return s.repo.GetFolderByID(ctx, kbID, id)
@@ -1131,13 +1174,13 @@ func (s *wikiPageService) ListChildFolders(
 	if err != nil {
 		return nil, err
 	}
-	scopedDirect, err := s.repo.CountPagesByFolder(ctx, kbID, pageTypes)
+	scopedDirect, err := s.repo.ListPagesGroupedByFolder(ctx, kbID, pageTypes)
 	if err != nil {
 		return nil, err
 	}
 	allDirect := scopedDirect
 	if len(pageTypes) > 0 {
-		allDirect, err = s.repo.CountPagesByFolder(ctx, kbID, nil)
+		allDirect, err = s.repo.ListPagesGroupedByFolder(ctx, kbID, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -1179,20 +1222,64 @@ func (s *wikiPageService) ListChildFolders(
 	return out, nil
 }
 
-// recursiveFolderCounts maps each folder id to the sum of `direct` page counts
-// over the folder and all of its descendants, using the materialized path so a
-// single pass over the (navigation-sized) folder set suffices.
-func recursiveFolderCounts(all []*types.WikiFolder, direct map[string]int64) map[string]int64 {
-	res := make(map[string]int64, len(all))
+// recursiveFolderCounts maps each folder id to the count of DISTINCT pages
+// filed under the folder or any of its descendants. `direct` holds, per folder,
+// the set of page ids directly filed there (multi-directory membership means a
+// page can appear under several folders). A page is attributed to every folder
+// on its member folders' ancestor chains exactly once — so a page filed in both
+// a folder and one of its descendants is counted once, not twice, in the
+// ancestor's recursive count.
+func recursiveFolderCounts(all []*types.WikiFolder, direct map[string]map[string]struct{}) map[string]int64 {
+	if len(all) == 0 {
+		return map[string]int64{}
+	}
+	parentOf := make(map[string]string, len(all))
 	for _, f := range all {
-		sum := direct[f.ID]
-		prefix := f.Path + "/"
-		for _, g := range all {
-			if g.ID != f.ID && strings.HasPrefix(g.Path, prefix) {
-				sum += direct[g.ID]
+		if f != nil {
+			parentOf[f.ID] = f.ParentID
+		}
+	}
+	// ancestorSet(folder) = { folder } ∪ { ancestors of folder }.
+	ancestorSet := make(map[string]map[string]struct{}, len(all))
+	var buildAncestors func(id string) map[string]struct{}
+	buildAncestors = func(id string) map[string]struct{} {
+		if set, ok := ancestorSet[id]; ok {
+			return set
+		}
+		set := map[string]struct{}{}
+		if id != "" {
+			set[id] = struct{}{}
+			if parent := parentOf[id]; parent != "" && parent != types.WikiFolderRootID {
+				for a := range buildAncestors(parent) {
+					set[a] = struct{}{}
+				}
 			}
 		}
-		res[f.ID] = sum
+		ancestorSet[id] = set
+		return set
+	}
+
+	res := make(map[string]int64, len(all))
+	// pageAncestors tracks which folders each page has already been counted
+	// under, so a page filed under several folders in one subtree is only
+	// counted once per folder.
+	pageAncestors := make(map[string]map[string]struct{})
+	for folderID, pageSet := range direct {
+		ancs := buildAncestors(folderID)
+		for pageID := range pageSet {
+			counted := pageAncestors[pageID]
+			if counted == nil {
+				counted = make(map[string]struct{})
+				pageAncestors[pageID] = counted
+			}
+			for a := range ancs {
+				if _, ok := counted[a]; ok {
+					continue
+				}
+				counted[a] = struct{}{}
+				res[a]++
+			}
+		}
 	}
 	return res
 }
@@ -1307,16 +1394,23 @@ func (s *wikiPageService) FindOrCreateFolderPath(
 	return parentID, clean, nil
 }
 
-// MovePage relocates a page into folderID ("" = root) and refreshes its cached
-// category path. Bookkeeping-only write (no version bump).
+// MovePage relocates a page into a set of folders ([] = wiki root), refreshing
+// its cached category path from the primary (first) folder. The given folder
+// ids REPLACE the page's whole membership set. Bookkeeping-only write (no
+// version bump).
 func (s *wikiPageService) MovePage(
-	ctx context.Context, kbID string, slug string, folderID string,
+	ctx context.Context, kbID string, slug string, folderIDs []string,
 ) (*types.WikiPage, error) {
 	page, err := s.repo.GetBySlug(ctx, kbID, slug)
 	if err != nil {
 		return nil, err
 	}
-	page.FolderID = strings.TrimSpace(folderID)
+	ids, primary := types.NormalizePageFolderMembership("", folderIDs)
+	page.FolderIDs = types.StringArray(ids)
+	page.FolderID = primary
+	if err := s.validatePageFolders(ctx, page.KnowledgeBaseID, page.FolderIDs); err != nil {
+		return nil, err
+	}
 	if err := s.applyFolderToPage(ctx, page); err != nil {
 		return nil, err
 	}

@@ -196,6 +196,7 @@ func (r *tenantRepository) DeleteTenant(ctx context.Context, id uint64) error {
 			{"web_search_providers", "tenant_id"},
 			{"wiki_folders", "tenant_id"},
 			{"wiki_log_entries", "tenant_id"},
+			{"wiki_page_folders", "tenant_id"},
 			{"wiki_page_issues", "tenant_id"},
 			{"wiki_pages", "tenant_id"},
 		} {

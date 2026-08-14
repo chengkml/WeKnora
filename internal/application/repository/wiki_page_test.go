@@ -65,12 +65,27 @@ CREATE TABLE IF NOT EXISTS wiki_folders (
 );
 `
 
+// wikiPageFoldersTestDDL mirrors the production wiki_page_folders DDL (the
+// many-to-many page <-> directory membership join table) for SQLite.
+const wikiPageFoldersTestDDL = `
+CREATE TABLE IF NOT EXISTS wiki_page_folders (
+    page_id           VARCHAR(36) NOT NULL,
+    folder_id         VARCHAR(36) NOT NULL,
+    knowledge_base_id VARCHAR(36) NOT NULL DEFAULT '',
+    tenant_id         INTEGER NOT NULL DEFAULT 0,
+    created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (page_id, folder_id)
+);
+`
+
 func setupWikiPagesTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(wikiPagesTestDDL).Error)
 	require.NoError(t, db.Exec(wikiFoldersTestDDL).Error)
+	require.NoError(t, db.Exec(wikiPageFoldersTestDDL).Error)
 	return db
 }
 

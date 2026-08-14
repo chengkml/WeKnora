@@ -274,8 +274,8 @@ func (h *WikiPageHandler) DeleteFolder(c *gin.Context) {
 }
 
 // MovePage godoc
-// @Summary      Move a wiki page into a folder
-// @Description  Relocate a page (identified by slug in the body) into a folder (folder_id empty = root); the page's cached category path is recomputed
+// @Summary      Move a wiki page into one or more folders
+// @Description  Relocate a page (identified by slug in the body) into a set of folders (folder_ids empty = wiki root); the page's cached category path is recomputed from the primary (first) folder. The given folder ids replace the whole membership set. For backward compatibility a single folder_id is still honored when folder_ids is absent.
 // @Tags         Wiki
 // @Accept       json
 // @Produce      json
@@ -301,7 +301,18 @@ func (h *WikiPageHandler) MovePage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Page slug is required"})
 		return
 	}
-	page, err := h.wikiService.MovePage(c.Request.Context(), kbID, slug, strings.TrimSpace(req.FolderID))
+	folderIDs := make([]string, 0, len(req.FolderIDs))
+	for _, f := range req.FolderIDs {
+		if f = strings.TrimSpace(f); f != "" {
+			folderIDs = append(folderIDs, f)
+		}
+	}
+	if len(folderIDs) == 0 {
+		if f := strings.TrimSpace(req.FolderID); f != "" {
+			folderIDs = append(folderIDs, f)
+		}
+	}
+	page, err := h.wikiService.MovePage(c.Request.Context(), kbID, slug, folderIDs)
 	if err != nil {
 		writeWikiFolderError(c, err)
 		return
