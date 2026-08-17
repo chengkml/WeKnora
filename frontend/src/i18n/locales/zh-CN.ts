@@ -3980,6 +3980,8 @@ export default {
       ownershipTypePersonal: "个人知识库",
       ownershipTypeTeam: "团队知识库",
       ownershipTypeTip: "个人知识库仅创建者可见，团队知识库对空间内所有成员可见",
+      customWikiGenerationLabel: "自定义Wiki生成",
+      customWikiGenerationTip: "开启后，文档上传时不自动生成Wiki文档，需手动触发",
       nameLabel: "知识库名称",
       namePlaceholder: "请输入知识库名称",
       descriptionLabel: "知识库描述",

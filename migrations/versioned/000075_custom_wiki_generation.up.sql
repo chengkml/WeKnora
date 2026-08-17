@@ -1,0 +1,1 @@
+ALTER TABLE knowledge_bases ADD COLUMN IF NOT EXISTS custom_wiki_generation BOOLEAN NOT NULL DEFAULT FALSE;

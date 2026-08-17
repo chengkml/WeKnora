@@ -2681,6 +2681,8 @@ export default {
       ownershipTypePersonal: 'Personal',
       ownershipTypeTeam: 'Team',
       ownershipTypeTip: 'Personal KBs are only visible to you; team KBs are visible to all workspace members',
+      customWikiGenerationLabel: 'Custom Wiki Generation',
+      customWikiGenerationTip: 'When enabled, documents uploaded to the KB will not automatically trigger Wiki generation. Manual triggering is required.',
       nameLabel: 'Knowledge Base Name',
       namePlaceholder: 'Enter knowledge base name',
       descriptionLabel: 'Knowledge Base Description',

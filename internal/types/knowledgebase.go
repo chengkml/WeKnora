@@ -73,6 +73,10 @@ type KnowledgeBase struct {
 	Type string `yaml:"type"                    json:"type"                    gorm:"type:varchar(32);default:'document'"`
 	// OwnershipType represents the ownership type (personal, team)
 	OwnershipType string `yaml:"ownership_type"          json:"ownership_type"          gorm:"type:varchar(16);default:'personal'"`
+	// CustomWikiGeneration, when true, prevents automatic wiki document generation
+	// on upload regardless of whether wiki indexing is enabled. The user must
+	// manually trigger wiki generation instead.
+	CustomWikiGeneration bool `yaml:"custom_wiki_generation" json:"custom_wiki_generation" gorm:"column:custom_wiki_generation;default:false"`
 	// Whether this knowledge base is temporary (ephemeral) and should be hidden from UI
 	IsTemporary bool `yaml:"is_temporary"            json:"is_temporary"            gorm:"default:false"`
 	// Description of the knowledge base
@@ -169,6 +173,9 @@ type KnowledgeBaseConfig struct {
 	// IndexingStrategy controls which indexing pipelines are active.
 	// nil means "no change" when updating (preserves existing strategy).
 	IndexingStrategy *IndexingStrategy `yaml:"indexing_strategy"       json:"indexing_strategy"`
+	// CustomWikiGeneration, when non-nil, updates the knowledge base's
+	// custom_wiki_generation flag. nil means "no change" when updating.
+	CustomWikiGeneration *bool `yaml:"custom_wiki_generation,omitempty" json:"custom_wiki_generation,omitempty"`
 }
 
 // ParserEngineRule maps a set of file types to a specific parser engine.

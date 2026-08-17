@@ -170,6 +170,16 @@
                         <p class="form-tip">{{ $t('knowledgeEditor.basic.ownershipTypeTip') }}</p>
                       </div>
 
+                      <!-- 自定义 Wiki 生成开关 -->
+                      <div v-if="!isFAQ" class="form-item">
+                        <label class="form-label">{{ $t('knowledgeEditor.basic.customWikiGenerationLabel') }}</label>
+                        <p class="form-tip">{{ $t('knowledgeEditor.basic.customWikiGenerationTip') }}</p>
+                        <t-switch
+                          v-model="formData.customWikiGeneration"
+                          size="medium"
+                        />
+                      </div>
+
                       <div class="form-item" data-guide="kb-create-name">
                         <label class="form-label required">{{ $t('knowledgeEditor.basic.nameLabel') }}</label>
                         <t-input 
@@ -700,6 +710,7 @@ const initFormData = (type: 'document' | 'faq' = 'document') => {
   return {
     type,
     ownershipType: 'personal',
+    customWikiGeneration: false,
     name: '',
     description: '',
     faqConfig: {
@@ -822,6 +833,7 @@ const loadKBData = async () => {
     formData.value = {
       type: kbType,
       ownershipType: (kb as any).ownership_type || 'personal',
+      customWikiGeneration: !!(kb as any).custom_wiki_generation,
       name: kb.name || '',
       description: kb.description || '',
       faqConfig: {
@@ -1153,6 +1165,7 @@ const buildSubmitData = () => {
     description: formData.value.description,
     type: formData.value.type,
     ownership_type: formData.value.ownershipType || 'personal',
+    custom_wiki_generation: !!formData.value.customWikiGeneration,
     chunking_config: {
       chunk_size: formData.value.chunkingConfig.chunkSize,
       chunk_overlap: formData.value.chunkingConfig.chunkOverlap,
@@ -1359,6 +1372,7 @@ const doSubmit = async () => {
           wiki_enabled: formData.value.indexingStrategy?.wikiEnabled ?? false,
           graph_enabled: formData.value.indexingStrategy?.graphEnabled ?? false,
         }
+        updateConfig.custom_wiki_generation = !!formData.value.customWikiGeneration
       }
       await updateKnowledgeBase(props.kbId, {
         name: data.name,

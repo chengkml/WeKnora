@@ -59,6 +59,7 @@ export function createKnowledgeBase(data: {
   type?: 'document' | 'faq';
   /** Knowledge base ownership type: personal or team. Defaults to personal on the server. */
   ownership_type?: 'personal' | 'team';
+  custom_wiki_generation?: boolean;
   chunking_config?: any;
   embedding_model_id?: string;
   summary_model_id?: string;
@@ -129,6 +130,7 @@ export function updateKnowledgeBase(id: string, data: {
       wiki_enabled: boolean;
       graph_enabled: boolean;
     };
+    custom_wiki_generation?: boolean;
   }
 }) {
   return put(`/api/v1/knowledge-bases/${id}`, data);

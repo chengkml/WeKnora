@@ -519,6 +519,10 @@ func (s *knowledgeBaseService) UpdateKnowledgeBase(ctx context.Context,
 				kb.ExtractConfig = &types.ExtractConfig{Enabled: true}
 			}
 		}
+		// Update CustomWikiGeneration flag if provided
+		if config.CustomWikiGeneration != nil {
+			kb.CustomWikiGeneration = *config.CustomWikiGeneration
+		}
 	}
 	kb.UpdatedAt = time.Now()
 	kb.EnsureDefaults()

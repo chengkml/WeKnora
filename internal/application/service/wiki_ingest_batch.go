@@ -288,6 +288,12 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 		exitStatus = "kb_not_wiki_enabled"
 		return fmt.Errorf("wiki ingest: KB %s is not wiki type", kb.ID)
 	}
+	// CustomWikiGeneration opts out of automatic wiki generation; if a task
+	// was already enqueued before the flag was set, honour it here too.
+	if kb.CustomWikiGeneration {
+		exitStatus = "kb_custom_wiki_generation"
+		return fmt.Errorf("wiki ingest: KB %s has custom_wiki_generation enabled, skipping auto-gen", kb.ID)
+	}
 
 	var synthesisModelID string
 	if kb.WikiConfig != nil {
