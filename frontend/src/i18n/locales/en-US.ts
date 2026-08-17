@@ -2771,6 +2771,7 @@ export default {
       dropToRoot: 'Drop here to move to root',
       filterSummary: 'Summaries',
       filterKnowledge: 'Knowledge',
+      filterAllContent: 'All Content',
       filterEntity: 'Entities',
       filterConcept: 'Concepts',
       filterSynthesis: 'Synthesis',

@@ -177,10 +177,39 @@
                 stats.pending_issues
             }) }}</span>
           </div>
-          <t-input v-model="searchQuery" :placeholder="$t('knowledgeEditor.wikiBrowser.searchPlaceholder')" clearable
-            @enter="doSearch" @clear="searchResults = null">
-            <template #prefixIcon><t-icon name="search" /></template>
-          </t-input>
+          <div class="wiki-sidebar-search-row">
+            <t-input v-model="searchQuery" :placeholder="$t('knowledgeEditor.wikiBrowser.searchPlaceholder')" clearable
+              @enter="doSearch" @clear="searchResults = null">
+              <template #prefixIcon><t-icon name="search" /></template>
+            </t-input>
+            <div class="wiki-view-toggle" role="group"
+              :aria-label="$t('knowledgeEditor.wikiBrowser.viewModeToggle')">
+              <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.viewTree')" placement="top">
+                <button type="button" class="wiki-view-toggle-btn"
+                  :class="{ active: sidebarViewMode === 'tree' }" :aria-pressed="sidebarViewMode === 'tree'"
+                  :aria-label="$t('knowledgeEditor.wikiBrowser.viewTree')" :disabled="sidebarViewSwitching"
+                  @click="switchSidebarViewMode('tree')">
+                  <t-icon name="tree-list" />
+                </button>
+              </t-tooltip>
+              <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.viewList')" placement="top">
+                <button type="button" class="wiki-view-toggle-btn"
+                  :class="{ active: sidebarViewMode === 'list' }" :aria-pressed="sidebarViewMode === 'list'"
+                  :aria-label="$t('knowledgeEditor.wikiBrowser.viewList')" :disabled="sidebarViewSwitching"
+                  @click="switchSidebarViewMode('list')">
+                  <t-icon name="view-list" />
+                </button>
+              </t-tooltip>
+            </div>
+            <t-tooltip v-if="props.canEdit" :content="$t('knowledgeEditor.wikiBrowser.newRootFolder')" placement="top">
+              <button type="button" class="wiki-tab-bar-action"
+                :disabled="sidebarViewMode !== 'tree' || sidebarViewSwitching"
+                :aria-label="$t('knowledgeEditor.wikiBrowser.newRootFolder')"
+                @click.stop="startCreateRootFolder">
+                <t-icon name="folder-add" />
+              </button>
+            </t-tooltip>
+          </div>
         </div>
 
         <div class="wiki-page-list" ref="pageListRef">
@@ -220,50 +249,12 @@
 
             <div class="wiki-sidebar-divider" v-if="indexAvailable || logAvailable"></div>
 
-            <!-- Tab bar + tree share one horizontal inset so the "new folder"
-                 action lines up with the folder rows below. -->
-            <div v-if="visibleTabs.length > 0 || activeGroup" class="wiki-tree-panel">
-              <div v-if="visibleTabs.length > 0" class="wiki-tab-bar">
-                <div class="wiki-tab-bar-scroll">
-                  <div v-for="tab in visibleTabs" :key="tab.type"
-                    :class="['wiki-tab', { active: activeTab === tab.type }]" @click="setActiveTab(tab.type)">
-                    <span class="wiki-tab-label">{{ tab.label }}</span>
-                    <span class="wiki-tab-count">{{ tab.total }}</span>
-                  </div>
-                </div>
-                <div class="wiki-tab-bar-actions">
-                  <div class="wiki-view-toggle" role="group"
-                    :aria-label="$t('knowledgeEditor.wikiBrowser.viewModeToggle')">
-                    <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.viewTree')" placement="top">
-                      <button type="button" class="wiki-view-toggle-btn"
-                        :class="{ active: sidebarViewMode === 'tree' }" :aria-pressed="sidebarViewMode === 'tree'"
-                        :aria-label="$t('knowledgeEditor.wikiBrowser.viewTree')" :disabled="sidebarViewSwitching"
-                        @click="switchSidebarViewMode('tree')">
-                        <t-icon name="tree-list" />
-                      </button>
-                    </t-tooltip>
-                    <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.viewList')" placement="top">
-                      <button type="button" class="wiki-view-toggle-btn"
-                        :class="{ active: sidebarViewMode === 'list' }" :aria-pressed="sidebarViewMode === 'list'"
-                        :aria-label="$t('knowledgeEditor.wikiBrowser.viewList')" :disabled="sidebarViewSwitching"
-                        @click="switchSidebarViewMode('list')">
-                        <t-icon name="view-list" />
-                      </button>
-                    </t-tooltip>
-                  </div>
-                  <t-tooltip v-if="props.canEdit" :content="$t('knowledgeEditor.wikiBrowser.newRootFolder')" placement="top">
-                    <button type="button" class="wiki-tab-bar-action"
-                      :disabled="sidebarViewMode !== 'tree' || sidebarViewSwitching || sidebarTabSwitching"
-                      :aria-label="$t('knowledgeEditor.wikiBrowser.newRootFolder')"
-                      @click.stop="startCreateRootFolder">
-                      <t-icon name="folder-add" />
-                    </button>
-                  </t-tooltip>
-                </div>
-              </div>
-
-              <!-- Active-tab list -->
-              <template v-if="activeGroup && sidebarViewMode === 'tree'">
+            <!-- Merged tree / list panel. All content types share one view,
+                 so there is no tab bar — the view-mode toggle and "new root
+                 folder" action live in the sidebar search row above. -->
+            <div v-if="activeGroup" class="wiki-tree-panel">
+              <!-- Active list -->
+              <template v-if="sidebarViewMode === 'tree'">
                 <!-- The list container is itself the "move to root" drop target;
                    folder rows stop propagation so their own drop wins. This
                    avoids inserting/removing a drop bar during the drag, which
@@ -1090,43 +1081,17 @@ const navFromSystemView = ref<'' | 'index' | 'log'>('')
 // computed implementation required pulling every page into memory just
 // to pluck two system pages.
 
-// typeOrder drives the order of groups in the sidebar. Keep in sync
-// with WIKI_PAGE_TYPES on the backend; unknown types fall through to
-// the "other" bucket at the bottom of groupedPages.
-const typeOrder = ['summary', 'entity', 'concept', 'synthesis', 'comparison']
-
-// Entity and concept pages look and behave alike, so the sidebar merges all
-// non-summary content types under a single "knowledge" tab and distinguishes
-// the individual page types by icon instead. Summary keeps its own tab and is
-// shown after the knowledge tab.
-const KNOWLEDGE_TAB = 'knowledge'
-const KNOWLEDGE_TYPES = ['entity', 'concept', 'synthesis', 'comparison']
-// CONTENT_TABS are the sidebar tabs in display order: the merged knowledge tab
-// first, then summary. Each tab maps to its own bucket keyed by the tab id.
-const CONTENT_TABS = [KNOWLEDGE_TAB, 'summary']
-
-// tabPageTypes maps a sidebar tab onto the comma-separated page_type filter the
-// backend expects. The knowledge tab folds every non-summary content type into
-// one request so the server returns a single merged list and directory
-// skeleton — no per-type fan-out on the client.
-function tabPageTypes(tab: string): string {
-  return tab === KNOWLEDGE_TAB ? KNOWLEDGE_TYPES.join(',') : tab
-}
-
-// Pick the default sidebar tab in CONTENT_TABS display order (knowledge
-// before summary), not whatever tab happened to finish loading first.
-function preferredDefaultTab(tabs: Array<{ type: string }>): string {
-  for (const tab of CONTENT_TABS) {
-    if (tabs.some(t => t.type === tab)) return tab
-  }
-  return tabs[0]?.type || ''
-}
+// All content page types are merged into a single sidebar view — the old
+// "knowledge" and "summary" tabs are gone. Client code passes this
+// comma-joined page_type filter to the backend so one request returns pages
+// and folder skeletons of every type in a single bucket.
+const ALL_CONTENT_TYPES = ['summary', 'entity', 'concept', 'synthesis', 'comparison']
+const MERGED_BUCKET_KEY = '_all'   // pagesByType 的唯一 bucket key
+const ALL_CONTENT_TYPES_FILTER = ALL_CONTENT_TYPES.join(',')
 
 // groupedPages projects the bucketed state into the shape the sidebar
-// template expects: one {type, label, items, total, loading, hasMore}
-// per displayed group. Groups with zero total are hidden (nothing to
-// show) but groups with total > 0 but items.length === 0 still render
-// so the collapse header can trigger a lazy fetch.
+// template expects. With the knowledge/summary tabs merged there is exactly
+// one group backed by the single MERGED_BUCKET_KEY bucket.
 const groupedPages = computed(() => {
   type Group = {
     type: string
@@ -1136,51 +1101,34 @@ const groupedPages = computed(() => {
     loading: boolean
     hasMore: boolean
   }
-  const out: Group[] = []
-  const seen = new Set<string>()
-  // Stats are reported per real page_type; the knowledge tab sums its members
-  // so the count is available before the first page request completes.
-  const statTotal = (tab: string) => {
-    const byType = stats.value?.pages_by_type
-    if (!byType) return 0
-    if (tab === KNOWLEDGE_TAB) return KNOWLEDGE_TYPES.reduce((sum, t) => sum + (byType[t] || 0), 0)
-    return byType[tab] || 0
-  }
-  const push = (tab: string) => {
-    const bucket = pagesByType.value[tab]
-    if (!bucket) return
-    const total = bucket.total || statTotal(tab) || bucket.categoryPaths.length
-    if (total === 0) return
-    out.push({
-      type: tab,
-      label: getTypeLabel(tab),
-      pages: bucket.items,
-      total,
-      loading: bucket.loading,
-      hasMore: bucket.total > 0 && bucket.items.length < bucket.total,
-    })
-    seen.add(tab)
-  }
-  for (const tab of CONTENT_TABS) push(tab)
-  // Any tabs present in the buckets but not handled above go last in insertion
-  // order so the sidebar doesn't suddenly hide a future tab.
-  for (const tab of Object.keys(pagesByType.value)) {
-    if (seen.has(tab)) continue
-    if (tab === 'index' || tab === 'log') continue
-    push(tab)
-  }
-  return out
+  const bucket = pagesByType.value[MERGED_BUCKET_KEY]
+  if (!bucket) return []
+  const total = bucket.total || allStatsTotal() || bucket.categoryPaths.length
+  if (total === 0) return []
+  return [{
+    type: MERGED_BUCKET_KEY,
+    label: t('knowledgeEditor.wikiBrowser.filterAllContent'),
+    pages: bucket.items,
+    total,
+    loading: bucket.loading,
+    hasMore: bucket.total > 0 && bucket.items.length < bucket.total,
+  }]
 })
 
-// hasContentPages is the sidebar's empty-state gate. The old version
-// looked at `contentPages.length === 0`, which forced a full load to
-// decide whether the wiki was truly empty. Now we check bucket totals
-// reported by the backend — zero everywhere means no content pages.
+// allStatsTotal sums the per-page_type counts reported by the backend so the
+// merged group shows its count before the first page request completes.
+function allStatsTotal(): number {
+  const byType = stats.value?.pages_by_type
+  if (!byType) return 0
+  return ALL_CONTENT_TYPES.reduce((sum, t) => sum + (byType[t] || 0), 0)
+}
+
+// hasContentPages is the sidebar's empty-state gate. After merging all
+// content types into one bucket we check that single bucket only.
 const hasContentPages = computed(() => {
-  for (const bucket of Object.values(pagesByType.value)) {
-    if (bucket.total > 0 || bucket.categoryPaths.length > 0) return true
-  }
-  return false
+  const bucket = pagesByType.value[MERGED_BUCKET_KEY]
+  if (!bucket) return false
+  return bucket.total > 0 || bucket.categoryPaths.length > 0
 })
 
 // Parse source refs in "id|title" format
@@ -1464,12 +1412,8 @@ function handleGraphDrawerClick(e: MouseEvent) {
   }
 }
 
-// activeTab drives which page_type's list is visible in the sidebar.
-// Pre-tabbed UX stacked collapsible groups, but on a 40k-page KB the
-// expanded groups left multiple virtualized viewports and scroll events got
-// ambiguous — "which list am I scrolling?" The tabbed version removes
-// that ambiguity by mounting exactly one scroller at a time.
-const activeTab = ref<string>('')
+// The sidebar shows a single merged view of every content type; there are no
+// tabs anymore. MERGED_BUCKET_KEY is the only bucket key pagesByType holds.
 type SidebarViewMode = 'tree' | 'list'
 const SIDEBAR_VIEW_MODE_KEY = 'weknora.wiki.sidebar.viewMode'
 function initialSidebarViewMode(): SidebarViewMode {
@@ -1480,16 +1424,11 @@ function initialSidebarViewMode(): SidebarViewMode {
   }
 }
 const sidebarViewMode = ref<SidebarViewMode>(initialSidebarViewMode())
-// Suppress visibleTabs watcher during the first sidebar load. Knowledge and
-// summary buckets load in parallel; whichever API returns first used to win
-// the race and stick on summary even though knowledge is the intended default.
-let initialSidebarLoad = true
-// The outer scroll container. We reset it on tab switches so the retained
-// scroll position from the old tab doesn't immediately expose the new
-// tab's sentinel and cascade load-more calls.
+// The outer scroll container. We reset it on view-mode switches so the
+// retained scroll position from the old mode doesn't immediately expose the
+// new mode's sentinel and cascade load-more calls.
 const pageListRef = ref<HTMLElement | null>(null)
 const sidebarViewSwitching = ref(false)
-const sidebarTabSwitching = ref(false)
 
 watch(sidebarViewMode, (mode) => {
   try { localStorage.setItem(SIDEBAR_VIEW_MODE_KEY, mode) } catch { /* ignore */ }
@@ -1504,8 +1443,8 @@ async function switchSidebarViewMode(mode: SidebarViewMode) {
     // The flat list has its own unscoped pagination stream. Fetch its first
     // page before swapping containers so the user never lands on an empty
     // RecycleScroller while the request is still in flight.
-    if (mode === 'list' && activeTab.value) {
-      const ready = await loadFlatPagesForType(activeTab.value)
+    if (mode === 'list') {
+      const ready = await loadFlatPagesForType(MERGED_BUCKET_KEY)
       if (!ready && activeFlatPages.value.length === 0) return
     }
     sidebarViewMode.value = mode
@@ -1514,83 +1453,16 @@ async function switchSidebarViewMode(mode: SidebarViewMode) {
   }
 }
 
-function waitForTabData(type: string, mode: SidebarViewMode): Promise<void> {
-  const isBusy = () => {
-    const bucket = pagesByType.value[type]
-    if (!bucket) return false
-    return mode === 'list'
-      ? bucket.flatLoading
-      : bucket.loading || bucket.categoriesLoading
-  }
-  if (!isBusy()) return Promise.resolve()
+// activeGroup resolves the single merged group descriptor, or null when the
+// bucket has not been populated yet (e.g. before the first load completes).
+const activeGroup = computed(() => groupedPages.value[0] || null)
 
-  return new Promise(resolve => {
-    const stop = watch(isBusy, (busy) => {
-      if (!busy) {
-        stop()
-        resolve()
-      }
-    }, { flush: 'post' })
-    // The request may finish between the initial check and watcher setup.
-    if (!isBusy()) {
-      stop()
-      resolve()
-    }
-  })
-}
-
-async function setActiveTab(type: string) {
-  if (activeTab.value === type || sidebarTabSwitching.value) return
-  sidebarTabSwitching.value = true
-  ensureBucket(type)
-  try {
-    // Initial sidebar requests run in parallel. A tab can become visible from
-    // stats before its page/folder requests finish, so prepare the target
-    // bucket before replacing the current content instead of briefly mounting
-    // an empty tree/list on the first click after refresh.
-    if (sidebarViewMode.value === 'list') {
-      await loadFlatPagesForType(type)
-    } else {
-      await Promise.all([
-        loadPagesForType(type),
-        loadCategoriesForType(type),
-      ])
-    }
-    await waitForTabData(type, sidebarViewMode.value)
-
-    cancelCreateRootFolder()
-    activeTab.value = type
-  } finally {
-    sidebarTabSwitching.value = false
-  }
-  // Snap back to the top before the new list renders so the sentinel
-  // has to be scrolled to, not simply appear at a retained scroll depth.
-  if (pageListRef.value) pageListRef.value.scrollTop = 0
-}
-
-// visibleTabs mirrors groupedPages but is meant for rendering the
-// horizontal tab bar: only non-empty types survive, in typeOrder with
-// any unknown types appended after.
-const visibleTabs = computed(() =>
-  groupedPages.value.map(g => ({ type: g.type, label: g.label, total: g.total }))
+const activeFlatPages = computed(() =>
+  pagesByType.value[MERGED_BUCKET_KEY]?.flatItems || []
 )
 
-// activeGroup resolves activeTab into the current group descriptor,
-// or null when the active type has been deselected (e.g. after a
-// filter toggle zeroed out every bucket).
-const activeGroup = computed(() => {
-  if (!activeTab.value) return null
-  return groupedPages.value.find(g => g.type === activeTab.value) || null
-})
-
-const activeFlatPages = computed(() => {
-  if (!activeTab.value) return []
-  return pagesByType.value[activeTab.value]?.flatItems || []
-})
-
 const activeFlatState = computed(() => {
-  if (!activeTab.value) return null
-  const bucket = pagesByType.value[activeTab.value]
+  const bucket = pagesByType.value[MERGED_BUCKET_KEY]
   if (!bucket) return null
   return {
     loading: bucket.flatLoading,
@@ -1776,24 +1648,9 @@ const activeTreeRows = computed<WikiTreeRow[]>(() => {
   return rows
 })
 
-// Keep activeTab in sync with what's available. When loadPages first
-// populates buckets, pick the first non-empty tab. When a user deletes
-// the last page of the active type we transparently switch to the next
-// available one so the sidebar never shows "tab selected with no list".
-watch(visibleTabs, (tabs) => {
-  if (initialSidebarLoad) return
-  if (tabs.length === 0) {
-    activeTab.value = ''
-    return
-  }
-  if (!tabs.some(t => t.type === activeTab.value)) {
-    activeTab.value = preferredDefaultTab(tabs)
-  }
-})
-
-// IntersectionObserver-driven infinite scroll for the active tab. We
+// IntersectionObserver-driven infinite scroll for the merged list. We
 // observe a 1px sentinel placed after the list; when it enters the
-// viewport we pull the next page for the active bucket. Guards in
+// viewport we pull the next page for the merged bucket. Guards in
 // loadPagesForType prevent double-fetching.
 const groupSentinelRef = ref<HTMLElement | null>(null)
 let groupSentinelObserver: IntersectionObserver | null = null
@@ -1867,7 +1724,6 @@ function getTypeTheme(type: string): string {
 
 function getTypeLabel(type: string): string {
   const map: Record<string, string> = {
-    knowledge: t('knowledgeEditor.wikiBrowser.filterKnowledge'),
     summary: t('knowledgeEditor.wikiBrowser.filterSummary'),
     entity: t('knowledgeEditor.wikiBrowser.filterEntity'),
     concept: t('knowledgeEditor.wikiBrowser.filterConcept'),
@@ -1998,7 +1854,7 @@ async function loadFlatPagesForType(type: string, reset = false): Promise<boolea
   try {
     const requestPage = reset ? 1 : bucket.flatNextPage
     const res = await listWikiPages(props.knowledgeBaseId, {
-      page_type: tabPageTypes(type),
+      page_type: ALL_CONTENT_TYPES_FILTER,
       page: requestPage,
       page_size: WIKI_SIDEBAR_PAGE_SIZE,
       sort_by: 'wiki_path',
@@ -2040,8 +1896,9 @@ function ensureBucket(type: string): PageTypeBucket {
 }
 
 // loadCategoriesForType pulls the child folders of one directory level from the
-// authoritative wiki_folders tree. Empty folders are returned only for the
-// merged knowledge tab (multi page_type); the summary tab omits them.
+// authoritative wiki_folders tree. The merged view requests every content type
+// at once, so empty folders are included (they may still hold pages of another
+// type).
 // bucket.folderIdByPath; the root level uses id "". Each level's children are
 // returned in one shot (the tree is navigation-sized), so there is no
 // per-level "load more folders" pagination anymore.
@@ -2069,7 +1926,7 @@ async function loadCategoriesForType(type: string, opts: { reset?: boolean; pare
   setState({ ...state, loading: true })
   if (isRoot) bucket.categoriesLoading = true
   try {
-    const res = await listWikiFolders(props.knowledgeBaseId, parentId || '', tabPageTypes(type))
+    const res = await listWikiFolders(props.knowledgeBaseId, parentId || '', ALL_CONTENT_TYPES_FILTER)
     const body: any = (res as any).data || res
     const folders: WikiFolderNode[] = Array.isArray(body?.folders) ? body.folders : []
     const incoming = folders
@@ -2079,9 +1936,6 @@ async function loadCategoriesForType(type: string, opts: { reset?: boolean; pare
         id: String(folder.id || ''),
       }))
       .filter(entry => entry.path.length > 0)
-      // Summary is a single page_type; empty folders belong in the merged
-      // knowledge view only (backend filters too — belt-and-suspenders).
-      .filter(entry => type !== 'summary' || entry.count > 0)
 
     const existing = new Map((opts.reset ? [] : bucket.categoryPaths)
       .map(entry => [directoryPathKey(type, entry.path), entry]))
@@ -2228,7 +2082,7 @@ async function confirmPendingMove() {
     try {
       await moveWikiPage(props.knowledgeBaseId, item.page.slug, folderId ? [folderId] : [])
       MessagePlugin.success(t('knowledgeEditor.wikiBrowser.movePageSuccess'))
-      await reloadDirectoryForType(activeTab.value)
+      await reloadDirectoryForType(MERGED_BUCKET_KEY)
     } catch (e) {
       console.error('Failed to move wiki page:', e)
       MessagePlugin.error(t('knowledgeEditor.wikiBrowser.movePageFailed'))
@@ -2239,7 +2093,7 @@ async function confirmPendingMove() {
   try {
     await updateWikiFolder(props.knowledgeBaseId, item.folderId, { parent_id: folderId, move_parent: true })
     MessagePlugin.success(t('knowledgeEditor.wikiBrowser.moveFolderSuccess'))
-    await reloadDirectoryForType(activeTab.value)
+    await reloadDirectoryForType(MERGED_BUCKET_KEY)
   } catch (e: any) {
     console.error('Failed to move wiki folder:', e)
     MessagePlugin.error(
@@ -2354,7 +2208,7 @@ async function confirmMovePageDialog() {
     await moveWikiPage(props.knowledgeBaseId, page.slug, ordered)
     MessagePlugin.success(t('knowledgeEditor.wikiBrowser.movePageSuccess'))
     cancelMovePageDialog()
-    await reloadDirectoryForType(activeTab.value)
+    await reloadDirectoryForType(MERGED_BUCKET_KEY)
   } catch (e) {
     console.error('Failed to move wiki page to folders:', e)
     MessagePlugin.error(t('knowledgeEditor.wikiBrowser.movePageFailed'))
@@ -2375,10 +2229,10 @@ async function createFolder(parentId: string, parentPath: string[], name: string
     // Keep the parent expanded so the new child is visible.
     if (parentPath.length > 0) {
       collapsedDirectories.value = new Set(
-        [...collapsedDirectories.value].filter(k => k !== directoryPathKey(activeTab.value, parentPath)),
+        [...collapsedDirectories.value].filter(k => k !== directoryPathKey(MERGED_BUCKET_KEY, parentPath)),
       )
     }
-    await reloadDirectoryForType(activeTab.value)
+    await reloadDirectoryForType(MERGED_BUCKET_KEY)
   } catch (e: any) {
     console.error('Failed to create wiki folder:', e)
     MessagePlugin.error(e?.response?.data?.message || t('knowledgeEditor.wikiBrowser.createFolderFailed'))
@@ -2441,7 +2295,7 @@ async function commitRenameFolder(folderId: string, originalName: string) {
   try {
     await updateWikiFolder(props.knowledgeBaseId, folderId, { name })
     MessagePlugin.success(t('knowledgeEditor.wikiBrowser.renameFolderSuccess'))
-    await reloadDirectoryForType(activeTab.value)
+    await reloadDirectoryForType(MERGED_BUCKET_KEY)
   } catch (e: any) {
     console.error('Failed to rename wiki folder:', e)
     MessagePlugin.error(e?.response?.data?.message || t('knowledgeEditor.wikiBrowser.renameFolderFailed'))
@@ -2453,7 +2307,7 @@ async function deleteFolder(folderId: string) {
   try {
     await deleteWikiFolder(props.knowledgeBaseId, folderId)
     MessagePlugin.success(t('knowledgeEditor.wikiBrowser.deleteFolderSuccess'))
-    await reloadDirectoryForType(activeTab.value)
+    await reloadDirectoryForType(MERGED_BUCKET_KEY)
   } catch (e: any) {
     console.error('Failed to delete wiki folder:', e)
     MessagePlugin.error(e?.response?.data?.message || t('knowledgeEditor.wikiBrowser.deleteFolderFailed'))
@@ -2497,7 +2351,7 @@ async function loadPagesForType(type: string, opts: { reset?: boolean; categoryP
     const currentScopedState = scopedToCategory ? bucket.directoryPages[scopedPathKey] : null
     const requestPage = opts.reset ? 1 : (currentScopedState ? currentScopedState.nextPage : bucket.nextPage)
     const res = await listWikiPages(props.knowledgeBaseId, {
-      page_type: tabPageTypes(type),
+      page_type: ALL_CONTENT_TYPES_FILTER,
       page: requestPage,
       page_size: WIKI_SIDEBAR_PAGE_SIZE,
       sort_by: 'wiki_path',
@@ -2834,27 +2688,17 @@ async function loadPages() {
   loading.value = true
   try {
     searchResults.value = null
-    for (const tab of CONTENT_TABS) ensureBucket(tab)
+    ensureBucket(MERGED_BUCKET_KEY)
     await loadIndexAndLog()
-    await Promise.all(CONTENT_TABS.map(async tab => {
-      await loadPagesForType(tab, { reset: true })
-      await loadCategoriesForType(tab, { reset: true })
-    }))
+    await Promise.all([
+      loadPagesForType(MERGED_BUCKET_KEY, { reset: true }),
+      loadCategoriesForType(MERGED_BUCKET_KEY, { reset: true }),
+    ])
 
-    // Default to the knowledge tab (first in CONTENT_TABS) once every
-    // bucket has had a chance to load. On later reloads (e.g. after
-    // indexing finishes) keep the user's current tab when still valid.
-    if (initialSidebarLoad) {
-      activeTab.value = preferredDefaultTab(visibleTabs.value)
-      initialSidebarLoad = false
-    } else {
-      const tabValid = activeTab.value && visibleTabs.value.some(tab => tab.type === activeTab.value)
-      if (!tabValid) {
-        activeTab.value = preferredDefaultTab(visibleTabs.value)
-      }
-    }
-    if (sidebarViewMode.value === 'list' && activeTab.value) {
-      await loadFlatPagesForType(activeTab.value, true)
+    // The merged sidebar view holds every content type in one bucket, so there
+    // is no default-tab selection to reconcile on reload.
+    if (sidebarViewMode.value === 'list') {
+      await loadFlatPagesForType(MERGED_BUCKET_KEY, true)
     }
 
     // Auto-select based on query string or default to the index
@@ -4674,6 +4518,17 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.wiki-sidebar-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wiki-sidebar-search-row > .t-input {
+  flex: 1;
+  min-width: 0;
+}
+
 .wiki-queue-status {
   display: flex;
   align-items: center;
@@ -4721,42 +4576,11 @@ onUnmounted(() => {
   padding: 0 0 4px;
 }
 
-// Tab bar + tree list share horizontal inset. Tree rows are plain flex and
-// left-aligned; only folder rows reserve trailing space for count / actions.
+// Tree panel shares horizontal inset with folder rows. Tree rows are plain
+// flex and left-aligned; only folder rows reserve trailing space for count.
 .wiki-tree-panel {
   --wiki-tree-depth-indent: 14px;
   padding: 0 8px;
-}
-
-.wiki-tab-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0 6px;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: var(--td-bg-color-container);
-}
-
-.wiki-tab-bar-scroll {
-  display: flex;
-  gap: 16px;
-  min-width: 0;
-  flex: 1;
-  overflow-x: auto;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
-}
-
-.wiki-tab-bar-actions {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .wiki-view-toggle {
@@ -4893,53 +4717,6 @@ onUnmounted(() => {
   height: 1px;
   background: var(--td-component-stroke);
   margin: 8px 12px;
-}
-
-.wiki-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 2px 8px;
-  border-radius: 0;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-  position: relative;
-  transition: background 0.15s, color 0.15s;
-
-  &:hover {
-    color: var(--td-text-color-primary);
-  }
-
-  &.active {
-    color: var(--td-brand-color);
-    font-weight: 600;
-
-    &::after {
-      content: '';
-      position: absolute;
-      left: 2px;
-      right: 2px;
-      bottom: 1px;
-      height: 2px;
-      border-radius: 2px 2px 0 0;
-      background: var(--td-brand-color);
-    }
-  }
-
-  .wiki-tab-count {
-    font-size: 11px;
-    padding: 0;
-    line-height: 1;
-    color: var(--td-text-color-placeholder);
-  }
-
-  &.active .wiki-tab-count {
-    color: var(--td-brand-color);
-    font-weight: 500;
-  }
 }
 
 .wiki-page-item {

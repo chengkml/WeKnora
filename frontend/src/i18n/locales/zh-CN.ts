@@ -4070,6 +4070,7 @@ export default {
       dropToRoot: "拖到空白处移动到根目录",
       filterSummary: "摘要",
       filterKnowledge: "知识",
+      filterAllContent: "全部内容",
       filterEntity: "实体",
       filterConcept: "概念",
       filterSynthesis: "综合",
