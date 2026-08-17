@@ -413,7 +413,8 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="list_wiki_folders",
             description="List direct child folders of a parent folder "
-            "(empty parent_id = root level).",
+            "(empty parent_id = root level). Empty folders (no pages "
+            "underneath) are included.",
             inputSchema={
                 "type": "object",
                 "properties": {

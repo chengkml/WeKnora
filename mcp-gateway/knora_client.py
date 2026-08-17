@@ -184,7 +184,8 @@ class WeKnoraGatewayClient:
     # ------------------------------------------------------------------
 
     def list_wiki_folders(self, kb_id: str, parent_id: str = "") -> Dict[str, Any]:
-        """List direct child folders of a parent (empty parent_id = root)."""
+        """List direct child folders of a parent (empty parent_id = root).
+        Empty folders (no pages underneath) are included."""
         params: Dict[str, Any] = {}
         if parent_id:
             params["parent_id"] = parent_id
