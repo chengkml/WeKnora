@@ -2,6 +2,7 @@ package handler
 
 import (
 	stderrors "errors"
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -70,7 +71,17 @@ func (h *WikiPageHandler) validateWikiKB(c *gin.Context) (string, uint64, error)
 func (h *WikiPageHandler) resolveDefaultGraphTypes(ctx context.Context, kbID string) []string {
 	kb, err := h.kbService.GetKnowledgeBaseByID(ctx, kbID)
 	if err != nil || kb == nil || kb.WikiConfig == nil || strings.TrimSpace(kb.WikiConfig.GraphDefaultTypes) == "" {
-		return wikiIndexContentPageTypes
+		return []string{
+			types.WikiPageTypeSummary,
+			types.WikiPageTypeEntity,
+			types.WikiPageTypeConcept,
+			types.WikiPageTypeSynthesis,
+			types.WikiPageTypeComparison,
+			types.WikiPageTypeBusinessOntology,
+			types.WikiPageTypeRuleOntology,
+			types.WikiPageTypeOriginalSentence,
+			types.WikiPageTypeFrequentKeyword,
+		}
 	}
 	parts := strings.Split(kb.WikiConfig.GraphDefaultTypes, ",")
 	out := make([]string, 0, len(parts))
@@ -82,7 +93,17 @@ func (h *WikiPageHandler) resolveDefaultGraphTypes(ctx context.Context, kbID str
 		out = append(out, t)
 	}
 	if len(out) == 0 {
-		return wikiIndexContentPageTypes
+		return []string{
+			types.WikiPageTypeSummary,
+			types.WikiPageTypeEntity,
+			types.WikiPageTypeConcept,
+			types.WikiPageTypeSynthesis,
+			types.WikiPageTypeComparison,
+			types.WikiPageTypeBusinessOntology,
+			types.WikiPageTypeRuleOntology,
+			types.WikiPageTypeOriginalSentence,
+			types.WikiPageTypeFrequentKeyword,
+		}
 	}
 	return out
 }
