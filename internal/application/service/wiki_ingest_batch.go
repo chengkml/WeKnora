@@ -1176,15 +1176,22 @@ func (s *wikiIngestService) mapOneDocument(
 	}
 
 	docTitle := knowledgeID
-	if kn, err := s.knowledgeSvc.GetKnowledgeByIDOnly(ctx, knowledgeID); err == nil && kn != nil && kn.Title != "" {
-		docTitle = kn.Title
-	} else {
+	if kn, err := s.knowledgeSvc.GetKnowledgeByIDOnly(ctx, knowledgeID); err == nil && kn != nil {
+		if kn.Title != "" {
+			docTitle = kn.Title
+		} else if kn.FileName != "" && kn.FileName != knowledgeID {
+			docTitle = kn.FileName
+		}
+	}
+	if docTitle == knowledgeID {
 		for _, ch := range chunks {
 			if ch.Content != "" {
 				lines := strings.SplitN(ch.Content, "\n", 2)
 				if len(lines) > 0 && len(lines[0]) > 0 && len(lines[0]) < 200 {
 					docTitle = strings.TrimPrefix(strings.TrimSpace(lines[0]), "# ")
-					break
+					if docTitle != "" && docTitle != knowledgeID {
+						break
+					}
 				}
 			}
 		}
