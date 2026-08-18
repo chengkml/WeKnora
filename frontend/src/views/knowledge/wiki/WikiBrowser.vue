@@ -316,7 +316,9 @@
                         @keydown.enter="commitRenameFolder(item.folderId, item.label)" @keydown.esc="cancelRenameFolder"
                         @blur="commitRenameFolder(item.folderId, item.label)" />
                       <template v-else>
-                        <span class="wiki-directory-title">{{ item.label }}</span>
+                        <t-tooltip :content="item.label" placement="top" :disabled="item.label.length <= 20">
+                          <span class="wiki-directory-title">{{ item.label }}</span>
+                        </t-tooltip>
                         <div class="wiki-tree-trailing">
                           <span class="wiki-directory-count">{{ item.count }}</span>
                           <WikiFolderActions v-if="item.folderId" :name="item.label" :page-count="item.count"
