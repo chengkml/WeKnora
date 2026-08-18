@@ -1109,7 +1109,7 @@ const navFromSystemView = ref<'' | 'index' | 'log'>('')
 // "knowledge" and "summary" tabs are gone. Client code passes this
 // comma-joined page_type filter to the backend so one request returns pages
 // and folder skeletons of every type in a single bucket.
-const ALL_CONTENT_TYPES = ['summary', 'entity', 'concept', 'synthesis', 'comparison']
+const ALL_CONTENT_TYPES = ['summary', 'entity', 'concept', 'synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'original_sentence', 'frequent_keyword']
 const MERGED_BUCKET_KEY = '_all'   // pagesByType 的唯一 bucket key
 const ALL_CONTENT_TYPES_FILTER = ALL_CONTENT_TYPES.join(',')
 
@@ -2805,7 +2805,7 @@ async function refreshSelectedPage() {
 // there (empty == no filter == return everything, the opposite of what
 // the user meant).
 function graphFilterTypesToArray(): string[] | undefined {
-  const all = ['summary', 'entity', 'concept', 'synthesis', 'comparison', 'index', 'log']
+  const all = ['summary', 'entity', 'concept', 'synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'original_sentence', 'frequent_keyword', 'index', 'log']
   if (all.every(t => graphFilterTypes.value.has(t))) {
     return undefined
   }

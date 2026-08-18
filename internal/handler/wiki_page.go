@@ -63,6 +63,30 @@ func (h *WikiPageHandler) validateWikiKB(c *gin.Context) (string, uint64, error)
 	return kbID, tenantID, nil
 }
 
+// resolveDefaultGraphTypes returns the graph default page-type allow-list for
+// the given KB. It prefers KB.WikiConfig.GraphDefaultTypes when set; otherwise
+// it falls back to the built-in set of content types so older KBs keep the
+// current "show everything" behavior.
+func (h *WikiPageHandler) resolveDefaultGraphTypes(ctx context.Context, kbID string) []string {
+	kb, err := h.kbService.GetKnowledgeBaseByID(ctx, kbID)
+	if err != nil || kb == nil || kb.WikiConfig == nil || strings.TrimSpace(kb.WikiConfig.GraphDefaultTypes) == "" {
+		return wikiIndexContentPageTypes
+	}
+	parts := strings.Split(kb.WikiConfig.GraphDefaultTypes, ",")
+	out := make([]string, 0, len(parts))
+	for _, t := range parts {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		out = append(out, t)
+	}
+	if len(out) == 0 {
+		return wikiIndexContentPageTypes
+	}
+	return out
+}
+
 // getSlugParam extracts and cleans the slug from gin's wildcard path param
 func getSlugParam(c *gin.Context) string {
 	slug := c.Param("slug")
@@ -677,6 +701,10 @@ func (h *WikiPageHandler) GetGraph(c *gin.Context) {
 				typesFilter = append(typesFilter, t)
 			}
 		}
+	}
+
+	if len(typesFilter) == 0 {
+		typesFilter = h.resolveDefaultGraphTypes(c.Request.Context(), kbID)
 	}
 
 	req := &types.WikiGraphRequest{

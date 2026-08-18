@@ -463,6 +463,12 @@ type WikiConfig struct {
 	// this knob trades a single KB's peak throughput for cross-KB fairness.
 	// Set it >= the wiki pool size to effectively disable the cap.
 	IngestMaxInflight int `yaml:"ingest_max_inflight" json:"ingest_max_inflight,omitempty"`
+
+	// GraphDefaultTypes is a comma-separated allow-list of wiki page types
+	// shown by default in the wiki graph. Empty means all content types
+	// are enabled by default. The frontend still allows the user to toggle
+	// types interactively; this only controls the initial view.
+	GraphDefaultTypes string `yaml:"graph_default_types" json:"graph_default_types,omitempty"`
 }
 
 // IngestBatchSizeOrDefault returns IngestBatchSize when set (> 0),

@@ -92,6 +92,7 @@ export function createKnowledgeBase(data: {
     extraction_granularity?: 'focused' | 'standard' | 'exhaustive';
     content_instructions?: string;
     extraction_instructions?: string;
+    graph_default_types?: string;
   };
   indexing_strategy?: {
     vector_enabled: boolean;
@@ -123,6 +124,7 @@ export function updateKnowledgeBase(id: string, data: {
       extraction_granularity?: 'focused' | 'standard' | 'exhaustive';
       content_instructions?: string;
       extraction_instructions?: string;
+      graph_default_types?: string;
     };
     indexing_strategy?: {
       vector_enabled: boolean;

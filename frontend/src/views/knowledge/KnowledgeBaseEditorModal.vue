@@ -157,6 +157,15 @@
                         />
                       </div>
 
+                      <div v-if="!isFAQ && formData.indexingStrategy.wikiEnabled" class="form-item">
+                        <label class="form-label">{{ $t('knowledgeEditor.wiki.graphDefaultTypesLabel') }}</label>
+                        <p class="form-tip">{{ $t('knowledgeEditor.wiki.graphDefaultTypesTip') }}</p>
+                        <t-checkbox-group
+                          v-model="graphDefaultTypes"
+                          :options="graphDefaultTypeOptions"
+                        />
+                      </div>
+
                       <!-- 知识库归属类型 (仅创建模式可选) -->
                       <div class="form-item" data-guide="kb-create-ownership">
                         <label class="form-label">{{ $t('knowledgeEditor.basic.ownershipTypeLabel') }}</label>
@@ -777,6 +786,7 @@ const initFormData = (type: 'document' | 'faq' = 'document') => {
       extractionGranularity: 'standard' as 'focused' | 'standard' | 'exhaustive',
       contentInstructions: '',
       extractionInstructions: '',
+      graphDefaultTypes: '',
     },
     indexingStrategy: {
       vectorEnabled: true,
@@ -902,6 +912,7 @@ const loadKBData = async () => {
         ) as 'focused' | 'standard' | 'exhaustive',
         contentInstructions: kb.wiki_config?.content_instructions || '',
         extractionInstructions: kb.wiki_config?.extraction_instructions || '',
+        graphDefaultTypes: kb.wiki_config?.graph_default_types || '',
       },
       indexingStrategy: {
         vectorEnabled: kb.indexing_strategy?.vector_enabled ?? true,
@@ -943,6 +954,31 @@ const handleModelConfigUpdate = (config: any) => {
 
 // 粒度选择器：从 formData.wikiConfig 读出并规范化，未知值回退到 'standard'，
 // 与后端 WikiExtractionGranularity.Normalize() 的契约保持一致。
+const graphDefaultTypes = ref<string[]>([])
+const graphDefaultTypeOptions = [
+  { label: t('knowledgeEditor.wiki.filterSummary'), value: 'summary' },
+  { label: t('knowledgeEditor.wiki.filterEntity'), value: 'entity' },
+  { label: t('knowledgeEditor.wiki.filterConcept'), value: 'concept' },
+  { label: t('knowledgeEditor.wiki.filterSynthesis'), value: 'synthesis' },
+  { label: t('knowledgeEditor.wiki.filterComparison'), value: 'comparison' },
+  { label: t('knowledgeEditor.wiki.filterBusinessOntology'), value: 'business_ontology' },
+  { label: t('knowledgeEditor.wiki.filterRuleOntology'), value: 'rule_ontology' },
+  { label: t('knowledgeEditor.wiki.filterOriginalSentence'), value: 'original_sentence' },
+  { label: t('knowledgeEditor.wiki.filterFrequentKeyword'), value: 'frequent_keyword' },
+]
+watch(
+  () => formData.value?.wikiConfig?.graphDefaultTypes,
+  (val) => {
+    if (typeof val === 'string') {
+      graphDefaultTypes.value = val
+        ? val.split(',').map((s) => s.trim()).filter(Boolean)
+        : []
+    } else {
+      graphDefaultTypes.value = Array.isArray(val) ? val : []
+    }
+  },
+  { immediate: true }
+)
 const resolvedGranularity = computed<'focused' | 'standard' | 'exhaustive'>(() => {
   const g = formData.value?.wikiConfig?.extractionGranularity
   if (g === 'focused' || g === 'standard' || g === 'exhaustive') {
@@ -1363,6 +1399,9 @@ const doSubmit = async () => {
           extraction_granularity: formData.value.wikiConfig.extractionGranularity || 'standard',
           content_instructions: formData.value.wikiConfig.contentInstructions || '',
           extraction_instructions: formData.value.wikiConfig.extractionInstructions || '',
+          graph_default_types: Array.isArray(graphDefaultTypes.value)
+            ? graphDefaultTypes.value.join(',')
+            : '',
         }
       }
       if (formData.value.type !== 'faq') {
