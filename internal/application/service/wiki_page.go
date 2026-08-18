@@ -340,6 +340,10 @@ var wikiIndexContentPageTypes = []string{
 	types.WikiPageTypeConcept,
 	types.WikiPageTypeSynthesis,
 	types.WikiPageTypeComparison,
+	types.WikiPageTypeBusinessOntology,
+	types.WikiPageTypeRuleOntology,
+	types.WikiPageTypeOriginalSentence,
+	types.WikiPageTypeFrequentKeyword,
 }
 
 // GetIndexView builds the structured index response without ever

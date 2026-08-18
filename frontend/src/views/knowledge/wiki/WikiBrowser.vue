@@ -74,6 +74,26 @@
               <span class="legend-dot" style="background: #d54941"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterComparison') }}
             </div>
+            <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('business_ontology') }"
+              @click="toggleGraphFilterType('business_ontology')">
+              <span class="legend-dot" style="background: #7c3aed"></span>
+              {{ $t('knowledgeEditor.wikiBrowser.filterBusinessOntology') }}
+            </div>
+            <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('rule_ontology') }"
+              @click="toggleGraphFilterType('rule_ontology')">
+              <span class="legend-dot" style="background: #a855f7"></span>
+              {{ $t('knowledgeEditor.wikiBrowser.filterRuleOntology') }}
+            </div>
+            <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('original_sentence') }"
+              @click="toggleGraphFilterType('original_sentence')">
+              <span class="legend-dot" style="background: #f59e0b"></span>
+              {{ $t('knowledgeEditor.wikiBrowser.filterOriginalSentence') }}
+            </div>
+            <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('frequent_keyword') }"
+              @click="toggleGraphFilterType('frequent_keyword')">
+              <span class="legend-dot" style="background: #10b981"></span>
+              {{ $t('knowledgeEditor.wikiBrowser.filterFrequentKeyword') }}
+            </div>
           </div>
           <div class="legend-divider"></div>
           <div class="legend-actions">
@@ -879,6 +899,10 @@ const INDEX_SECTION_ORDER = [
   'concept',
   'synthesis',
   'comparison',
+  'business_ontology',
+  'rule_ontology',
+  'original_sentence',
+  'frequent_keyword',
 ] as const
 // logAvailable is a flag: the sidebar "Log" entry is always shown once a
 // KB exists, because the backing wiki_log_entries table is KB-independent
@@ -925,7 +949,7 @@ const graphReady = ref(false)
 const showArrows = ref(true)
 
 // Graph filtering
-const graphFilterTypes = ref<Set<string>>(new Set(['summary', 'entity', 'concept', 'synthesis', 'comparison', 'index', 'log']))
+const graphFilterTypes = ref<Set<string>>(new Set(['summary', 'entity', 'concept', 'synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'original_sentence', 'frequent_keyword', 'index', 'log']))
 
 // Graph slicing state. The backend caps an overview fetch at 500 nodes —
 // tens-of-thousands-page wikis would otherwise crash the browser trying to
@@ -1718,6 +1742,8 @@ function getTypeTheme(type: string): string {
   const map: Record<string, string> = {
     summary: 'primary', entity: 'success', concept: 'warning',
     synthesis: 'primary', comparison: 'danger', index: 'default', log: 'default',
+    business_ontology: 'secondary', rule_ontology: 'secondary',
+    original_sentence: 'warning', frequent_keyword: 'success',
   }
   return map[type] || 'default'
 }
@@ -1729,6 +1755,10 @@ function getTypeLabel(type: string): string {
     concept: t('knowledgeEditor.wikiBrowser.filterConcept'),
     synthesis: t('knowledgeEditor.wikiBrowser.filterSynthesis'),
     comparison: t('knowledgeEditor.wikiBrowser.filterComparison'),
+    business_ontology: t('knowledgeEditor.wikiBrowser.filterBusinessOntology'),
+    rule_ontology: t('knowledgeEditor.wikiBrowser.filterRuleOntology'),
+    original_sentence: t('knowledgeEditor.wikiBrowser.filterOriginalSentence'),
+    frequent_keyword: t('knowledgeEditor.wikiBrowser.filterFrequentKeyword'),
     index: 'Index',
     log: 'Log',
   }

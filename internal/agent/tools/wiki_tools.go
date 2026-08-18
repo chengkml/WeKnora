@@ -41,11 +41,15 @@ func renderIndexOverviewForAgent(resp *types.WikiIndexResponse) string {
 	}
 
 	typeLabels := map[string]string{
-		types.WikiPageTypeSummary:    "Summary",
-		types.WikiPageTypeEntity:     "Entity",
-		types.WikiPageTypeConcept:    "Concept",
-		types.WikiPageTypeSynthesis:  "Synthesis",
-		types.WikiPageTypeComparison: "Comparison",
+		types.WikiPageTypeSummary:          "Summary",
+		types.WikiPageTypeEntity:           "Entity",
+		types.WikiPageTypeConcept:          "Concept",
+		types.WikiPageTypeSynthesis:        "Synthesis",
+		types.WikiPageTypeComparison:       "Comparison",
+		types.WikiPageTypeBusinessOntology: "Business Ontology",
+		types.WikiPageTypeRuleOntology:     "Rule Ontology",
+		types.WikiPageTypeOriginalSentence: "Original Sentence",
+		types.WikiPageTypeFrequentKeyword:  "Frequent Keyword",
 	}
 
 	nonEmpty := 0

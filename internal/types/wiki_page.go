@@ -128,6 +128,14 @@ const (
 	// NOT auto-created by ingest — Agent creates these via wiki_write_page tool
 	// when the user asks to compare entities, concepts, or approaches.
 	WikiPageTypeComparison = "comparison"
+	// WikiPageTypeBusinessOntology represents a business ontology page.
+	WikiPageTypeBusinessOntology = "business_ontology"
+	// WikiPageTypeRuleOntology represents a rule ontology page.
+	WikiPageTypeRuleOntology = "rule_ontology"
+	// WikiPageTypeOriginalSentence represents an original long sentence page.
+	WikiPageTypeOriginalSentence = "original_sentence"
+	// WikiPageTypeFrequentKeyword represents a frequent keyword page.
+	WikiPageTypeFrequentKeyword = "frequent_keyword"
 )
 
 // WikiPageStatus constants
