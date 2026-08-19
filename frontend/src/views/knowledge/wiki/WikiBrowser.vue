@@ -3429,6 +3429,7 @@ function renderGraph(opts: RenderGraphOpts = {}) {
     return
   }
   const graph = data
+  graph.edges = graph.edges || []
 
   // Stop any previous animation
   if (graphAnimFrame) { cancelAnimationFrame(graphAnimFrame); graphAnimFrame = 0 }
