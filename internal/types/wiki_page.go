@@ -10,13 +10,12 @@ import (
 )
 
 // WikiCategoryMaxDepth is the hard cap on how many folder levels a wiki page's
-// category_path may keep. The ingest prompts intentionally ask the model for at
-// most 2 levels to keep the directory tree shallow; this storage cap is one
-// level deeper as a defensive bound so a slightly over-eager model (or a
-// reconcile remap) cannot create an unbounded breadcrumb. It is the single
-// source of truth shared by the service, repository, and taxonomy layers so
-// stored paths and queried paths are always cleaned identically.
-const WikiCategoryMaxDepth = 3
+// category_path may keep. The current directory structure is 5 levels deep
+// (family/version/基础实体/{业务本体|规则本体}/category-subfolder), so the cap
+// needs to be at least 5. Setting it to 6 gives one level of headroom. It is
+// the single source of truth shared by the service, repository, and taxonomy
+// layers so stored paths and queried paths are always cleaned identically.
+const WikiCategoryMaxDepth = 6
 
 var wikiCategorySeparatorReplacer = strings.NewReplacer("／", "/", "｜", "/", "|", "/")
 
