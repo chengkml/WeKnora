@@ -20,6 +20,35 @@ const WikiCategoryMaxDepth = 3
 
 var wikiCategorySeparatorReplacer = strings.NewReplacer("／", "/", "｜", "/", "|", "/")
 
+// wikiCategoryWrappingChars are quoting/parenthesis pairs that may *wrap* a
+// category label (e.g. `"实体"` or `（实体）`). We only strip a pair when both
+// opening and closing characters are present at the very start/end — i.e. when
+// they genuinely wrap the whole label. We must NOT blindly Trim every leading
+// and trailing parenthesis character, because legitimate folder names can end
+// with a closing parenthesis (e.g. `…（需求前置决策事项）`, `…（V2.0）`); trimming
+// those would corrupt the stored path and break category_path lookups.
+var wikiCategoryWrappingPairs = []struct{ open, close string }{
+	{`"`, `"`},
+	{`'`, `'`},
+	{"“", "”"},
+	{"‘", "’"},
+	{"[", "]"},
+	{"（", "）"},
+	{"(", ")"},
+}
+
+// stripCategoryWrapping removes a single pair of wrapping quotes/brackets that
+// fully encloses the label, leaving interior parens untouched.
+func stripCategoryWrapping(label string) string {
+	for _, p := range wikiCategoryWrappingPairs {
+		if len(label) >= len(p.open)+len(p.close) &&
+			strings.HasPrefix(label, p.open) && strings.HasSuffix(label, p.close) {
+			return label[len(p.open) : len(label)-len(p.close)]
+		}
+	}
+	return label
+}
+
 // CleanWikiCategoryPart normalizes a single raw category label that may itself
 // carry embedded separators, wrapping quotes/brackets, or page-type noise, and
 // returns the cleaned sub-labels (type labels such as "entity"/"实体" dropped).
@@ -33,7 +62,8 @@ func CleanWikiCategoryPart(part string) []string {
 	cleaned := make([]string, 0, len(rawParts))
 	for _, raw := range rawParts {
 		label := strings.TrimSpace(raw)
-		label = strings.Trim(label, `"'“”‘’[]（）()`)
+		// Only strip a wrapping pair, never blindly trim trailing parens.
+		label = stripCategoryWrapping(label)
 		label = strings.TrimSpace(label)
 		if label == "" || isWikiTypeCategoryLabel(label) {
 			continue
