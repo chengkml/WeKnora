@@ -1605,17 +1605,42 @@ const activeTreeRows = computed<WikiTreeRow[]>(() => {
     }
   }
 
+  // A page can be filed under several directories (cross-document entity
+  // sharing mounts one entity into every family's 基础实体 folder and records
+  // all of them in page.folder_ids). The directory skeleton's page_count
+  // accounts for every membership — so a folder can show 87 while its primary
+  // category_path holders number two — and the tree must render the page
+  // under ALL of its member directories, not just its primary category_path.
+  // Resolve each folder_id to its materialized path through folderIdByPath
+  // (folder levels are loaded lazily, so only the folders seen so far map;
+  // the primary category_path is always included regardless of load state).
+  const folderPathById = new Map<string, string[]>()
+  for (const [pathStr, folderId] of Object.entries(bucket?.folderIdByPath || {})) {
+    folderPathById.set(folderId, pathStr.split('/').map(part => part.trim()).filter(Boolean))
+  }
   for (const page of group.pages) {
-    const path = pageCategoryPath(page)
-    let cursor = root
-    if (!hasCategorySkeleton) cursor.count += 1
-
-    for (const part of path) {
-      cursor = ensureDirectory(cursor, part)
-      if (!hasCategorySkeleton) cursor.count += 1
+    const paths = new Map<string, string[]>()
+    const primary = pageCategoryPath(page)
+    if (primary.length > 0) paths.set(primary.join('/'), primary)
+    const memberFolderIds = page.folder_ids?.length ? page.folder_ids : (page.folder_id ? [page.folder_id] : [])
+    for (const fid of memberFolderIds) {
+      const resolved = folderPathById.get(fid)
+      if (resolved && resolved.length > 0) paths.set(resolved.join('/'), resolved)
     }
 
-    cursor.pages.push(page)
+    for (const path of paths.values()) {
+      let cursor = root
+      if (!hasCategorySkeleton) cursor.count += 1
+
+      for (const part of path) {
+        cursor = ensureDirectory(cursor, part)
+        if (!hasCategorySkeleton) cursor.count += 1
+      }
+
+      if (!cursor.pages.some(existing => existing.id === page.id)) {
+        cursor.pages.push(page)
+      }
+    }
   }
 
   function appendDirectory(dir: WikiTreeDirectory, depth: number) {
