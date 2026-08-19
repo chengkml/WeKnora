@@ -3402,6 +3402,8 @@ const graphSelectedSlug = ref<string | null>(null)
 const nodeColorMap: Record<string, string> = {
   summary: '#0052d9', entity: '#2ba471', concept: '#e37318',
   synthesis: '#0594fa', comparison: '#d54941', index: '#8c8c8c', log: '#8c8c8c',
+  business_ontology: '#7c3aed', rule_ontology: '#a855f7',
+  original_sentence: '#f59e0b', frequent_keyword: '#10b981',
 }
 
 // RenderGraphOpts tweaks how renderGraph initializes node positions when
