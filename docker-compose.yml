@@ -1,6 +1,6 @@
 services:
   frontend:
-    image: wechatopenai/weknora-ui:${WEKNORA_VERSION:-latest}
+    image: ${UI_IMAGE:-wechatopenai/weknora-ui:${WEKNORA_VERSION:-latest}}
     # Requires frontend/dist — run ./scripts/build_frontend_dist.sh before --build
     build:
       context: ./frontend
@@ -25,7 +25,7 @@ services:
     restart: unless-stopped
 
   app:
-    image: wechatopenai/weknora-app:${WEKNORA_VERSION:-latest}
+    image: ${APP_IMAGE:-wechatopenai/weknora-app:${WEKNORA_VERSION:-latest}}
     build:
       context: .
       dockerfile: docker/Dockerfile.app
@@ -363,7 +363,7 @@ services:
 
   # Sandbox 镜像：仅用于 build/pull，非常驻服务；app 执行 Skills 时按需 docker run 该镜像，用毕即释
   sandbox:
-    image: wechatopenai/weknora-sandbox:${WEKNORA_VERSION:-latest}
+    image: ${SANDBOX_IMAGE:-wechatopenai/weknora-sandbox:${WEKNORA_VERSION:-latest}}
     container_name: WeKnora-sandbox
     build:
       context: .
@@ -374,7 +374,7 @@ services:
     restart: "no"
 
   docreader:
-    image: wechatopenai/weknora-docreader:${WEKNORA_VERSION:-latest}
+    image: ${DOCREADER_IMAGE:-wechatopenai/weknora-docreader:${WEKNORA_VERSION:-latest}}
     build:
       context: .
       dockerfile: docker/Dockerfile.docreader
@@ -1007,7 +1007,7 @@ services:
   #   docker compose --profile mcp-gateway up -d
   # ---------------------------------------------------------------------------
   mcp-gateway:
-    image: wechatopenai/weknora-mcp-gateway:${WEKNORA_VERSION:-latest}
+    image: ${MCP_GATEWAY_IMAGE:-wechatopenai/weknora-mcp-gateway:${WEKNORA_VERSION:-latest}}
     build:
       context: ./mcp-gateway
     container_name: WeKnora-mcp-gateway
