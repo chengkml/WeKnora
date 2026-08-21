@@ -297,7 +297,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: latest
           REGISTRY: ${{ env.REGISTRY }}
           REGISTRY_NAMESPACE: ${{ env.REGISTRY_NAMESPACE }}
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
@@ -328,8 +328,8 @@ jobs:
               COMPOSE_CMD="docker-compose"
             fi
 
-            # 使用当前 commit SHA 作为完整镜像标签，latest 作为回退
-            IMAGE_TAG="${IMAGE_TAG}"
+            # 使用 latest 标签（由 merge-manifest job 合并的多架构镜像）
+            echo "=== 使用镜像标签: latest ==="
 
             # 写入镜像标签文件（.env 会覆盖 compose 中的 image: 字段）
             # 保留现有 .env 中的数据配置不变
