@@ -1,4 +1,4 @@
-name: WeKnora 镜像构建与推送
+name: WeKnora 镜像构建、推送与部署
 
 on:
   push:
@@ -267,3 +267,150 @@ jobs:
             -t ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-mcp-gateway:latest \
             ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-mcp-gateway:amd64 \
             ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-mcp-gateway:arm64
+
+  # ===================================================================
+  # 部署到生产服务器（本机 159.75.24.176）
+  # ===================================================================
+  deploy:
+    name: 部署到生产服务器
+    runs-on: ubuntu-latest
+    needs: [merge-manifest]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: 校验部署参数
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "${SERVER_HOST}" ] || { echo "::error::缺少 SERVER_HOST"; exit 1; }
+          [ -n "${SERVER_USER}" ] || { echo "::error::缺少 SERVER_USER"; exit 1; }
+          [ -n "${SERVER_SSH_KEY}" ] || { echo "::error::缺少 SERVER_SSH_KEY"; exit 1; }
+          [ -n "${REGISTRY_USERNAME}" ] || { echo "::error::缺少 REGISTRY_USERNAME"; exit 1; }
+          [ -n "${REGISTRY_PASSWORD}" ] || { echo "::error::缺少 REGISTRY_PASSWORD"; exit 1; }
+
+      - name: 拉取代码
+        uses: actions/checkout@v6
+
+      - name: 准备远端部署目录
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
+          timeout: 120s
+          command_timeout: 10m
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: DEPLOY_PATH
+          script: |
+            set -euo pipefail
+            DEPLOY_DIR="${DEPLOY_PATH:-/opt/WeKnora}"
+            mkdir -p "${DEPLOY_DIR}"
+
+      - name: 同步部署配置到服务器
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 10m
+          source: "docker-compose.yml,scripts/docker-env-proxy.sh,.env.example"
+          target: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH || '/opt/WeKnora' }}
+          overwrite: true
+
+      - name: 通过 SSH 拉取并更新容器
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || vars.DEPLOY_PATH }}
+          IMAGE_TAG: ${{ github.sha }}
+          REGISTRY: ${{ env.REGISTRY }}
+          REGISTRY_NAMESPACE: ${{ env.REGISTRY_NAMESPACE }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        with:
+          host: ${{ secrets.SERVER_HOST || vars.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER || vars.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT || vars.SERVER_PORT || 22 }}
+          timeout: 120s
+          command_timeout: 45m
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: DEPLOY_PATH,IMAGE_TAG,REGISTRY,REGISTRY_NAMESPACE,REGISTRY_USERNAME,REGISTRY_PASSWORD
+          script: |
+            set -euo pipefail
+            export DOCKER_CLIENT_TIMEOUT="${DOCKER_CLIENT_TIMEOUT:-600}"
+            export COMPOSE_HTTP_TIMEOUT="${COMPOSE_HTTP_TIMEOUT:-600}"
+
+            DEPLOY_DIR="${DEPLOY_PATH:-/opt/WeKnora}"
+            cd "${DEPLOY_DIR}"
+
+            # 登录镜像仓库
+            echo "${REGISTRY_PASSWORD}" | docker login "${REGISTRY}" -u "${REGISTRY_USERNAME}" --password-stdin
+
+            COMPOSE_CMD="docker compose"
+            if ! docker compose version >/dev/null 2>&1; then
+              COMPOSE_CMD="docker-compose"
+            fi
+
+            # 构造镜像名称
+            APP_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/weknora-app"
+            DOCREADER_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/weknora-docreader"
+            UI_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/weknora-ui"
+            MCP_GATEWAY_IMAGE="${REGISTRY}/${REGISTRY_NAMESPACE}/weknora-mcp-gateway"
+
+            # 写入镜像标签（保留现有 .env 中的数据配置）
+            {
+              echo "APP_IMAGE=${APP_IMAGE}:${IMAGE_TAG}"
+              echo "DOCREADER_IMAGE=${DOCREADER_IMAGE}:${IMAGE_TAG}"
+              echo "UI_IMAGE=${UI_IMAGE}:${IMAGE_TAG}"
+              echo "MCP_GATEWAY_IMAGE=${MCP_GATEWAY_IMAGE}:${IMAGE_TAG}"
+            } > .images.env
+
+            # 确保数据目录存在（保留历史数据，不删除）
+            mkdir -p \
+              data/postgres \
+              data/minio \
+              data/files \
+              data/docreader-tmp \
+              config \
+              skills
+
+            pull_with_retry() {
+              local max_retries=3
+              local attempt=1
+              while true; do
+                if ${COMPOSE_CMD} -f docker-compose.yml --env-file .env --env-file .images.env pull; then
+                  break
+                fi
+                if [ "${attempt}" -ge "${max_retries}" ]; then
+                  echo "[error] docker compose pull failed after ${max_retries} attempts."
+                  return 1
+                fi
+                local sleep_seconds=$((attempt * 20))
+                echo "[warn] docker compose pull failed (attempt ${attempt}/${max_retries}), retrying in ${sleep_seconds}s..."
+                sleep "${sleep_seconds}"
+                attempt=$((attempt + 1))
+              done
+            }
+
+            # 拉取新镜像
+            pull_with_retry
+
+            # 滚动更新：先 up 新容器，旧容器保留数据卷不删
+            if ! ${COMPOSE_CMD} -f docker-compose.yml --env-file .env --env-file .images.env up -d --remove-orphans; then
+              echo "[error] docker compose up failed, collecting container diagnostics..."
+              ${COMPOSE_CMD} -f docker-compose.yml ps || true
+              ${COMPOSE_CMD} -f docker-compose.yml logs --no-color --tail 200 app || true
+              ${COMPOSE_CMD} -f docker-compose.yml logs --no-color --tail 100 frontend || true
+              ${COMPOSE_CMD} -f docker-compose.yml logs --no-color --tail 100 docreader || true
+              exit 1
+            fi
+
+            ${COMPOSE_CMD} -f docker-compose.yml ps
