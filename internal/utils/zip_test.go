@@ -87,7 +87,7 @@ func TestExtractZipRecursively_NormalExtraction(t *testing.T) {
 
 func TestExtractZipRecursively_NestedZip(t *testing.T) {
 	innerEntries := map[string]string{
-		"inner.md": "inner markdown",
+		"inner.md":  "inner markdown",
 		"inner.txt": "inner text",
 	}
 	extraEntries := map[string]string{
@@ -137,8 +137,8 @@ func TestExtractZipRecursively_MaxDepthExceeded(t *testing.T) {
 
 	// MaxDepth=1 means only 1 level of nesting is allowed; level2.zip and deeper should be skipped.
 	files, summary, err := ExtractZipRecursively(r, int64(len(outerData)), ExtractOptions{
-		MaxDepth:        1,
-		IsTypeAllowed:   allTypes,
+		MaxDepth:          1,
+		IsTypeAllowed:     allTypes,
 		MaxTotalSizeBytes: 100 * 1024 * 1024,
 	})
 	if err != nil {
@@ -153,10 +153,10 @@ func TestExtractZipRecursively_MaxDepthExceeded(t *testing.T) {
 
 func TestExtractZipRecursively_SkipUnsupportedTypes(t *testing.T) {
 	entries := map[string]string{
-		"good.pdf":  "pdf content",
-		"bad.exe":   "exe content",
-		"bad.rar":   "rar content",
-		"good.txt":  "text content",
+		"good.pdf": "pdf content",
+		"bad.exe":  "exe content",
+		"bad.rar":  "rar content",
+		"good.txt": "text content",
 	}
 	data := createZipBytes(t, entries)
 	r := bytes.NewReader(data)
@@ -189,8 +189,8 @@ func TestExtractZipRecursively_MaxFilesExceeded(t *testing.T) {
 
 	allTypes := func(string) bool { return true }
 	files, summary, err := ExtractZipRecursively(r, int64(len(data)), ExtractOptions{
-		MaxFiles:       5,
-		IsTypeAllowed:  allTypes,
+		MaxFiles:          5,
+		IsTypeAllowed:     allTypes,
 		MaxTotalSizeBytes: 100 * 1024 * 1024,
 	})
 	if err != nil {
@@ -214,8 +214,8 @@ func TestExtractZipRecursively_PerFileSizeExceeded(t *testing.T) {
 
 	allTypes := func(string) bool { return true }
 	files, summary, err := ExtractZipRecursively(r, int64(len(data)), ExtractOptions{
-		MaxFileSizeBytes: 500,
-		IsTypeAllowed:    allTypes,
+		MaxFileSizeBytes:  500,
+		IsTypeAllowed:     allTypes,
 		MaxTotalSizeBytes: 100 * 1024 * 1024,
 	})
 	if err != nil {
@@ -284,9 +284,9 @@ func TestExtractZipRecursively_ZipBombRatioDetection(t *testing.T) {
 	allTypes := func(string) bool { return true }
 	// Set a very tight ratio (1x) to trigger the bomb detection.
 	_, _, err := ExtractZipRecursively(r, int64(len(data)), ExtractOptions{
-		MaxTotalSizeRatio:  1,
-		MaxTotalSizeBytes:  1 << 30, // 1GB absolute cap
-		IsTypeAllowed:      allTypes,
+		MaxTotalSizeRatio: 1,
+		MaxTotalSizeBytes: 1 << 30, // 1GB absolute cap
+		IsTypeAllowed:     allTypes,
 	})
 	if err == nil {
 		t.Fatal("expected zip bomb error, got nil")
@@ -313,5 +313,66 @@ func TestExtractZipRecursively_EmptyZip(t *testing.T) {
 	}
 	if len(files) != 0 {
 		t.Fatalf("expected 0 files from empty zip, got %d", len(files))
+	}
+}
+
+func TestDecodeZipEntryName_UTF8PassThrough(t *testing.T) {
+	name := "report.pdf"
+	got := decodeZipEntryName(name)
+	if got != name {
+		t.Errorf("expected UTF-8 name to pass through unchanged, got %q", got)
+	}
+}
+
+func TestDecodeZipEntryName_GB18030Decode(t *testing.T) {
+	// "济南市市监局文件" encoded as GB18030 (superset of GBK/GB2312).
+	expected := "济南市市监局文件"
+	gbkBytes := []byte{
+		0xbc, 0xc3, 0xc4, 0xcf, 0xca, 0xd0, 0xca, 0xda,
+		0xc2, 0xeb, 0xce, 0xc4, 0xbc, 0xfe, 0xb5, 0xc4,
+		0xbc, 0xd2, 0xb5, 0xa5,
+	}
+	raw := string(gbkBytes)
+	got := decodeZipEntryName(raw)
+	if got != expected {
+		t.Errorf("expected GB18030 decode to %q, got %q", expected, got)
+	}
+}
+
+func TestDecodeZipEntryName_InvalidBytesFallback(t *testing.T) {
+	// Random bytes that are neither valid UTF-8 nor valid GB18030.
+	raw := string([]byte{0xff, 0xfe, 0x80, 0x81})
+	got := decodeZipEntryName(raw)
+	if got != raw {
+		t.Errorf("expected invalid bytes to fall back unchanged, got %q", got)
+	}
+}
+
+func TestExtractZipRecursively_GBKEncodedNames(t *testing.T) {
+	// Build a zip whose entry names are raw GB18030 bytes.
+	gbkBytes := []byte{
+		0xbc, 0xc3, 0xc4, 0xcf, 0xca, 0xd0, 0xca, 0xda,
+		0xc2, 0xeb, 0xce, 0xc4, 0xbc, 0xfe, 0xb5, 0xc4,
+		0xbc, 0xd2, 0xb5, 0xa5,
+	}
+	entries := map[string]string{
+		"utf8.pdf":                 "pdf content",
+		string(gbkBytes) + ".docx": "docx content",
+	}
+	data := createZipBytes(t, entries)
+	r := bytes.NewReader(data)
+
+	allTypes := func(string) bool { return true }
+	files, summary, err := ExtractZipRecursively(r, int64(len(data)), ExtractOptions{
+		IsTypeAllowed: allTypes,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected 2 files, got %d: %+v", len(files), files)
+	}
+	if len(summary.Failed) != 0 {
+		t.Fatalf("expected no failed entries, got: %v", summary.Failed)
 	}
 }

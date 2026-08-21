@@ -7,6 +7,10 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 )
 
 // ExtractOptions configures the behaviour of ExtractZipRecursively.
@@ -116,13 +120,17 @@ func (s *extractState) extract(r io.ReaderAt, size int64, prefix string, depth i
 	}
 
 	for _, f := range zr.File {
+		// Decode non-UTF-8 (typically GBK/GB18030 from Windows) entry names
+		// before any validation, so Chinese filenames survive the pipeline.
+		name := decodeZipEntryName(f.Name)
+
 		// Skip directories.
 		if f.FileInfo().IsDir() {
 			continue
 		}
 
 		// ZipSlip: ensure the entry path does not escape the archive root.
-		name := filepath.Clean(f.Name)
+		name = filepath.Clean(name)
 		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
 			// Silently skip path-traversal entries.
 			continue
@@ -213,4 +221,31 @@ func readZipEntry(f *zip.File) ([]byte, error) {
 		return nil, fmt.Errorf("read zip entry %s: %w", f.Name, err)
 	}
 	return data, nil
+}
+
+// decodeZipEntryName decodes a zip entry name into a UTF-8 string.
+//
+// Many ZIP archives created on Windows use GBK/GB18030 for Chinese filenames
+// instead of UTF-8. Go's archive/zip preserves the raw bytes in File.Name, so
+// those names fail UTF-8 validation downstream and get rejected as "illegal
+// characters". This helper attempts a lossless conversion without disturbing
+// names that are already valid UTF-8.
+//
+// Order:
+//  1. If the raw bytes are already valid UTF-8, return as-is.
+//  2. Try GB18030 decode (superset of GBK/GB2312) into UTF-8.
+//  3. On decode failure, fall back to the raw bytes string so the caller can
+//     still decide how to handle it.
+func decodeZipEntryName(raw string) string {
+	if utf8.ValidString(raw) {
+		return raw
+	}
+	decoded, _, err := transform.String(
+		simplifiedchinese.GB18030.NewDecoder(),
+		raw,
+	)
+	if err == nil {
+		return decoded
+	}
+	return raw
 }
