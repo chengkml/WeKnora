@@ -165,6 +165,12 @@ const (
 	WikiPageTypeOriginalSentence = "original_sentence"
 	// WikiPageTypeFrequentKeyword represents a frequent keyword page.
 	WikiPageTypeFrequentKeyword = "frequent_keyword"
+	// WikiPageTypeTopicCluster represents a topic cluster page.
+	WikiPageTypeTopicCluster = "topic_cluster"
+	// WikiPageTypeKnowledgeGraphSummary represents a knowledge graph summary page.
+	WikiPageTypeKnowledgeGraphSummary = "knowledge_graph_summary"
+	// WikiPageTypeCrossDocumentInsight represents a cross-document insight page.
+	WikiPageTypeCrossDocumentInsight = "cross_document_insight"
 )
 
 // WikiPageStatus constants

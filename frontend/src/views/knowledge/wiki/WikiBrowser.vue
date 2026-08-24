@@ -94,6 +94,21 @@
               <span class="legend-dot" style="background: #10b981"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterFrequentKeyword') }}
             </div>
+            <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('topic_cluster') }"
+              @click="toggleGraphFilterType('topic_cluster')">
+              <span class="legend-dot" style="background: #6366f1"></span>
+              {{ $t('knowledgeEditor.wikiBrowser.filterTopicCluster') }}
+            </div>
+            <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('knowledge_graph_summary') }"
+              @click="toggleGraphFilterType('knowledge_graph_summary')">
+              <span class="legend-dot" style="background: #8b5cf6"></span>
+              {{ $t('knowledgeEditor.wikiBrowser.filterKnowledgeGraphSummary') }}
+            </div>
+            <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('cross_document_insight') }"
+              @click="toggleGraphFilterType('cross_document_insight')">
+              <span class="legend-dot" style="background: #ec4899"></span>
+              {{ $t('knowledgeEditor.wikiBrowser.filterCrossDocumentInsight') }}
+            </div>
           </div>
           <div class="legend-divider"></div>
           <div class="legend-actions">
@@ -196,6 +211,15 @@
               count:
                 stats.pending_issues
             }) }}</span>
+          </div>
+          <div class="wiki-tab-bar" role="tablist">
+            <button v-for="tab in wikiTabOptions" :key="tab.key" type="button"
+              class="wiki-tab-bar-item"
+              :class="{ active: activeWikiTab === tab.key }"
+              role="tab" :aria-selected="activeWikiTab === tab.key"
+              @click="switchWikiTab(tab.key)">
+              {{ $t(tab.labelKey) }}
+            </button>
           </div>
           <div class="wiki-sidebar-search-row">
             <t-input v-model="searchQuery" :placeholder="$t('knowledgeEditor.wikiBrowser.searchPlaceholder')" clearable
@@ -905,6 +929,9 @@ const INDEX_SECTION_ORDER = [
   'rule_ontology',
   'original_sentence',
   'frequent_keyword',
+  'topic_cluster',
+  'knowledge_graph_summary',
+  'cross_document_insight',
 ] as const
 // logAvailable is a flag: the sidebar "Log" entry is always shown once a
 // KB exists, because the backing wiki_log_entries table is KB-independent
@@ -951,7 +978,7 @@ const graphReady = ref(false)
 const showArrows = ref(true)
 
 // Graph filtering
-const graphFilterTypes = ref<Set<string>>(new Set(['summary', 'entity', 'concept', 'synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'original_sentence', 'frequent_keyword', 'index', 'log']))
+const graphFilterTypes = ref<Set<string>>(new Set(['summary', 'entity', 'concept', 'synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'original_sentence', 'frequent_keyword', 'topic_cluster', 'knowledge_graph_summary', 'cross_document_insight', 'index', 'log']))
 
 // Graph slicing state. The backend caps an overview fetch at 500 nodes —
 // tens-of-thousands-page wikis would otherwise crash the browser trying to
@@ -1111,13 +1138,33 @@ const navFromSystemView = ref<'' | 'index' | 'log'>('')
 // "knowledge" and "summary" tabs are gone. Client code passes this
 // comma-joined page_type filter to the backend so one request returns pages
 // and folder skeletons of every type in a single bucket.
-const ALL_CONTENT_TYPES = ['summary', 'entity', 'concept', 'synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'original_sentence', 'frequent_keyword']
-const MERGED_BUCKET_KEY = '_all'   // pagesByType 的唯一 bucket key
+const ORIGINAL_DOC_TYPES = ['summary', 'entity', 'concept', 'original_sentence', 'frequent_keyword']
+const CLUSTERED_KNOWLEDGE_TYPES = ['synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'topic_cluster', 'knowledge_graph_summary', 'cross_document_insight']
+const ALL_CONTENT_TYPES = [...ORIGINAL_DOC_TYPES, ...CLUSTERED_KNOWLEDGE_TYPES]
+const MERGED_BUCKET_KEY = '_all'
 const ALL_CONTENT_TYPES_FILTER = ALL_CONTENT_TYPES.join(',')
+const ORIGINAL_DOC_TYPES_FILTER = ORIGINAL_DOC_TYPES.join(',')
+const CLUSTERED_KNOWLEDGE_TYPES_FILTER = CLUSTERED_KNOWLEDGE_TYPES.join(',')
+const ORIGINAL_DOC_BUCKET_KEY = '_original_doc'
+const CLUSTERED_BUCKET_KEY = '_clustered'
+const TAB_FILTERS: Record<string, string> = {
+  [ORIGINAL_DOC_BUCKET_KEY]: ORIGINAL_DOC_TYPES_FILTER,
+  [CLUSTERED_BUCKET_KEY]: CLUSTERED_KNOWLEDGE_TYPES_FILTER,
+}
+
+function bucketFilter(type: string): string {
+  return TAB_FILTERS[type] || ALL_CONTENT_TYPES_FILTER
+}
+
+type WikiTab = 'original_doc' | 'clustered_knowledge'
+const activeWikiTab = ref<WikiTab>('original_doc')
+const activeBucketKey = computed(() => activeWikiTab.value === 'original_doc' ? ORIGINAL_DOC_BUCKET_KEY : CLUSTERED_BUCKET_KEY)
+const activeTabTypes = computed(() => activeWikiTab.value === 'original_doc' ? ORIGINAL_DOC_TYPES : CLUSTERED_KNOWLEDGE_TYPES)
+const activeTabFilter = computed(() => TAB_FILTERS[activeBucketKey.value])
 
 // groupedPages projects the bucketed state into the shape the sidebar
 // template expects. With the knowledge/summary tabs merged there is exactly
-// one group backed by the single MERGED_BUCKET_KEY bucket.
+// one group backed by the single activeBucketKey bucket.
 const groupedPages = computed(() => {
   type Group = {
     type: string
@@ -1127,12 +1174,12 @@ const groupedPages = computed(() => {
     loading: boolean
     hasMore: boolean
   }
-  const bucket = pagesByType.value[MERGED_BUCKET_KEY]
+  const bucket = pagesByType.value[activeBucketKey.value]
   if (!bucket) return []
   const total = bucket.total || allStatsTotal() || bucket.categoryPaths.length
   if (total === 0) return []
   return [{
-    type: MERGED_BUCKET_KEY,
+    type: activeBucketKey.value,
     label: t('knowledgeEditor.wikiBrowser.filterAllContent'),
     pages: bucket.items,
     total,
@@ -1146,13 +1193,13 @@ const groupedPages = computed(() => {
 function allStatsTotal(): number {
   const byType = stats.value?.pages_by_type
   if (!byType) return 0
-  return ALL_CONTENT_TYPES.reduce((sum, t) => sum + (byType[t] || 0), 0)
+  return activeTabTypes.value.reduce((sum, t) => sum + (byType[t] || 0), 0)
 }
 
 // hasContentPages is the sidebar's empty-state gate. After merging all
 // content types into one bucket we check that single bucket only.
 const hasContentPages = computed(() => {
-  const bucket = pagesByType.value[MERGED_BUCKET_KEY]
+  const bucket = pagesByType.value[activeBucketKey.value]
   if (!bucket) return false
   return bucket.total > 0 || bucket.categoryPaths.length > 0
 })
@@ -1439,7 +1486,7 @@ function handleGraphDrawerClick(e: MouseEvent) {
 }
 
 // The sidebar shows a single merged view of every content type; there are no
-// tabs anymore. MERGED_BUCKET_KEY is the only bucket key pagesByType holds.
+// tabs anymore. activeBucketKey is the current tab's bucket key pagesByType holds.
 type SidebarViewMode = 'tree' | 'list'
 const SIDEBAR_VIEW_MODE_KEY = 'weknora.wiki.sidebar.viewMode'
 function initialSidebarViewMode(): SidebarViewMode {
@@ -1466,11 +1513,8 @@ async function switchSidebarViewMode(mode: SidebarViewMode) {
   if (mode === sidebarViewMode.value || sidebarViewSwitching.value) return
   sidebarViewSwitching.value = true
   try {
-    // The flat list has its own unscoped pagination stream. Fetch its first
-    // page before swapping containers so the user never lands on an empty
-    // RecycleScroller while the request is still in flight.
     if (mode === 'list') {
-      const ready = await loadFlatPagesForType(MERGED_BUCKET_KEY)
+      const ready = await loadFlatPagesForType(activeBucketKey.value)
       if (!ready && activeFlatPages.value.length === 0) return
     }
     sidebarViewMode.value = mode
@@ -1479,16 +1523,34 @@ async function switchSidebarViewMode(mode: SidebarViewMode) {
   }
 }
 
+const wikiTabOptions: { key: WikiTab; labelKey: string }[] = [
+  { key: 'original_doc', labelKey: 'knowledgeEditor.wikiBrowser.filterOriginalDocWiki' },
+  { key: 'clustered_knowledge', labelKey: 'knowledgeEditor.wikiBrowser.filterClusteredKnowledgeWiki' },
+]
+
+async function switchWikiTab(tab: WikiTab) {
+  if (tab === activeWikiTab.value) return
+  const wasList = sidebarViewMode.value === 'list'
+  if (wasList) {
+    const ready = await loadFlatPagesForType(
+      tab === 'original_doc' ? ORIGINAL_DOC_BUCKET_KEY : CLUSTERED_BUCKET_KEY
+    )
+    if (!ready) return
+  }
+  activeWikiTab.value = tab
+  if (pageListRef.value) pageListRef.value.scrollTop = 0
+}
+
 // activeGroup resolves the single merged group descriptor, or null when the
 // bucket has not been populated yet (e.g. before the first load completes).
 const activeGroup = computed(() => groupedPages.value[0] || null)
 
 const activeFlatPages = computed(() =>
-  pagesByType.value[MERGED_BUCKET_KEY]?.flatItems || []
+  pagesByType.value[activeBucketKey.value]?.flatItems || []
 )
 
 const activeFlatState = computed(() => {
-  const bucket = pagesByType.value[MERGED_BUCKET_KEY]
+  const bucket = pagesByType.value[activeBucketKey.value]
   if (!bucket) return null
   return {
     loading: bucket.flatLoading,
@@ -1771,6 +1833,7 @@ function getTypeTheme(type: string): string {
     synthesis: 'primary', comparison: 'danger', index: 'default', log: 'default',
     business_ontology: 'warning', rule_ontology: 'info',
     original_sentence: 'warning', frequent_keyword: 'success',
+    topic_cluster: 'secondary', knowledge_graph_summary: 'secondary', cross_document_insight: 'secondary',
   }
   return map[type] || 'default'
 }
@@ -1786,6 +1849,9 @@ function getTypeLabel(type: string): string {
     rule_ontology: t('knowledgeEditor.wikiBrowser.filterRuleOntology'),
     original_sentence: t('knowledgeEditor.wikiBrowser.filterOriginalSentence'),
     frequent_keyword: t('knowledgeEditor.wikiBrowser.filterFrequentKeyword'),
+    topic_cluster: t('knowledgeEditor.wikiBrowser.filterTopicCluster'),
+    knowledge_graph_summary: t('knowledgeEditor.wikiBrowser.filterKnowledgeGraphSummary'),
+    cross_document_insight: t('knowledgeEditor.wikiBrowser.filterCrossDocumentInsight'),
     index: 'Index',
     log: 'Log',
   }
@@ -1801,6 +1867,9 @@ function getPageIcon(page: WikiPage): string {
     synthesis: 'relativity',
     comparison: 'view-module',
     summary: 'file',
+    topic_cluster: 'layers',
+    knowledge_graph_summary: 'chart-bubble',
+    cross_document_insight: 'insight',
   }
   return map[page.page_type] || 'file'
 }
@@ -1911,7 +1980,7 @@ async function loadFlatPagesForType(type: string, reset = false): Promise<boolea
   try {
     const requestPage = reset ? 1 : bucket.flatNextPage
     const res = await listWikiPages(props.knowledgeBaseId, {
-      page_type: ALL_CONTENT_TYPES_FILTER,
+      page_type: bucketFilter(type),
       page: requestPage,
       page_size: WIKI_SIDEBAR_PAGE_SIZE,
       sort_by: 'wiki_path',
@@ -1983,7 +2052,7 @@ async function loadCategoriesForType(type: string, opts: { reset?: boolean; pare
   setState({ ...state, loading: true })
   if (isRoot) bucket.categoriesLoading = true
   try {
-    const res = await listWikiFolders(props.knowledgeBaseId, parentId || '', ALL_CONTENT_TYPES_FILTER)
+    const res = await listWikiFolders(props.knowledgeBaseId, parentId || '', bucketFilter(type))
     const body: any = (res as any).data || res
     const folders: WikiFolderNode[] = Array.isArray(body?.folders) ? body.folders : []
     const incoming = folders
@@ -2139,7 +2208,7 @@ async function confirmPendingMove() {
     try {
       await moveWikiPage(props.knowledgeBaseId, item.page.slug, folderId ? [folderId] : [])
       MessagePlugin.success(t('knowledgeEditor.wikiBrowser.movePageSuccess'))
-      await reloadDirectoryForType(MERGED_BUCKET_KEY)
+      await reloadDirectoryForType(activeBucketKey.value)
     } catch (e) {
       console.error('Failed to move wiki page:', e)
       MessagePlugin.error(t('knowledgeEditor.wikiBrowser.movePageFailed'))
@@ -2150,7 +2219,7 @@ async function confirmPendingMove() {
   try {
     await updateWikiFolder(props.knowledgeBaseId, item.folderId, { parent_id: folderId, move_parent: true })
     MessagePlugin.success(t('knowledgeEditor.wikiBrowser.moveFolderSuccess'))
-    await reloadDirectoryForType(MERGED_BUCKET_KEY)
+    await reloadDirectoryForType(activeBucketKey.value)
   } catch (e: any) {
     console.error('Failed to move wiki folder:', e)
     MessagePlugin.error(
@@ -2265,7 +2334,7 @@ async function confirmMovePageDialog() {
     await moveWikiPage(props.knowledgeBaseId, page.slug, ordered)
     MessagePlugin.success(t('knowledgeEditor.wikiBrowser.movePageSuccess'))
     cancelMovePageDialog()
-    await reloadDirectoryForType(MERGED_BUCKET_KEY)
+    await reloadDirectoryForType(activeBucketKey.value)
   } catch (e) {
     console.error('Failed to move wiki page to folders:', e)
     MessagePlugin.error(t('knowledgeEditor.wikiBrowser.movePageFailed'))
@@ -2286,10 +2355,10 @@ async function createFolder(parentId: string, parentPath: string[], name: string
     // Keep the parent expanded so the new child is visible.
     if (parentPath.length > 0) {
       collapsedDirectories.value = new Set(
-        [...collapsedDirectories.value].filter(k => k !== directoryPathKey(MERGED_BUCKET_KEY, parentPath)),
+        [...collapsedDirectories.value].filter(k => k !== directoryPathKey(activeBucketKey.value, parentPath)),
       )
     }
-    await reloadDirectoryForType(MERGED_BUCKET_KEY)
+    await reloadDirectoryForType(activeBucketKey.value)
   } catch (e: any) {
     console.error('Failed to create wiki folder:', e)
     MessagePlugin.error(e?.response?.data?.message || t('knowledgeEditor.wikiBrowser.createFolderFailed'))
@@ -2352,7 +2421,7 @@ async function commitRenameFolder(folderId: string, originalName: string) {
   try {
     await updateWikiFolder(props.knowledgeBaseId, folderId, { name })
     MessagePlugin.success(t('knowledgeEditor.wikiBrowser.renameFolderSuccess'))
-    await reloadDirectoryForType(MERGED_BUCKET_KEY)
+    await reloadDirectoryForType(activeBucketKey.value)
   } catch (e: any) {
     console.error('Failed to rename wiki folder:', e)
     MessagePlugin.error(e?.response?.data?.message || t('knowledgeEditor.wikiBrowser.renameFolderFailed'))
@@ -2364,7 +2433,7 @@ async function deleteFolder(folderId: string) {
   try {
     await deleteWikiFolder(props.knowledgeBaseId, folderId)
     MessagePlugin.success(t('knowledgeEditor.wikiBrowser.deleteFolderSuccess'))
-    await reloadDirectoryForType(MERGED_BUCKET_KEY)
+    await reloadDirectoryForType(activeBucketKey.value)
   } catch (e: any) {
     console.error('Failed to delete wiki folder:', e)
     MessagePlugin.error(e?.response?.data?.message || t('knowledgeEditor.wikiBrowser.deleteFolderFailed'))
@@ -2408,7 +2477,7 @@ async function loadPagesForType(type: string, opts: { reset?: boolean; categoryP
     const currentScopedState = scopedToCategory ? bucket.directoryPages[scopedPathKey] : null
     const requestPage = opts.reset ? 1 : (currentScopedState ? currentScopedState.nextPage : bucket.nextPage)
     const res = await listWikiPages(props.knowledgeBaseId, {
-      page_type: ALL_CONTENT_TYPES_FILTER,
+      page_type: bucketFilter(type),
       page: requestPage,
       page_size: WIKI_SIDEBAR_PAGE_SIZE,
       sort_by: 'wiki_path',
@@ -2745,17 +2814,18 @@ async function loadPages() {
   loading.value = true
   try {
     searchResults.value = null
-    ensureBucket(MERGED_BUCKET_KEY)
     await loadIndexAndLog()
+    const bucket = ensureBucket(ORIGINAL_DOC_BUCKET_KEY)
     await Promise.all([
-      loadPagesForType(MERGED_BUCKET_KEY, { reset: true }),
-      loadCategoriesForType(MERGED_BUCKET_KEY, { reset: true }),
+      loadPagesForType(ORIGINAL_DOC_BUCKET_KEY, { reset: true }),
+      loadCategoriesForType(ORIGINAL_DOC_BUCKET_KEY, { reset: true }),
     ])
 
-    // The merged sidebar view holds every content type in one bucket, so there
-    // is no default-tab selection to reconcile on reload.
+    // The default landing view is the first tab's index, so only the
+    // original-doc tab is loaded eagerly; the clustered-knowledge tab
+    // is fetched lazily when the user switches to it.
     if (sidebarViewMode.value === 'list') {
-      await loadFlatPagesForType(MERGED_BUCKET_KEY, true)
+      await loadFlatPagesForType(ORIGINAL_DOC_BUCKET_KEY, true)
     }
 
     // Auto-select based on query string or default to the index
@@ -2832,7 +2902,7 @@ async function refreshSelectedPage() {
 // there (empty == no filter == return everything, the opposite of what
 // the user meant).
 function graphFilterTypesToArray(): string[] | undefined {
-  const all = ['summary', 'entity', 'concept', 'synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'original_sentence', 'frequent_keyword', 'index', 'log']
+  const all = ['summary', 'entity', 'concept', 'synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'original_sentence', 'frequent_keyword', 'topic_cluster', 'knowledge_graph_summary', 'cross_document_insight', 'index', 'log']
   if (all.every(t => graphFilterTypes.value.has(t))) {
     return undefined
   }
@@ -3429,6 +3499,7 @@ const nodeColorMap: Record<string, string> = {
   synthesis: '#0594fa', comparison: '#d54941', index: '#8c8c8c', log: '#8c8c8c',
   business_ontology: '#7c3aed', rule_ontology: '#a855f7',
   original_sentence: '#f59e0b', frequent_keyword: '#10b981',
+  topic_cluster: '#6366f1', knowledge_graph_summary: '#8b5cf6', cross_document_insight: '#ec4899',
 }
 
 // RenderGraphOpts tweaks how renderGraph initializes node positions when
@@ -4523,6 +4594,18 @@ watch(() => route.query.slug, (newSlug) => {
   }
 })
 
+watch(activeWikiTab, async (tab) => {
+  const key = tab === 'original_doc' ? ORIGINAL_DOC_BUCKET_KEY : CLUSTERED_BUCKET_KEY
+  const bucket = ensureBucket(key)
+  if (!bucket.initialized) {
+    await loadPagesForType(key, { reset: true })
+    await loadCategoriesForType(key, { reset: true })
+  }
+  if (sidebarViewMode.value === 'list' && !bucket.flatInitialized) {
+    await loadFlatPagesForType(key, true)
+  }
+})
+
 onMounted(() => {
   loadPages()
   loadStats()
@@ -4576,6 +4659,43 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.wiki-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+  flex-shrink: 0;
+}
+
+.wiki-tab-bar-item {
+  flex: 1;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &:hover {
+    color: var(--td-text-color-primary);
+  }
+
+  &.active {
+    color: var(--td-brand-color);
+    background: var(--td-bg-color-container);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
 }
 
 .wiki-sidebar-search-row {
