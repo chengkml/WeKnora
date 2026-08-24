@@ -1138,8 +1138,8 @@ const navFromSystemView = ref<'' | 'index' | 'log'>('')
 // "knowledge" and "summary" tabs are gone. Client code passes this
 // comma-joined page_type filter to the backend so one request returns pages
 // and folder skeletons of every type in a single bucket.
-const ORIGINAL_DOC_TYPES = ['summary', 'entity', 'concept', 'original_sentence', 'frequent_keyword']
-const CLUSTERED_KNOWLEDGE_TYPES = ['synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'topic_cluster', 'knowledge_graph_summary', 'cross_document_insight']
+const ORIGINAL_DOC_TYPES = ['summary', 'entity', 'concept', 'original_sentence', 'frequent_keyword', 'business_ontology', 'rule_ontology']
+const CLUSTERED_KNOWLEDGE_TYPES = ['synthesis', 'comparison', 'topic_cluster', 'knowledge_graph_summary', 'cross_document_insight']
 const ALL_CONTENT_TYPES = [...ORIGINAL_DOC_TYPES, ...CLUSTERED_KNOWLEDGE_TYPES]
 const MERGED_BUCKET_KEY = '_all'
 const ALL_CONTENT_TYPES_FILTER = ALL_CONTENT_TYPES.join(',')
