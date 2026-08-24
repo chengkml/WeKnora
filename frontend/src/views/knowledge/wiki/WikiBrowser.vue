@@ -1769,7 +1769,7 @@ function getTypeTheme(type: string): string {
   const map: Record<string, string> = {
     summary: 'primary', entity: 'success', concept: 'warning',
     synthesis: 'primary', comparison: 'danger', index: 'default', log: 'default',
-    business_ontology: 'secondary', rule_ontology: 'secondary',
+    business_ontology: 'warning', rule_ontology: 'info',
     original_sentence: 'warning', frequent_keyword: 'success',
   }
   return map[type] || 'default'
