@@ -51,62 +51,62 @@
           <div class="legend-items">
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('summary') }"
               @click="toggleGraphFilterType('summary')">
-              <span class="legend-dot" style="background: #0052d9"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['summary'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterSummary') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('entity') }"
               @click="toggleGraphFilterType('entity')">
-              <span class="legend-dot" style="background: #2ba471"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['entity'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterEntity') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('concept') }"
               @click="toggleGraphFilterType('concept')">
-              <span class="legend-dot" style="background: #e37318"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['concept'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterConcept') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('synthesis') }"
               @click="toggleGraphFilterType('synthesis')">
-              <span class="legend-dot" style="background: #0594fa"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['synthesis'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterSynthesis') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('comparison') }"
               @click="toggleGraphFilterType('comparison')">
-              <span class="legend-dot" style="background: #d54941"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['comparison'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterComparison') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('business_ontology') }"
               @click="toggleGraphFilterType('business_ontology')">
-              <span class="legend-dot" style="background: #7c3aed"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['business_ontology'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterBusinessOntology') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('rule_ontology') }"
               @click="toggleGraphFilterType('rule_ontology')">
-              <span class="legend-dot" style="background: #a855f7"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['rule_ontology'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterRuleOntology') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('original_sentence') }"
               @click="toggleGraphFilterType('original_sentence')">
-              <span class="legend-dot" style="background: #f59e0b"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['original_sentence'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterOriginalSentence') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('frequent_keyword') }"
               @click="toggleGraphFilterType('frequent_keyword')">
-              <span class="legend-dot" style="background: #10b981"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['frequent_keyword'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterFrequentKeyword') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('topic_cluster') }"
               @click="toggleGraphFilterType('topic_cluster')">
-              <span class="legend-dot" style="background: #6366f1"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['topic_cluster'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterTopicCluster') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('knowledge_graph_summary') }"
               @click="toggleGraphFilterType('knowledge_graph_summary')">
-              <span class="legend-dot" style="background: #8b5cf6"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['knowledge_graph_summary'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterKnowledgeGraphSummary') }}
             </div>
             <div class="legend-item clickable" :class="{ disabled: !graphFilterTypes.has('cross_document_insight') }"
               @click="toggleGraphFilterType('cross_document_insight')">
-              <span class="legend-dot" style="background: #ec4899"></span>
+              <span class="legend-dot" :style="{ background: PAGE_TYPE_COLORS['cross_document_insight'] }"></span>
               {{ $t('knowledgeEditor.wikiBrowser.filterCrossDocumentInsight') }}
             </div>
           </div>
@@ -163,7 +163,15 @@
           class="wiki-graph-drawer">
           <template v-if="graphDrawerPage">
             <div class="wiki-reader-meta" style="margin-bottom: 8px;">
-              <t-tag size="small" :theme="getTypeTheme(graphDrawerPage.page_type)" variant="light-outline">
+              <t-tag
+                size="small"
+                :style="{
+                  color: PAGE_TYPE_COLORS[graphDrawerPage.page_type],
+                  borderColor: PAGE_TYPE_COLORS[graphDrawerPage.page_type],
+                  backgroundColor: PAGE_TYPE_COLORS[graphDrawerPage.page_type] + '14'
+                }"
+                variant="light-outline"
+              >
                 {{ getTypeLabel(graphDrawerPage.page_type) }}
               </t-tag>
               <span class="wiki-reader-meta-text">{{ $t('knowledgeEditor.wikiBrowser.version', {
@@ -517,7 +525,15 @@
                   </t-tag>
                 </div>
                 <div class="wiki-reader-meta">
-                  <t-tag size="small" :theme="getTypeTheme(selectedPage.page_type)" variant="light-outline">
+                  <t-tag
+                    size="small"
+                    :style="{
+                      color: PAGE_TYPE_COLORS[selectedPage.page_type],
+                      borderColor: PAGE_TYPE_COLORS[selectedPage.page_type],
+                      backgroundColor: PAGE_TYPE_COLORS[selectedPage.page_type] + '14'
+                    }"
+                    variant="light-outline"
+                  >
                     {{ getTypeLabel(selectedPage.page_type) }}
                   </t-tag>
                   <span class="wiki-reader-meta-text">{{ $t('knowledgeEditor.wikiBrowser.version', {
@@ -825,6 +841,21 @@ const emit = defineEmits<{
   (e: 'status-change', payload: { pendingTasks: number; isActive: boolean; pendingIssues: number }): void
   (e: 'view-graph', slug: string): void
 }>()
+const PAGE_TYPE_COLORS: Record<string, string> = {
+  summary: '#0052d9',
+  entity: '#2ba471',
+  concept: '#e37318',
+  synthesis: '#0594fa',
+  comparison: '#d54941',
+  business_ontology: '#7c3aed',
+  rule_ontology: '#a855f7',
+  original_sentence: '#f59e0b',
+  frequent_keyword: '#10b981',
+  topic_cluster: '#6366f1',
+  knowledge_graph_summary: '#8b5cf6',
+  cross_document_insight: '#ec4899',
+}
+
 const pages = ref<WikiPage[]>([])
 const selectedPage = ref<WikiPage | null>(null)
 
