@@ -4733,13 +4733,20 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .wiki-sidebar-search-row > .t-input {
   flex: 1 1 0;
   min-width: 0;
+  width: 0;
   max-width: 100%;
   overflow: hidden;
+}
+
+.wiki-sidebar-search-row > .t-input :deep(.t-input__wrap) {
+  min-width: 0;
+  width: 100%;
 }
 
 .wiki-queue-status {
