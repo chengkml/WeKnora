@@ -2927,18 +2927,12 @@ async function refreshSelectedPage() {
   }
 }
 
-// graphFilterTypesToArray returns the active allow-list as an array, or
-// `undefined` when every known type is selected (in which case we want
-// the backend to rank over the full page population, not a subset).
-// Callers must check for "no types selected at all" separately and avoid
-// the fetch — passing an empty string list to the backend is ambiguous
-// there (empty == no filter == return everything, the opposite of what
-// the user meant).
-function graphFilterTypesToArray(): string[] | undefined {
+// graphFilterTypesToArray always returns the active allow-list as an array
+// so the backend always receives an explicit types filter. Returning
+// `undefined` on full selection caused the backend to fall back to an
+// incomplete default allow-list and silently drop supported page types.
+function graphFilterTypesToArray(): string[] {
   const all = ['summary', 'entity', 'concept', 'synthesis', 'comparison', 'business_ontology', 'rule_ontology', 'original_sentence', 'frequent_keyword', 'topic_cluster', 'knowledge_graph_summary', 'cross_document_insight', 'index', 'log']
-  if (all.every(t => graphFilterTypes.value.has(t))) {
-    return undefined
-  }
   return Array.from(graphFilterTypes.value)
 }
 

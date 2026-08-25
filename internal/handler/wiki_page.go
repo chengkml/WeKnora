@@ -81,6 +81,9 @@ func (h *WikiPageHandler) resolveDefaultGraphTypes(ctx context.Context, kbID str
 			types.WikiPageTypeRuleOntology,
 			types.WikiPageTypeOriginalSentence,
 			types.WikiPageTypeFrequentKeyword,
+			types.WikiPageTypeTopicCluster,
+			types.WikiPageTypeKnowledgeGraphSummary,
+			types.WikiPageTypeCrossDocumentInsight,
 		}
 	}
 	parts := strings.Split(kb.WikiConfig.GraphDefaultTypes, ",")
@@ -103,6 +106,9 @@ func (h *WikiPageHandler) resolveDefaultGraphTypes(ctx context.Context, kbID str
 			types.WikiPageTypeRuleOntology,
 			types.WikiPageTypeOriginalSentence,
 			types.WikiPageTypeFrequentKeyword,
+			types.WikiPageTypeTopicCluster,
+			types.WikiPageTypeKnowledgeGraphSummary,
+			types.WikiPageTypeCrossDocumentInsight,
 		}
 	}
 	return out
