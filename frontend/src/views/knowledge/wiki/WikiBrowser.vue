@@ -370,24 +370,26 @@
                         <span>{{ $t('knowledgeEditor.wikiBrowser.logLoadMore') }}</span>
                       </template>
                     </div>
-                    <div v-else
-                      :class="['wiki-page-item', 'wiki-page-item--tree', { active: selectedPage?.id === item.page.id }]"
-                      :style="{ '--wiki-tree-depth': item.depth }" :title="item.page.title" draggable="true"
-                      @click="selectPage(item.page)" @dragstart="onPageDragStart($event, item.page)"
-                      @dragend="onPageDragEnd">
-                      <t-icon :name="getPageIcon(item.page)"
-                        :class="['wiki-page-file-icon', `wiki-page-file-icon--${item.page.page_type}`]" />
-                      <span class="wiki-page-item-title">{{ item.page.title }}</span>
-                      <span v-if="props.canEdit" class="wiki-page-item-actions">
-                        <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.moveToFoldersAction')" placement="top">
-                          <button type="button" class="wiki-page-item-action"
-                            :aria-label="$t('knowledgeEditor.wikiBrowser.moveToFoldersAction')"
-                            @click.stop="openMovePageDialog(item.page)">
-                            <t-icon name="folder-add" size="16px" />
-                          </button>
-                        </t-tooltip>
-                      </span>
-                    </div>
+                    <t-tooltip v-else :content="item.page.title" placement="top" :show-arrow="false">
+                      <div
+                        :class="['wiki-page-item', 'wiki-page-item--tree', { active: selectedPage?.id === item.page.id }]"
+                        :style="{ '--wiki-tree-depth': item.depth }" draggable="true"
+                        @click="selectPage(item.page)" @dragstart="onPageDragStart($event, item.page)"
+                        @dragend="onPageDragEnd">
+                        <t-icon :name="getPageIcon(item.page)"
+                          :class="['wiki-page-file-icon', `wiki-page-file-icon--${item.page.page_type}`]" />
+                        <span class="wiki-page-item-title">{{ item.page.title }}</span>
+                        <span v-if="props.canEdit" class="wiki-page-item-actions">
+                          <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.moveToFoldersAction')" placement="top">
+                            <button type="button" class="wiki-page-item-action"
+                              :aria-label="$t('knowledgeEditor.wikiBrowser.moveToFoldersAction')"
+                              @click.stop="openMovePageDialog(item.page)">
+                              <t-icon name="folder-add" size="16px" />
+                            </button>
+                          </t-tooltip>
+                        </span>
+                      </div>
+                    </t-tooltip>
                   </template>
                 </div>
                 <!-- Sentinel: when this hits the viewport, fetch the next
