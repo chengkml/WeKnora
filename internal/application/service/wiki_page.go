@@ -249,6 +249,7 @@ func (s *wikiPageService) GetPageBySlug(ctx context.Context, kbID string, slug s
 		return nil, err
 	}
 	stripWikiPageInlineChunkCitations(page)
+	s.resolveInLinkTitles(ctx, page)
 	return page, nil
 }
 
@@ -259,6 +260,7 @@ func (s *wikiPageService) GetPageByID(ctx context.Context, id string) (*types.Wi
 		return nil, err
 	}
 	stripWikiPageInlineChunkCitations(page)
+	s.resolveInLinkTitles(ctx, page)
 	return page, nil
 }
 
@@ -916,6 +918,28 @@ func (s *wikiPageService) SearchPages(ctx context.Context, kbID string, query st
 }
 
 // --- Internal helpers ---
+
+// resolveInLinkTitles looks up the titles for the slugs stored in
+// page.InLinks and writes them into page.InLinksTitles so callers can
+// render backlinks without a second round-trip. Slugs that no longer have
+// a live page are silently skipped; the remaining entries keep their
+// original order so the frontend's zip-style rendering stays aligned.
+func (s *wikiPageService) resolveInLinkTitles(ctx context.Context, page *types.WikiPage) {
+	if page == nil || len(page.InLinks) == 0 {
+		return
+	}
+	lite, err := s.repo.ListBySlugs(ctx, page.KnowledgeBaseID, page.InLinks)
+	if err != nil || len(lite) == 0 {
+		return
+	}
+	titles := make([]string, len(page.InLinks))
+	for i, slug := range page.InLinks {
+		if p, ok := lite[slug]; ok {
+			titles[i] = p.Title
+		}
+	}
+	page.InLinksTitles = titles
+}
 
 // parseOutLinks extracts [[wiki-link]] slugs from markdown content
 func (s *wikiPageService) parseOutLinks(content string) types.StringArray {

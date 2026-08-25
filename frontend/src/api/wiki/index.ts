@@ -27,6 +27,7 @@ export interface WikiPage {
   sort_order?: number;
   source_refs: string[];
   in_links: string[];
+  in_links_titles?: string[];
   out_links: string[];
   page_metadata: Record<string, any>;
   version: number;

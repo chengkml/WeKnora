@@ -540,8 +540,8 @@
                   <t-icon name="link" size="14px" />
                   {{ $t('knowledgeEditor.wikiBrowser.linkedFrom') }}
                 </span>
-                <a v-for="link in selectedPage.in_links" :key="'in-' + link" href="#" class="wiki-backlink-tag"
-                  @click.prevent="navigateToSlug(link)">{{ slugDisplayName(link) }}</a>
+                <a v-for="(link, idx) in selectedPage.in_links" :key="'in-' + link" href="#" class="wiki-backlink-tag"
+                  @click.prevent="navigateToSlug(link)">{{ selectedPage.in_links_titles?.[idx] || slugDisplayName(link) }}</a>
               </div>
 
               <!-- Content -->

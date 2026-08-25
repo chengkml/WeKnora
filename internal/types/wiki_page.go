@@ -253,6 +253,9 @@ type WikiPage struct {
 	ChunkRefs StringArray `json:"chunk_refs" gorm:"type:json"`
 	// Slugs of pages that link TO this page (backlinks)
 	InLinks StringArray `json:"in_links" gorm:"type:json"`
+	// InLinksTitles carries the page titles corresponding to each entry in
+	// InLinks, populated by the service layer on read. Not persisted.
+	InLinksTitles []string `json:"in_links_titles,omitempty" gorm:"-"`
 	// Slugs of pages this page links to (outbound links)
 	OutLinks StringArray `json:"out_links" gorm:"type:json"`
 	// Arbitrary metadata (tags, categories, dates, etc.)
