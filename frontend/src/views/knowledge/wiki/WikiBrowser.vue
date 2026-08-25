@@ -4705,8 +4705,10 @@ onUnmounted(() => {
 }
 
 .wiki-sidebar-search-row > .t-input {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .wiki-queue-status {
