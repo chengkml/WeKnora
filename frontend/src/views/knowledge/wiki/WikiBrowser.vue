@@ -1833,7 +1833,7 @@ function getTypeTheme(type: string): string {
     synthesis: 'primary', comparison: 'danger', index: 'default', log: 'default',
     business_ontology: 'warning', rule_ontology: 'default',
     original_sentence: 'warning', frequent_keyword: 'success',
-    topic_cluster: 'secondary', knowledge_graph_summary: 'secondary', cross_document_insight: 'secondary',
+    topic_cluster: 'warning', knowledge_graph_summary: 'primary', cross_document_insight: 'info',
   }
   return map[type] || 'default'
 }
