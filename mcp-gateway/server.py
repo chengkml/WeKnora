@@ -618,6 +618,28 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["kb_id", "issue_id", "status"],
             },
         ),
+        types.Tool(
+            name="tokenize",
+            description="Tokenize text using the WeKnora tokenizer. Returns words "
+            "and the token count.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "Text to tokenize"},
+                    "mode": {
+                        "type": "string",
+                        "description": "cut (default) | cut_for_search",
+                        "default": "cut",
+                    },
+                    "stopwords": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional stopwords to remove",
+                    },
+                },
+                "required": ["text"],
+            },
+        ),
     ]
 
 
@@ -767,6 +789,12 @@ async def handle_call_tool(
         elif name == "wiki_update_issue_status":
             result = client.wiki_update_issue_status(
                 args["kb_id"], args["issue_id"], args["status"]
+            )
+        elif name == "tokenize":
+            result = client.tokenize(
+                args["text"],
+                mode=args.get("mode", "cut"),
+                stopwords=args.get("stopwords"),
             )
         else:
             raise ValueError(f"Unknown tool: {name}")

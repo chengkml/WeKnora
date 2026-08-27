@@ -91,6 +91,7 @@ type RouterParams struct {
 	DataSourceCredentialsHandler *handler.DataSourceCredentialsHandler
 	WeKnoraCloudHandler          *handler.WeKnoraCloudHandler
 	WikiPageHandler              *handler.WikiPageHandler
+	TokenizerHandler             *handler.TokenizerHandler
 }
 
 // NewRouter 创建新的路由
@@ -267,6 +268,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, rbacGuards)
+		RegisterTokenizerRoutes(v1, params.TokenizerHandler, rbacGuards)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
 		// Fail fast if any declared API-key policy points at a route
@@ -279,8 +281,19 @@ func NewRouter(params RouterParams) *gin.Engine {
 	return r
 }
 
+// RegisterTokenizerRoutes registers the tokenize endpoint.
+//
+// Tokenization is read-only and does not depend on any KB; it is exposed
+// as a tenant-wide utility. Viewer+ for JWT callers; API keys may call
+// it with either retrieve or full-access capability.
+func RegisterTokenizerRoutes(r *gin.RouterGroup, handler *handler.TokenizerHandler, g *rbacGuards) {
+	tokenizer := g.apiKeyGroup(r.Group("/tokenize"), apiKeyRetrieve(apiKeyFullAccess()))
+	{
+		tokenizer.POST("", g.Viewer(), handler.Post)
+	}
+}
+
 // RegisterChunkerDebugRoutes wires the read-only chunker preview endpoint
-// used by the KB editor's debug panel. Stateless — uses no service deps.
 //
 // Viewer+ floor: the endpoint surfaces inside the tenant UI, so any
 // authenticated tenant member can call it; revoked accounts whose JWT

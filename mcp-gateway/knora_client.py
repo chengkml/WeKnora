@@ -335,6 +335,18 @@ class WeKnoraGatewayClient:
             json={"status": status},
         )
 
+    def tokenize(
+        self,
+        text: str,
+        mode: str = "cut",
+        stopwords: Optional[list[str]] = None,
+    ) -> Dict[str, Any]:
+        """Tokenize text through the WeKnora tokenize API."""
+        body: Dict[str, Any] = {"text": text, "mode": mode}
+        if stopwords:
+            body["stopwords"] = stopwords
+        return self._request("POST", "/tokenize", json=body)
+
 
 def probe_api_key(base_url: str, api_key: str, timeout: float = 10.0) -> bool:
     """Validate an API key against the backend without raising.
