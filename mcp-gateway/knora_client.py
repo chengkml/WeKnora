@@ -170,13 +170,19 @@ class WeKnoraGatewayClient:
         )
 
     def list_wiki_pages(
-        self, kb_id: str, page: int = 1, page_size: int = 20
+        self, kb_id: str, page: int = 1, page_size: int = 20, folder_id: str = ""
     ) -> Dict[str, Any]:
         """Paginated list of wiki pages in a knowledge base."""
+        params: Dict[str, Any] = {
+            "page": page,
+            "page_size": page_size,
+        }
+        if folder_id:
+            params["folder_id"] = folder_id
         return self._request(
             "GET",
             f"/knowledgebase/{kb_id}/wiki/pages",
-            params={"page": page, "page_size": page_size},
+            params=params,
         )
 
     # ------------------------------------------------------------------

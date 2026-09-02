@@ -403,6 +403,13 @@ async def handle_list_tools() -> list[types.Tool]:
                 "type": "object",
                 "properties": {
                     **_KB_ID_PROP,
+                    "folder_id": {
+                        "type": "string",
+                        "description": "Exact folder id filter (empty = root; absent = no folder filter).",
+                    },
+                    "page_type": {"type": "string", "description": "Filter by page type; comma-separated for multiple (e.g. entity,concept)"},
+                    "status": {"type": "string", "description": "Filter by status"},
+                    "query": {"type": "string", "description": "Full-text search"},
                     "page": {"type": "integer", "default": 1},
                     "page_size": {"type": "integer", "default": 20},
                 },
@@ -732,6 +739,7 @@ async def handle_call_tool(
                 args["kb_id"],
                 page=args.get("page", 1),
                 page_size=args.get("page_size", 20),
+                folder_id=args.get("folder_id", ""),
             )
         elif name == "list_wiki_folders":
             result = client.list_wiki_folders(
