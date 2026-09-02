@@ -189,12 +189,14 @@ class WeKnoraGatewayClient:
     # Wiki folder CRUD
     # ------------------------------------------------------------------
 
-    def list_wiki_folders(self, kb_id: str, parent_id: str = "") -> Dict[str, Any]:
+    def list_wiki_folders(self, kb_id: str, parent_id: str = "", include_empty: bool = False) -> Dict[str, Any]:
         """List direct child folders of a parent (empty parent_id = root).
-        Empty folders (no pages underneath) are included."""
+        include_empty=True returns empty folders too."""
         params: Dict[str, Any] = {}
         if parent_id:
             params["parent_id"] = parent_id
+        if include_empty:
+            params["include_empty"] = "true"
         return self._request(
             "GET", f"/knowledgebase/{kb_id}/wiki/folders", params=params
         )

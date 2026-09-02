@@ -430,6 +430,11 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "string",
                         "description": "Parent folder id (empty = root)",
                     },
+                    "include_empty": {
+                        "type": "boolean",
+                        "description": "Return empty folders when true (default false)",
+                        "default": False,
+                    },
                 },
                 "required": ["kb_id"],
             },
@@ -743,7 +748,9 @@ async def handle_call_tool(
             )
         elif name == "list_wiki_folders":
             result = client.list_wiki_folders(
-                args["kb_id"], args.get("parent_id", "")
+                args["kb_id"],
+                parent_id=args.get("parent_id", ""),
+                include_empty=args.get("include_empty", False),
             )
         elif name == "create_wiki_folder":
             result = client.create_wiki_folder(

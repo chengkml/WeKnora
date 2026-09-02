@@ -191,8 +191,9 @@ func (h *WikiPageHandler) ListPages(c *gin.Context) {
 // @Description  Retrieve the direct child folders of a parent folder (parent_id empty = root level), each with its page count and a has-children flag for the directory tree.
 // @Tags         Wiki
 // @Produce      json
-// @Param        kb_id     path   string  true   "Knowledge base ID"
-// @Param        parent_id query  string  false  "Parent folder id (empty = root)"
+// @Param        kb_id         path   string  false "Knowledge base ID"
+// @Param        parent_id     query  string  false "Parent folder id (empty = root)"
+// @Param        include_empty query  string  false "Return empty folders when true (default false)"
 // @Success      200  {object}  types.WikiFolderListResponse
 // @Failure      400  {object}  errors.AppError
 // @Security     Bearer
@@ -212,7 +213,8 @@ func (h *WikiPageHandler) ListFolders(c *gin.Context) {
 			}
 		}
 	}
-	folders, err := h.wikiService.ListChildFolders(c.Request.Context(), kbID, parentID, pageTypes)
+	includeEmpty := strings.EqualFold(c.Query("include_empty"), "true")
+	folders, err := h.wikiService.ListChildFolders(c.Request.Context(), kbID, parentID, pageTypes, includeEmpty)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

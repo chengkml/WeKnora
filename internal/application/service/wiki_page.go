@@ -1196,7 +1196,7 @@ func (s *wikiPageService) GetFolder(ctx context.Context, kbID string, id string)
 // are requested — the merged knowledge view — so single-type tabs like summary
 // do not surface empty containers.
 func (s *wikiPageService) ListChildFolders(
-	ctx context.Context, kbID string, parentID string, pageTypes []string,
+	ctx context.Context, kbID string, parentID string, pageTypes []string, includeEmpty bool,
 ) ([]types.WikiFolderNode, error) {
 	all, err := s.repo.ListAllFolders(ctx, kbID)
 	if err != nil {
@@ -1215,11 +1215,7 @@ func (s *wikiPageService) ListChildFolders(
 	}
 	recScoped := recursiveFolderCounts(all, scopedDirect)
 	recAll := recursiveFolderCounts(all, allDirect)
-	// Show wholly-empty folders (no pages of any type underneath) unless the
-	// caller narrowed the view to a single page type: a nil filter (no
-	// page_types — MCP list_wiki_folders, move dialog) means "all types", so
-	// empty folders belong; only single-type tabs like summary omit them.
-	showEmptyFolders := len(pageTypes) != 1
+	showEmptyFolders := includeEmpty || len(pageTypes) != 1
 	// A folder belongs in this view if it (recursively) contains a page of the
 	// requested types, or — only in the merged knowledge view — if it is a
 	// completely empty container with no pages of any type underneath.
