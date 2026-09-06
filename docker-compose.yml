@@ -613,6 +613,13 @@ services:
       - NEO4J_apoc_import_file_enabled=true
       - NEO4J_apoc_import_file_use__neo4j__config=true
       - NEO4JLABS_PLUGINS=["apoc"]
+      # Memory tuning: official image defaults to 512M heap / 512M pagecache,
+      # far too conservative for production. heap must stay <= 50% of the
+      # container memory budget. (Note the double underscores — Neo4j maps
+      # them to dots in neo4j.conf.)
+      - NEO4J_server_memory_heap_initial__size=${NEO4J_server_memory_heap_initial__size:-2G}
+      - NEO4J_server_memory_heap_max__size=${NEO4J_server_memory_heap_max__size:-2G}
+      - NEO4J_server_memory_pagecache_size=${NEO4J_server_memory_pagecache_size:-2G}
     ports:
       - "7474:7474"
       - "7687:7687"
