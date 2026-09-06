@@ -199,15 +199,19 @@ func (n *Neo4jRepository) SearchNode(
 
 			// Convert node to types.Node
 			for _, n := range []neo4j.Node{nodeData, targetNodeData} {
-				nameStr := n.Props["name"].(string)
-				if _, ok := nodeSeen[nameStr]; !ok {
-					nodeSeen[nameStr] = true
-					graphData.Node = append(graphData.Node, &types.GraphNode{
-						Name:       nameStr,
-						Chunks:     listI2listS(n.Props["chunks"].([]interface{})),
-						Attributes: listI2listS(n.Props["attributes"].([]interface{})),
-					})
+				// Nodes created as bare relation endpoints (graph_add without
+				// node attributes) may lack chunks/attributes props entirely —
+				// guard the type assertions so search doesn't 500 on them.
+				nameStr, _ := n.Props["name"].(string)
+				if nameStr == "" || nodeSeen[nameStr] {
+					continue
 				}
+				nodeSeen[nameStr] = true
+				graphData.Node = append(graphData.Node, &types.GraphNode{
+					Name:       nameStr,
+					Chunks:     propToStringSlice(n.Props["chunks"]),
+					Attributes: propToStringSlice(n.Props["attributes"]),
+				})
 			}
 
 			// Convert relationship to types.Relation
@@ -225,6 +229,21 @@ func (n *Neo4jRepository) SearchNode(
 		return nil, err
 	}
 	return result.(*types.GraphData), nil
+}
+
+// propToStringSlice safely converts a Neo4j property (nil, []interface{},
+// []string, or scalar) into []string for GraphNode.Chunks/Attributes.
+func propToStringSlice(prop interface{}) []string {
+	switch v := prop.(type) {
+	case nil:
+		return nil
+	case []interface{}:
+		return listI2listS(v)
+	case []string:
+		return v
+	default:
+		return nil
+	}
 }
 
 func listI2listS(list []any) []string {
