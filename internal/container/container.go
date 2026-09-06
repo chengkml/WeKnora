@@ -376,6 +376,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewDataSourceHandler))
 	// Wiki page handler
 	must(container.Provide(handler.NewWikiPageHandler))
+	// Graph (Neo4j) service + handler
+	must(container.Provide(service.NewGraphService))
+	must(container.Provide(handler.NewGraphHandler))
 	// IM integration
 	logger.Debugf(ctx, "[Container] Registering IM integration...")
 	must(container.Provide(imPkg.NewService))

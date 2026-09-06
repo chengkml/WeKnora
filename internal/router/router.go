@@ -91,6 +91,7 @@ type RouterParams struct {
 	DataSourceCredentialsHandler *handler.DataSourceCredentialsHandler
 	WeKnoraCloudHandler          *handler.WeKnoraCloudHandler
 	WikiPageHandler              *handler.WikiPageHandler
+	GraphHandler                 *handler.GraphHandler
 	TokenizerHandler             *handler.TokenizerHandler
 }
 
@@ -268,6 +269,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, rbacGuards)
+		RegisterGraphRoutes(v1, params.GraphHandler, rbacGuards)
 		RegisterTokenizerRoutes(v1, params.TokenizerHandler, rbacGuards)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
@@ -2403,5 +2405,19 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// Issues
 		wikiRead.GET("/issues", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.ListIssues)
 		wiki.PUT("/issues/:issue_id/status", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdateIssueStatus)
+	}
+}
+
+// RegisterGraphRoutes exposes the Neo4j knowledge-graph operations
+// (AddGraph / DelGraph / SearchNode) under the same /knowledgebase/:kb_id
+// hierarchy, reusing the wiki KB-access guards so MCP/external callers are
+// subject to the same tenant/KB authorization as every other endpoint.
+func RegisterGraphRoutes(r *gin.RouterGroup, graphHandler *handler.GraphHandler, g *rbacGuards) {
+	graph := g.apiKeyGroup(r.Group("/knowledgebase/:kb_id/wiki/graph"), apiKeyIngest(apiKeyFullAccess()))
+	graphRead := graph.With(apiKeyRetrieve(apiKeyFullAccess()))
+	{
+		graphRead.GET("/node", g.Viewer(), g.KBAccessRead("kb_id"), graphHandler.SearchNode)
+		graph.POST("/write", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), graphHandler.AddGraph)
+		graph.DELETE("/write", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), graphHandler.DelGraph)
 	}
 }
