@@ -169,9 +169,11 @@ type WikiPageService interface {
 	// whether it has relevant sub-folders. A folder is shown when its subtree
 	// holds at least one page of pageTypes, or when it is entirely empty (a
 	// user-created container with no pages of any type). When pageTypes is
-	// empty every type counts.
+	// empty every type counts. includeEmpty forces wholly-empty containers to
+	// be listed even in single-type views (the handler passes it through from
+	// the include_empty query parameter).
 	ListChildFolders(
-		ctx context.Context, kbID string, parentID string, pageTypes []string,
+		ctx context.Context, kbID string, parentID string, pageTypes []string, includeEmpty bool,
 	) ([]types.WikiFolderNode, error)
 	// GetFolder retrieves a single folder by id.
 	GetFolder(ctx context.Context, kbID string, id string) (*types.WikiFolder, error)
