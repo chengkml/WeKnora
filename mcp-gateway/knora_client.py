@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 from requests.exceptions import RequestException
@@ -268,6 +268,52 @@ class WeKnoraGatewayClient:
             params["types"] = types
         return self._request(
             "GET", f"/knowledgebase/{kb_id}/wiki/graph", params=params
+        )
+
+    def graph_add(
+        self,
+        kb_id: str,
+        graphs: List[Dict[str, Any]],
+        knowledge_id: str = "",
+    ) -> Dict[str, Any]:
+        """Write nodes + relationships into the Neo4j knowledge graph.
+
+        graphs is a list of {"node": [...], "relation": [...]} payloads with
+        the same shape as the backend GraphData type: each node has name /
+        chunks / attributes, each relation has node1 / node2 / type. When
+        knowledge_id is provided the data is scoped to that single file;
+        otherwise it is scoped to the whole KB.
+        """
+        body: Dict[str, Any] = {"graphs": graphs}
+        if knowledge_id:
+            body["knowledge_id"] = knowledge_id
+        return self._request(
+            "POST", f"/knowledgebase/{kb_id}/wiki/graph/write", json=body
+        )
+
+    def graph_delete(
+        self, kb_id: str, knowledge_id: str = ""
+    ) -> Dict[str, Any]:
+        """Delete the Neo4j graph of a knowledge base (or one file)."""
+        params: Dict[str, Any] = {}
+        if knowledge_id:
+            params["knowledge_id"] = knowledge_id
+        return self._request(
+            "DELETE", f"/knowledgebase/{kb_id}/wiki/graph/write", params=params
+        )
+
+    def graph_search_node(
+        self, kb_id: str, query: str
+    ) -> Dict[str, Any]:
+        """Search Neo4j graph nodes by name fragment.
+
+        Returns the induced subgraph (nodes + edges) whose node names CONTAIN
+        any of the space/comma-separated terms in query.
+        """
+        return self._request(
+            "GET",
+            f"/knowledgebase/{kb_id}/wiki/graph/node",
+            params={"q": query},
         )
 
     def wiki_stats(self, kb_id: str) -> Dict[str, Any]:

@@ -526,6 +526,64 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="graph_add",
+            description="Write nodes and relationships into the Neo4j knowledge graph "
+            "of a knowledge base. Accepts a list of graph payloads, each with "
+            '"node" (name/chunks/attributes) and "relation" (node1/node2/type) '
+            "arrays; nodes are merged by (name, kb) with chunk lists unioned. "
+            "Pass knowledge_id to scope the write to a single knowledge file.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "graphs": {
+                        "type": "array",
+                        "description": "Graph payloads: [{\"node\": [{\"name\": \"...\", \"chunks\": [], \"attributes\": []}], \"relation\": [{\"node1\": \"...\", \"node2\": \"...\", \"type\": \"...\"}]}]",
+                        "items": {"type": "object"},
+                    },
+                    "knowledge_id": {
+                        "type": "string",
+                        "description": "Optional scope to a single knowledge/file",
+                    },
+                },
+                "required": ["kb_id", "graphs"],
+            },
+        ),
+        types.Tool(
+            name="graph_delete",
+            description="Delete the Neo4j knowledge graph of a knowledge base. "
+            "Pass knowledge_id to delete only that file's subgraph; omit it to "
+            "delete the whole KB graph.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "knowledge_id": {
+                        "type": "string",
+                        "description": "Optional scope: delete only this file's subgraph",
+                    },
+                },
+                "required": ["kb_id"],
+            },
+        ),
+        types.Tool(
+            name="graph_search_node",
+            description="Search the Neo4j knowledge graph of a knowledge base by node "
+            "name. Returns the induced subgraph (nodes + edges) whose node names "
+            "CONTAIN any of the space/comma-separated terms in query.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "query": {
+                        "type": "string",
+                        "description": "Node name fragment(s), e.g. '中国移动' or '移动, 上海'",
+                    },
+                },
+                "required": ["kb_id", "query"],
+            },
+        ),
+        types.Tool(
             name="wiki_stats",
             description="Return aggregate statistics about the wiki.",
             inputSchema={
@@ -774,6 +832,21 @@ async def handle_call_tool(
                 depth=args.get("depth"),
                 limit=args.get("limit"),
                 types=args.get("types", ""),
+            )
+        elif name == "graph_add":
+            result = client.graph_add(
+                args["kb_id"],
+                graphs=args["graphs"],
+                knowledge_id=args.get("knowledge_id", ""),
+            )
+        elif name == "graph_delete":
+            result = client.graph_delete(
+                args["kb_id"],
+                knowledge_id=args.get("knowledge_id", ""),
+            )
+        elif name == "graph_search_node":
+            result = client.graph_search_node(
+                args["kb_id"], args["query"]
             )
         elif name == "wiki_stats":
             result = client.wiki_stats(args["kb_id"])
