@@ -19,7 +19,7 @@
       <div class="wm-filter-row">
         <div class="wm-filter-group">
           <span class="wm-filter-label">{{ $t('knowledgeEditor.wikiMaintenance.typeLabel') }}</span>
-          <t-radio-group v-model="filterType" variant="default-filled" size="small">
+          <t-radio-group v-model="filterType" size="small">
             <t-radio-button value="">{{ $t('knowledgeEditor.wikiMaintenance.typeAll') }}</t-radio-button>
             <t-radio-button value="question">{{ $t('knowledgeEditor.wikiMaintenance.typeQuestion') }}</t-radio-button>
             <t-radio-button value="comment">{{ $t('knowledgeEditor.wikiMaintenance.typeComment') }}</t-radio-button>

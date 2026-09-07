@@ -746,7 +746,7 @@
         </div>
         <div class="wiki-feedback-form-type">
           <span class="wff-label">{{ $t('knowledgeEditor.wikiBrowser.feedbackTypeLabel') }}</span>
-          <t-radio-group v-model="feedbackType" variant="default-filled">
+          <t-radio-group v-model="feedbackType">
             <t-radio-button value="comment">{{ $t('knowledgeEditor.wikiMaintenance.typeComment') }}</t-radio-button>
             <t-radio-button value="question">{{ $t('knowledgeEditor.wikiMaintenance.typeQuestion') }}</t-radio-button>
           </t-radio-group>
