@@ -3,7 +3,7 @@
     <!-- Empty / not-wiki guard is handled by the parent; here we render the view -->
     <div class="wiki-maintenance-header">
       <div class="wiki-maintenance-title">
-        <t-icon name="comment" class="wm-title-icon" />
+        <t-icon name="chat-bubble-add" class="wm-title-icon" />
         <span>{{ $t('knowledgeEditor.wikiMaintenance.title') }}</span>
       </div>
       <div class="wiki-maintenance-summary">
@@ -44,7 +44,7 @@
       <div v-if="loading && items.length === 0" class="wm-loading"><t-loading /></div>
 
       <div v-else-if="!loading && items.length === 0" class="wm-empty">
-        <div class="wm-empty-icon"><t-icon name="comment" size="36px" /></div>
+        <div class="wm-empty-icon"><t-icon name="chat-bubble-add" size="36px" /></div>
         <p class="wm-empty-title">{{ $t('knowledgeEditor.wikiMaintenance.emptyTitle') }}</p>
         <p class="wm-empty-desc">{{ $t('knowledgeEditor.wikiMaintenance.emptyDesc') }}</p>
       </div>

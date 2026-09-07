@@ -522,7 +522,7 @@
                   <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.feedbackAddTitle')" placement="bottom">
                     <button type="button" class="wiki-feedback-trigger" :aria-label="$t('knowledgeEditor.wikiBrowser.feedbackAddTitle')"
                       @click="openFeedbackDialog">
-                      <t-icon name="comment" />
+                      <t-icon name="chat-bubble-add" />
                     </button>
                   </t-tooltip>
                 </h2>
