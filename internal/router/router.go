@@ -2405,6 +2405,12 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// Issues
 		wikiRead.GET("/issues", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.ListIssues)
 		wiki.PUT("/issues/:issue_id/status", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdateIssueStatus)
+
+		// Manual feedback (comments / questions) for the maintenance view
+		wikiRead.GET("/feedback", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.ListFeedback)
+		wiki.POST("/feedback", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.CreateFeedback)
+		wiki.PUT("/feedback/:feedback_id/status", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdateFeedbackStatus)
+		wiki.DELETE("/feedback/:feedback_id", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.DeleteFeedback)
 	}
 }
 

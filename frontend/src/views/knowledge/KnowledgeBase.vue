@@ -47,6 +47,7 @@ import KbTagManageDrawer from './components/KbTagManageDrawer.vue';
 import type { KnowledgeProcessOverrides } from '@/types/knowledgeProcess';
 import { useUploadConfirmStore, type UploadConfirmResult } from '@/stores/uploadConfirm';
 import WikiBrowser from './wiki/WikiBrowser.vue';
+import WikiMaintenance from './wiki/WikiMaintenance.vue';
 import { getWikiStats } from '@/api/wiki';
 import {
   isKnowledgeParseInFlight,
@@ -67,7 +68,7 @@ const kbLoading = ref(false);
 const docListLoading = ref(true);
 const isFAQ = computed(() => (kbInfo.value?.type || '') === 'faq');
 const isWiki = computed(() => !!kbInfo.value?.indexing_strategy?.wiki_enabled);
-const validTabs = ['documents', 'wiki', 'graph'] as const
+const validTabs = ['documents', 'wiki', 'graph', 'maintenance'] as const
 type KbTab = typeof validTabs[number]
 const initTab = validTabs.includes(route.query.tab as any) ? (route.query.tab as KbTab) : 'documents'
 const activeKbTab = ref<KbTab>(initTab);
@@ -92,6 +93,13 @@ const onViewWikiInGraph = async (slug: string) => {
   // (which spreads route.query) preserves slug instead of clobbering it.
   await router.replace({ query: { ...route.query, tab: 'graph', slug } })
   activeKbTab.value = 'graph'
+}
+
+// Jump from the maintenance view into the Wiki reader for a specific page.
+const onOpenWikiPageFromMaintenance = async (slug: string) => {
+  if (!slug) return
+  await router.replace({ query: { ...route.query, tab: 'wiki', slug } })
+  activeKbTab.value = 'wiki'
 }
 
 let wikiStatusTimer: ReturnType<typeof setInterval> | null = null
@@ -2042,6 +2050,13 @@ async function createNewSession(value: string): Promise<void> {
                     </t-tooltip>
                   </span>
                 </t-tooltip>
+                <span class="breadcrumb-tab-sep">/</span>
+                <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.tabMaintenanceTip')" placement="bottom">
+                  <span :class="['breadcrumb-tab', { active: activeKbTab === 'maintenance' }]"
+                    @click="activeKbTab = 'maintenance'">
+                    {{ $t('knowledgeEditor.wikiBrowser.tabMaintenance') }}
+                  </span>
+                </t-tooltip>
               </template>
               <span v-else class="breadcrumb-current">{{ $t('knowledgeEditor.document.title') }}</span>
             </h2>
@@ -2078,6 +2093,12 @@ async function createNewSession(value: string): Promise<void> {
         <WikiBrowser v-if="kbId" :knowledge-base-id="kbId" :view="activeKbTab === 'graph' ? 'graph' : 'browser'"
           :can-edit="canEdit" @open-source-doc="openSourceDoc" @status-change="onWikiStatusChange"
           @view-graph="onViewWikiInGraph" />
+      </div>
+
+      <!-- Wiki Maintenance (feedback / comments / questions across the whole KB) -->
+      <div v-if="isWiki && activeKbTab === 'maintenance'" class="wiki-main-area">
+        <WikiMaintenance v-if="kbId" :knowledge-base-id="kbId" :can-edit="canEdit"
+          @open-page="onOpenWikiPageFromMaintenance" />
       </div>
 
       <template v-if="activeKbTab === 'documents' || !isWiki">

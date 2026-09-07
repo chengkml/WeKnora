@@ -325,6 +325,68 @@ export function updateWikiIssueStatus(kbId: string, issueId: string, status: str
   return put(`/api/v1/knowledgebase/${kbId}/wiki/issues/${issueId}/status`, { status });
 }
 
+// ---- Manual feedback (comments / questions) for the KB "maintenance" view ----
+
+export type WikiFeedbackType = 'comment' | 'question';
+export type WikiFeedbackStatus = 'pending' | 'resolved' | 'ignored';
+
+export interface WikiPageFeedback {
+  id: string;
+  tenant_id: number;
+  knowledge_base_id: string;
+  slug: string;
+  page_title: string;
+  feedback_type: WikiFeedbackType;
+  content: string;
+  status: WikiFeedbackStatus;
+  reported_by_id: string;
+  reported_by_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WikiFeedbackListResponse {
+  items: WikiPageFeedback[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// createWikiFeedback adds a manual comment or question against a wiki page.
+export function createWikiFeedback(
+  kbId: string,
+  data: { slug: string; feedback_type: WikiFeedbackType; content: string; status?: WikiFeedbackStatus },
+) {
+  return post(`/api/v1/knowledgebase/${kbId}/wiki/feedback`, data);
+}
+
+// listWikiFeedback lists manual feedback across a KB (maintenance view).
+export function listWikiFeedback(
+  kbId: string,
+  params?: { slug?: string; feedback_type?: WikiFeedbackType; status?: WikiFeedbackStatus; page?: number; page_size?: number },
+) {
+  const query = new URLSearchParams();
+  if (params) {
+    if (params.slug) query.set('slug', params.slug);
+    if (params.feedback_type) query.set('feedback_type', params.feedback_type);
+    if (params.status) query.set('status', params.status);
+    if (params.page !== undefined) query.set('page', String(params.page));
+    if (params.page_size !== undefined) query.set('page_size', String(params.page_size));
+  }
+  const qs = query.toString();
+  return get(`/api/v1/knowledgebase/${kbId}/wiki/feedback${qs ? '?' + qs : ''}`);
+}
+
+// updateWikiFeedbackStatus transitions a feedback item's status.
+export function updateWikiFeedbackStatus(kbId: string, feedbackId: string, status: WikiFeedbackStatus) {
+  return put(`/api/v1/knowledgebase/${kbId}/wiki/feedback/${feedbackId}/status`, { status });
+}
+
+// deleteWikiFeedback soft-deletes a feedback item.
+export function deleteWikiFeedback(kbId: string, feedbackId: string) {
+  return del(`/api/v1/knowledgebase/${kbId}/wiki/feedback/${feedbackId}`);
+}
+
 export function rebuildWikiLinks(kbId: string) {
   return post(`/api/v1/knowledgebase/${kbId}/wiki/rebuild-links`, {});
 }

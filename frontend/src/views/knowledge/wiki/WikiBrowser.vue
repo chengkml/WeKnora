@@ -518,6 +518,13 @@
                       </div>
                     </template>
                   </t-popup>
+
+                  <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.feedbackAddTitle')" placement="bottom">
+                    <button type="button" class="wiki-feedback-trigger" :aria-label="$t('knowledgeEditor.wikiBrowser.feedbackAddTitle')"
+                      @click="openFeedbackDialog">
+                      <t-icon name="comment" />
+                    </button>
+                  </t-tooltip>
                 </h2>
                 <div v-if="selectedPage.aliases && selectedPage.aliases.length" class="wiki-reader-aliases">
                   <span class="wiki-alias-label">{{ $t('knowledgeEditor.wikiBrowser.aliases') }}:</span>
@@ -728,6 +735,31 @@
         :kbIds="[props.knowledgeBaseId]" :embeddedMode="true" />
     </t-drawer>
 
+    <!-- Add manual feedback (comment/question) dialog -->
+    <t-dialog v-model:visible="showFeedbackDialog" :header="feedbackDialogTitle" :width="480" destroy-on-close
+      :confirm-btn="{ theme: 'primary', content: $t('common.confirm'), loading: feedbackSubmitting }"
+      :cancel-btn="$t('common.cancel')" @confirm="submitFeedback" @close="resetFeedbackDialog">
+      <div class="wiki-feedback-form">
+        <div class="wiki-feedback-form-page">
+          <span class="wff-label">{{ $t('knowledgeEditor.wikiBrowser.feedbackPageLabel') }}</span>
+          <span class="wff-page" :title="selectedPage?.slug">{{ selectedPage?.title }}</span>
+        </div>
+        <div class="wiki-feedback-form-type">
+          <span class="wff-label">{{ $t('knowledgeEditor.wikiBrowser.feedbackTypeLabel') }}</span>
+          <t-radio-group v-model="feedbackType" variant="default-filled">
+            <t-radio-button value="comment">{{ $t('knowledgeEditor.wikiMaintenance.typeComment') }}</t-radio-button>
+            <t-radio-button value="question">{{ $t('knowledgeEditor.wikiMaintenance.typeQuestion') }}</t-radio-button>
+          </t-radio-group>
+        </div>
+        <div class="wiki-feedback-form-content">
+          <span class="wff-label">{{ $t('knowledgeEditor.wikiBrowser.feedbackContentLabel') }}</span>
+          <t-textarea v-model="feedbackContent" :placeholder="$t('knowledgeEditor.wikiBrowser.feedbackContentPlaceholder')"
+            :maxlength="1000" :autosize="{ minRows: 4, maxRows: 8 }" />
+        </div>
+        <div class="wiki-feedback-hint">{{ $t('knowledgeEditor.wikiBrowser.feedbackHint') }}</div>
+      </div>
+    </t-dialog>
+
     <!-- In-place move confirmation, anchored at the drop point. Confirming runs
          the actual move API; cancelling discards the staged move. -->
     <teleport to="body">
@@ -811,6 +843,7 @@ import {
   searchWikiPages,
   listWikiIssues,
   updateWikiIssueStatus,
+  createWikiFeedback,
   type WikiPage,
   type WikiFolderNode,
   type WikiGraphData,
@@ -999,6 +1032,13 @@ const showGlobalIssuesDrawer = ref(false)
 const globalIssues = ref<WikiPageIssue[]>([])
 const currentFixSessionId = ref('')
 const stats = ref<WikiStats | null>(null)
+
+// Manual feedback (comment / question) dialog state
+const showFeedbackDialog = ref(false)
+const feedbackSubmitting = ref(false)
+const feedbackType = ref<'comment' | 'question'>('comment')
+const feedbackContent = ref('')
+const feedbackDialogTitle = computed(() => t('knowledgeEditor.wikiBrowser.feedbackDialogTitle'))
 const graphData = ref<WikiGraphData | null>(null)
 const searchQuery = ref('')
 const graphSearchValue = ref('')
@@ -1055,6 +1095,46 @@ async function handleGlobalIssueIgnore(issueId: string) {
     loadStats()
   } catch (e) {
     console.error('Failed to update issue status:', e)
+  }
+}
+
+// --- Manual feedback (comment / question) ---
+
+function openFeedbackDialog() {
+  if (!selectedPage.value) return
+  feedbackType.value = 'comment'
+  feedbackContent.value = ''
+  showFeedbackDialog.value = true
+}
+
+function resetFeedbackDialog() {
+  feedbackContent.value = ''
+  feedbackSubmitting.value = false
+}
+
+async function submitFeedback() {
+  const page = selectedPage.value
+  if (!page) return
+  const content = feedbackContent.value.trim()
+  if (!content) {
+    MessagePlugin.warning(t('knowledgeEditor.wikiBrowser.feedbackContentRequired'))
+    return
+  }
+  feedbackSubmitting.value = true
+  try {
+    await createWikiFeedback(props.knowledgeBaseId, {
+      slug: page.slug,
+      feedback_type: feedbackType.value,
+      content,
+    })
+    MessagePlugin.success(t('knowledgeEditor.wikiBrowser.feedbackSubmitted'))
+    showFeedbackDialog.value = false
+    resetFeedbackDialog()
+  } catch (e) {
+    console.error('Failed to submit wiki feedback:', e)
+    MessagePlugin.error(t('knowledgeEditor.wikiBrowser.feedbackSubmitFailed'))
+  } finally {
+    feedbackSubmitting.value = false
   }
 }
 
@@ -6118,6 +6198,58 @@ onUnmounted(() => {
   &:hover {
     opacity: 0.8;
   }
+}
+
+// Feedback ("反馈") trigger button next to the issue indicator
+.wiki-feedback-trigger {
+  margin-left: 8px;
+  padding: 2px 6px;
+  cursor: pointer;
+  border: 1px solid var(--td-component-border);
+  border-radius: 6px;
+  background: var(--td-bg-color-container);
+  color: var(--td-text-color-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: var(--td-brand-color);
+    border-color: var(--td-brand-color);
+  }
+}
+
+.wiki-feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  .wff-label {
+    display: block;
+    font-size: 12px;
+    color: var(--td-text-color-secondary);
+    margin-bottom: 6px;
+  }
+}
+
+.wiki-feedback-form-page {
+  .wff-page {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--td-text-color-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+  }
+}
+
+.wiki-feedback-hint {
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
 }
 
 .wiki-issue-popup-content {

@@ -1131,6 +1131,99 @@ func (s *wikiPageService) UpdateIssueStatus(ctx context.Context, issueID string,
 	return s.repo.UpdateIssueStatus(ctx, issueID, status)
 }
 
+// --- Feedback (manual comments / questions) ---
+
+// CreateFeedback validates and persists a manually-added feedback item,
+// generating a UUID when missing and denormalizing the target page's title
+// so the maintenance view never has to join wiki_pages to render the list.
+func (s *wikiPageService) CreateFeedback(ctx context.Context, feedback *types.WikiPageFeedback) (*types.WikiPageFeedback, error) {
+	if feedback == nil {
+		return nil, errors.New("feedback is required")
+	}
+	if feedback.KnowledgeBaseID == "" {
+		return nil, errors.New("knowledge_base_id is required")
+	}
+	if strings.TrimSpace(feedback.Slug) == "" {
+		return nil, errors.New("wiki page slug is required")
+	}
+	if strings.TrimSpace(feedback.Content) == "" {
+		return nil, errors.New("feedback content is required")
+	}
+	if feedback.FeedbackType == "" {
+		feedback.FeedbackType = string(types.WikiFeedbackComment)
+	}
+	if feedback.FeedbackType != string(types.WikiFeedbackComment) && feedback.FeedbackType != string(types.WikiFeedbackQuestion) {
+		return nil, errors.New("invalid feedback_type: must be 'comment' or 'question'")
+	}
+	if feedback.Status == "" {
+		feedback.Status = string(types.WikiFeedbackPending)
+	}
+	if feedback.ID == "" {
+		feedback.ID = uuid.New().String()
+	}
+
+	// Resolve the page title so the maintenance list is self-contained. A
+	// missing page is tolerated (the page may have been soft-archived after
+	// the feedback was written) — we just keep whatever title was provided.
+	if page, err := s.repo.GetBySlug(ctx, feedback.KnowledgeBaseID, feedback.Slug); err == nil && page != nil {
+		feedback.PageTitle = page.Title
+	} else if feedback.PageTitle == "" {
+		feedback.PageTitle = feedback.Slug
+	}
+
+	if err := s.repo.CreateFeedback(ctx, feedback); err != nil {
+		return nil, fmt.Errorf("create wiki page feedback: %w", err)
+	}
+	return feedback, nil
+}
+
+// ListFeedback lists feedback across a knowledge base with optional filters
+// (slug / feedback_type / status) and offset pagination.
+func (s *wikiPageService) ListFeedback(ctx context.Context, req *types.WikiPageFeedbackListRequest) (*types.WikiPageFeedbackListResult, error) {
+	if req == nil {
+		req = &types.WikiPageFeedbackListRequest{}
+	}
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.PageSize < 1 {
+		req.PageSize = 50
+	}
+	if req.PageSize > 200 {
+		req.PageSize = 200
+	}
+	return s.repo.ListFeedback(ctx, req)
+}
+
+// GetFeedbackByID returns a single feedback item.
+func (s *wikiPageService) GetFeedbackByID(ctx context.Context, feedbackID string) (*types.WikiPageFeedback, error) {
+	if strings.TrimSpace(feedbackID) == "" {
+		return nil, errors.New("feedback id is required")
+	}
+	return s.repo.GetFeedbackByID(ctx, feedbackID)
+}
+
+// UpdateFeedbackStatus transitions a feedback item's lifecycle status.
+func (s *wikiPageService) UpdateFeedbackStatus(ctx context.Context, feedbackID string, status string) error {
+	if strings.TrimSpace(feedbackID) == "" {
+		return errors.New("feedback id is required")
+	}
+	if status != string(types.WikiFeedbackPending) &&
+		status != string(types.WikiFeedbackResolved) &&
+		status != string(types.WikiFeedbackIgnored) {
+		return errors.New("invalid status: must be pending, resolved or ignored")
+	}
+	return s.repo.UpdateFeedbackStatus(ctx, feedbackID, status)
+}
+
+// DeleteFeedback soft-deletes a feedback item.
+func (s *wikiPageService) DeleteFeedback(ctx context.Context, feedbackID string) error {
+	if strings.TrimSpace(feedbackID) == "" {
+		return errors.New("feedback id is required")
+	}
+	return s.repo.DeleteFeedback(ctx, feedbackID)
+}
+
 // --- Folder tree (wiki_folders) ---
 
 // wikiFolderSegments splits a materialized folder path ("AI/RAG") into cleaned

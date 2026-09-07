@@ -24,6 +24,7 @@ type WikiPageHandler struct {
 	kbService       interfaces.KnowledgeBaseService
 	lintService     *service.WikiLintService
 	logEntryService interfaces.WikiLogEntryService
+	userService     interfaces.UserService
 }
 
 // NewWikiPageHandler creates a new wiki page handler
@@ -32,12 +33,14 @@ func NewWikiPageHandler(
 	kbService interfaces.KnowledgeBaseService,
 	lintService *service.WikiLintService,
 	logEntryService interfaces.WikiLogEntryService,
+	userService interfaces.UserService,
 ) *WikiPageHandler {
 	return &WikiPageHandler{
 		wikiService:     wikiService,
 		kbService:       kbService,
 		lintService:     lintService,
 		logEntryService: logEntryService,
+		userService:     userService,
 	}
 }
 
@@ -855,6 +858,197 @@ func (h *WikiPageHandler) UpdateIssueStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Issue status updated successfully"})
+}
+
+// helperReportedBy resolves the calling user's display name for the feedback
+// author field. It degrades gracefully to the raw user id if the user cannot
+// be looked up (e.g. system / embed callers).
+func (h *WikiPageHandler) helperReportedBy(c *gin.Context) (userID, displayName string) {
+	userID = c.GetString(types.UserIDContextKey.String())
+	if userID == "" || h.userService == nil {
+		return userID, userID
+	}
+	u, err := h.userService.GetUserByID(c.Request.Context(), userID)
+	if err != nil || u == nil {
+		return userID, userID
+	}
+	if u.Username != "" {
+		return userID, u.Username
+	}
+	return userID, u.Email
+}
+
+// CreateFeedback godoc
+// @Summary      Add manual feedback (comment/question) to a wiki page
+// @Description  Adds a manually-authored comment or question against a wiki
+// @Description  page. These are collected in the KB maintenance view.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id path  string  true  "Knowledge base ID"
+// @Param        body   body   object  true  "{slug, feedback_type, content, status?}"
+// @Success      200  {object}  types.WikiPageFeedback
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/feedback [post]
+func (h *WikiPageHandler) CreateFeedback(c *gin.Context) {
+	kbID, tenantID, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req struct {
+		Slug         string `json:"slug"`
+		FeedbackType string `json:"feedback_type"`
+		Content      string `json:"content"`
+		Status       string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.Slug) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Slug is required"})
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Content is required"})
+		return
+	}
+
+	userID, displayName := h.helperReportedBy(c)
+
+	feedback := &types.WikiPageFeedback{
+		TenantID:        tenantID,
+		KnowledgeBaseID: kbID,
+		Slug:            strings.TrimSpace(req.Slug),
+		FeedbackType:    req.FeedbackType,
+		Content:         req.Content,
+		Status:          req.Status,
+		ReportedByID:    userID,
+		ReportedByName:  displayName,
+	}
+
+	created, err := h.wikiService.CreateFeedback(c.Request.Context(), feedback)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, created)
+}
+
+// ListFeedback godoc
+// @Summary      List wiki page feedback
+// @Description  Lists manual comments/questions under a knowledge base,
+// @Description  optionally filtered by slug, feedback_type and status.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id    path  string  true  "Knowledge base ID"
+// @Param        slug     query  string  false "Filter by page slug"
+// @Param        feedback_type query string false "Filter by type (comment|question)"
+// @Param        status   query  string  false "Filter by status (pending|resolved|ignored)"
+// @Param        page     query  int     false "Page number (default 1)"
+// @Param        page_size query int     false "Page size (default 50, max 200)"
+// @Success      200  {object}  types.WikiPageFeedbackListResult
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/feedback [get]
+func (h *WikiPageHandler) ListFeedback(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
+
+	req := &types.WikiPageFeedbackListRequest{
+		KnowledgeBaseID: kbID,
+		Slug:            c.Query("slug"),
+		FeedbackType:    c.Query("feedback_type"),
+		Status:          c.Query("status"),
+		Page:            page,
+		PageSize:        pageSize,
+	}
+
+	result, err := h.wikiService.ListFeedback(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// UpdateFeedbackStatus godoc
+// @Summary      Update wiki page feedback status
+// @Description  Transitions a feedback item's status (pending|resolved|ignored).
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id       path  string  true  "Knowledge base ID"
+// @Param        feedback_id path  string  true  "Feedback ID"
+// @Param        body        body  object  true  "{status: 'resolved'}"
+// @Success      200  {object}  map[string]string
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/feedback/{feedback_id}/status [put]
+func (h *WikiPageHandler) UpdateFeedbackStatus(c *gin.Context) {
+	_, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	feedbackID := secutils.SanitizeForLog(c.Param("feedback_id"))
+	if feedbackID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Feedback ID is required"})
+		return
+	}
+
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	if err := h.wikiService.UpdateFeedbackStatus(c.Request.Context(), feedbackID, req.Status); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Feedback status updated successfully"})
+}
+
+// DeleteFeedback godoc
+// @Summary      Delete wiki page feedback
+// @Description  Soft-deletes a feedback item.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id       path  string  true  "Knowledge base ID"
+// @Param        feedback_id path  string  true  "Feedback ID"
+// @Success      200  {object}  map[string]string
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/feedback/{feedback_id} [delete]
+func (h *WikiPageHandler) DeleteFeedback(c *gin.Context) {
+	_, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	feedbackID := secutils.SanitizeForLog(c.Param("feedback_id"))
+	if feedbackID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Feedback ID is required"})
+		return
+	}
+
+	if err := h.wikiService.DeleteFeedback(c.Request.Context(), feedbackID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Feedback deleted successfully"})
 }
 
 // SearchPages godoc

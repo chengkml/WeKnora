@@ -198,6 +198,7 @@ func (r *tenantRepository) DeleteTenant(ctx context.Context, id uint64) error {
 			{"wiki_log_entries", "tenant_id"},
 			{"wiki_page_folders", "tenant_id"},
 			{"wiki_page_issues", "tenant_id"},
+			{"wiki_page_feedback", "tenant_id"},
 			{"wiki_pages", "tenant_id"},
 		} {
 			if err := tx.Unscoped().

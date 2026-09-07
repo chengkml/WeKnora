@@ -682,6 +682,69 @@ func (WikiPageIssue) TableName() string {
 	return "wiki_page_issues"
 }
 
+// WikiPageFeedbackType enumerates the kinds of user-added feedback on a wiki
+// page. Comments and questions are distinguished so the maintenance view can
+// filter and so questions can later drive wiki optimization.
+type WikiPageFeedbackType string
+
+const (
+	WikiFeedbackComment  WikiPageFeedbackType = "comment" // general remark / note
+	WikiFeedbackQuestion WikiPageFeedbackType = "question" // a question to be answered or used for refinement
+)
+
+// WikiPageFeedbackStatus enumerates the lifecycle states of a feedback item.
+type WikiPageFeedbackStatus string
+
+const (
+	WikiFeedbackPending  WikiPageFeedbackStatus = "pending"  // awaiting attention
+	WikiFeedbackResolved WikiPageFeedbackStatus = "resolved" // handled / addressed
+	WikiFeedbackIgnored  WikiPageFeedbackStatus = "ignored"  // intentionally skipped
+)
+
+// WikiPageFeedback is a manually-added comment or question on a specific wiki
+// page. It complements WikiPageIssue (agent/linter-generated findings): unlike
+// those, feedback is authored by a human in the KB's "维护" (maintenance)
+// workflow so the whole KB's wiki feedback can be reviewed and acted upon.
+type WikiPageFeedback struct {
+	ID              string         `json:"id" gorm:"type:varchar(36);primaryKey"`
+	TenantID        uint64         `json:"tenant_id" gorm:"index"`
+	KnowledgeBaseID string         `json:"knowledge_base_id" gorm:"type:varchar(36);index"`
+	Slug            string         `json:"slug" gorm:"type:varchar(255);index"`
+	PageTitle       string         `json:"page_title" gorm:"type:varchar(255)"` // denormalized at write time for maintenance list display
+	FeedbackType    string         `json:"feedback_type" gorm:"type:varchar(20);index"`
+	Content         string         `json:"content" gorm:"type:text"`
+	Status          string         `json:"status" gorm:"type:varchar(20);default:'pending';index"`
+	ReportedByID    string         `json:"reported_by_id" gorm:"type:varchar(100)"`
+	ReportedByName  string         `json:"reported_by_name" gorm:"type:varchar(100)"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `json:"deleted_at" gorm:"index"`
+}
+
+// TableName specifies the database table name.
+func (WikiPageFeedback) TableName() string {
+	return "wiki_page_feedback"
+}
+
+// WikiPageFeedbackListRequest is the filter/pagination input for listing
+// feedback items across a knowledge base (used by the maintenance view).
+type WikiPageFeedbackListRequest struct {
+	KnowledgeBaseID string
+	Slug            string // "" = all pages
+	FeedbackType    string // "" = all types (comment | question)
+	Status          string // "" = all statuses
+	Page            int
+	PageSize        int
+}
+
+// WikiPageFeedbackListResult is a page of feedback plus the total count.
+type WikiPageFeedbackListResult struct {
+	Items []*WikiPageFeedback `json:"items"`
+	Total int64               `json:"total"`
+	Page  int                 `json:"page"`
+	Size  int                 `json:"page_size"`
+}
+
 // WikiIndexEntry is a single row in the structured wiki index response.
 // Only the columns needed to render a clickable directory entry are
 // carried — the backend projects SELECT slug, title, summary so a 40k-

@@ -1247,3 +1247,74 @@ func (r *wikiPageRepository) UpdateIssueStatus(ctx context.Context, issueID stri
 		Where("id = ?", issueID).
 		Update("status", status).Error
 }
+
+func (r *wikiPageRepository) CreateFeedback(ctx context.Context, feedback *types.WikiPageFeedback) error {
+	return r.db.WithContext(ctx).Create(feedback).Error
+}
+
+func (r *wikiPageRepository) ListFeedback(ctx context.Context, req *types.WikiPageFeedbackListRequest) (*types.WikiPageFeedbackListResult, error) {
+	if req == nil {
+		req = &types.WikiPageFeedbackListRequest{}
+	}
+	limit := req.PageSize
+	if limit < 1 {
+		limit = 50
+	}
+	offset := (req.Page - 1) * limit
+	if req.Page < 1 {
+		offset = 0
+	}
+
+	query := r.db.WithContext(ctx).Model(&types.WikiPageFeedback{}).
+		Where("knowledge_base_id = ?", req.KnowledgeBaseID)
+	if req.Slug != "" {
+		query = query.Where("slug = ?", req.Slug)
+	}
+	if req.FeedbackType != "" {
+		query = query.Where("feedback_type = ?", req.FeedbackType)
+	}
+	if req.Status != "" {
+		query = query.Where("status = ?", req.Status)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	var items []*types.WikiPageFeedback
+	if err := query.Order("created_at DESC, id DESC").
+		Limit(limit).Offset(offset).
+		Find(&items).Error; err != nil {
+		return nil, err
+	}
+
+	page := req.Page
+	if page < 1 {
+		page = 1
+	}
+	return &types.WikiPageFeedbackListResult{
+		Items: items,
+		Total: total,
+		Page:  page,
+		Size:  limit,
+	}, nil
+}
+
+func (r *wikiPageRepository) GetFeedbackByID(ctx context.Context, feedbackID string) (*types.WikiPageFeedback, error) {
+	var f types.WikiPageFeedback
+	if err := r.db.WithContext(ctx).Where("id = ?", feedbackID).First(&f).Error; err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+func (r *wikiPageRepository) UpdateFeedbackStatus(ctx context.Context, feedbackID string, status string) error {
+	return r.db.WithContext(ctx).Model(&types.WikiPageFeedback{}).
+		Where("id = ?", feedbackID).
+		Update("status", status).Error
+}
+
+func (r *wikiPageRepository) DeleteFeedback(ctx context.Context, feedbackID string) error {
+	return r.db.WithContext(ctx).Delete(&types.WikiPageFeedback{}, "id = ?", feedbackID).Error
+}

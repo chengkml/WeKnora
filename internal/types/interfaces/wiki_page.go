@@ -216,6 +216,23 @@ type WikiPageService interface {
 
 	// UpdateIssueStatus updates the status of an issue (e.g. pending -> resolved/ignored).
 	UpdateIssueStatus(ctx context.Context, issueID string, status string) error
+
+	// CreateFeedback creates a manually-added feedback item (comment/question)
+	// for a wiki page. PageTitle is denormalized onto the record at write time.
+	CreateFeedback(ctx context.Context, feedback *types.WikiPageFeedback) (*types.WikiPageFeedback, error)
+
+	// ListFeedback lists feedback across a knowledge base, optionally filtered
+	// by slug, feedback_type and status, with simple offset pagination.
+	ListFeedback(ctx context.Context, req *types.WikiPageFeedbackListRequest) (*types.WikiPageFeedbackListResult, error)
+
+	// GetFeedbackByID retrieves a single feedback item by id.
+	GetFeedbackByID(ctx context.Context, feedbackID string) (*types.WikiPageFeedback, error)
+
+	// UpdateFeedbackStatus transitions a feedback item's lifecycle status.
+	UpdateFeedbackStatus(ctx context.Context, feedbackID string, status string) error
+
+	// DeleteFeedback soft-deletes a feedback item.
+	DeleteFeedback(ctx context.Context, feedbackID string) error
 }
 
 // WikiPageRepository defines the wiki page data persistence interface.
@@ -377,4 +394,19 @@ type WikiPageRepository interface {
 
 	// UpdateIssueStatus updates an issue's status.
 	UpdateIssueStatus(ctx context.Context, issueID string, status string) error
+
+	// CreateFeedback inserts a manual feedback record.
+	CreateFeedback(ctx context.Context, feedback *types.WikiPageFeedback) error
+
+	// ListFeedback retrieves feedback with optional filtering and pagination.
+	ListFeedback(ctx context.Context, req *types.WikiPageFeedbackListRequest) (*types.WikiPageFeedbackListResult, error)
+
+	// GetFeedbackByID retrieves a single feedback record by id.
+	GetFeedbackByID(ctx context.Context, feedbackID string) (*types.WikiPageFeedback, error)
+
+	// UpdateFeedbackStatus updates a feedback record's status.
+	UpdateFeedbackStatus(ctx context.Context, feedbackID string, status string) error
+
+	// DeleteFeedback soft-deletes a feedback record.
+	DeleteFeedback(ctx context.Context, feedbackID string) error
 }
