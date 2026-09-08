@@ -342,6 +342,33 @@ class WeKnoraGatewayClient:
             "GET", f"/knowledgebase/{kb_id}/wiki/log", params=params
         )
 
+    def wiki_log_write(
+        self,
+        kb_id: str,
+        action: str,
+        knowledge_id: str = "",
+        doc_title: str = "",
+        summary: str = "",
+        page_slugs: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Append a wiki operation/progress event to the knowledge base log.
+
+        Used by external agents (skill runs) to report build progress back into
+        WeKnora. Requires "write" capability on the API key.
+        """
+        payload: Dict[str, Any] = {"action": action}
+        if knowledge_id:
+            payload["knowledge_id"] = knowledge_id
+        if doc_title:
+            payload["doc_title"] = doc_title
+        if summary:
+            payload["summary"] = summary
+        if page_slugs:
+            payload["page_slugs"] = page_slugs
+        return self._request(
+            "POST", f"/knowledgebase/{kb_id}/wiki/log", json=payload
+        )
+
     # ------------------------------------------------------------------
     # Wiki link maintenance
     # ------------------------------------------------------------------

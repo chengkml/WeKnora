@@ -655,6 +655,43 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="wiki_log_write",
+            description="Append a wiki operation/progress event to the knowledge "
+            "base log. External agents (skill runs) use this to report build "
+            "progress back into WeKnora. Requires \"write\" capability on the "
+            "API key. action examples: agent_build_start / agent_build_relations "
+            "/ agent_build_dirs / agent_build_summary / agent_build_entities / "
+            "agent_build_keywords / agent_build_index / agent_build_done.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    **_KB_ID_PROP,
+                    "action": {
+                        "type": "string",
+                        "description": "Event tag, e.g. agent_build_start",
+                    },
+                    "knowledge_id": {
+                        "type": "string",
+                        "description": "Document UUID the event is about (optional)",
+                    },
+                    "doc_title": {
+                        "type": "string",
+                        "description": "Document/file name at event time (optional)",
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "One-line progress summary (optional)",
+                    },
+                    "page_slugs": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Wiki page slugs affected (optional)",
+                    },
+                },
+                "required": ["kb_id", "action"],
+            },
+        ),
+        types.Tool(
             name="wiki_list_issues",
             description="List issues flagged on wiki pages (optionally filtered by "
             "slug or status).",
@@ -867,6 +904,15 @@ async def handle_call_tool(
                 args["kb_id"],
                 limit=args.get("limit", 50),
                 cursor=args.get("cursor", ""),
+            )
+        elif name == "wiki_log_write":
+            result = client.wiki_log_write(
+                args["kb_id"],
+                action=args["action"],
+                knowledge_id=args.get("knowledge_id", ""),
+                doc_title=args.get("doc_title", ""),
+                summary=args.get("summary", ""),
+                page_slugs=args.get("page_slugs") or None,
             )
         elif name == "wiki_list_issues":
             result = client.wiki_list_issues(
