@@ -92,7 +92,13 @@ func postAgentTask(callbackURL, kbID, knowledgeID, docName string) {
 		"input":        "为 WeKnora 文档构建 wiki 知识：kb_id=" + kbID + "，knowledge_id=" + knowledgeID + "，文件名=" + docName,
 		"agent_name":   "",
 		"instructions": instructions,
-		"config":       map[string]interface{}{},
+		"config": map[string]interface{}{
+			// 结构化任务上下文：runner 注入 WEKNORA_KB_ID / WEKNORA_KNOWLEDGE_ID
+			// 环境变量，技能脚本据此覆盖 config.yaml 的固定 kb_id（多库动态触发）。
+			"kb_id":         kbID,
+			"knowledge_id":  knowledgeID,
+			"doc_name":      docName,
+		},
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
