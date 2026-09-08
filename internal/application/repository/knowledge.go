@@ -466,6 +466,16 @@ func (r *knowledgeRepository) FinalizeSubtask(
 		return 0, false, promoteRes.Error
 	}
 	promoted := promoteRes.RowsAffected > 0
+	if promoted {
+		// Document fully processed (chunks/embeddings/summary done). If the
+		// knowledge base enables wiki generation with custom_wiki_generation
+		// (i.e. WeKnora does NOT auto-build wiki pages), fire an asynchronous,
+		// best-effort notification to the configured external agent gateway so
+		// its skill (e.g. supply-management-policy-compiler) can build the wiki
+		// pages for this document. Fire-and-forget: never blocks or fails the
+		// promote.
+		maybeNotifyAgentForWikiBuild(ctx, r.db, id)
+	}
 
 	// 3) Best-effort re-read of the new count for diagnostics/return value
 	//    only. This read may be replica-stale and is intentionally NOT used

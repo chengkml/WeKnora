@@ -647,6 +647,67 @@ func (h *WikiPageHandler) GetLog(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// PostLogRequest is the request body for appending a wiki operation log entry.
+// Used by external agents (e.g. the supply-management-policy-compiler skill
+// running inside an OpenAI Agents gateway) to record processing progress back
+// into WeKnora's per-KB operation log.
+type PostLogRequest struct {
+	Action       string `json:"action" binding:"required"`
+	KnowledgeID  string `json:"knowledge_id"`
+	DocTitle     string `json:"doc_title"`
+	Summary      string `json:"summary"`
+	PageSlugs    []string `json:"page_slugs"`
+}
+
+// PostLog godoc
+// @Summary      Append wiki operation log entry
+// @Description  Appends a single operation/progress event to the knowledge
+// @Description  base's wiki log (e.g. an external agent reporting a build stage).
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        body   body  PostLogRequest  true  "Log entry"
+// @Success      200    {object}  map[string]interface{}
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/log [post]
+func (h *WikiPageHandler) PostLog(c *gin.Context) {
+	kbID, tenantID, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req PostLogRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request parameters: " + err.Error()})
+		return
+	}
+	if req.Action == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "action is required"})
+		return
+	}
+
+	refs := make([]types.WikiLogPageRef, 0, len(req.PageSlugs))
+	for _, slug := range req.PageSlugs {
+		refs = append(refs, types.WikiLogPageRef{Slug: slug})
+	}
+	entry := &types.WikiLogEntry{
+		TenantID:         tenantID,
+		KnowledgeBaseID:  kbID,
+		Action:           req.Action,
+		KnowledgeID:      req.KnowledgeID,
+		DocTitle:         req.DocTitle,
+		Summary:          req.Summary,
+		PagesAffected:    refs,
+	}
+	if err := h.logEntryService.AppendBatch(c.Request.Context(), []*types.WikiLogEntry{entry}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 // Graph query parameter bounds. The defaults cap an `overview` request at
 // 500 nodes — comfortably renderable in the frontend's hand-rolled SVG
 // force simulation — while the hard max of 2000 is the upper bound a
