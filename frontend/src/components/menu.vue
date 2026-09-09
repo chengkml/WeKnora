@@ -427,9 +427,11 @@ const getIconActiveState = (itemPath: string) => {
 };
 
 // 分离上下两部分菜单（使用 visibleMenuArr 以便 lite 模式过滤 logout）
+// 私有化定制（WEK-44）：隐藏侧栏「新对话(creatChat)/智能体(agents)/共享空间(organizations)」三个入口，
+// 仅保留「知识库」。不动 store 的 menuArr（会话列表/active 状态等逻辑依赖它），路由深链仍可达。
 const topMenuItems = computed<MenuItem[]>(() => {
     return (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) =>
-        item.path === 'knowledge-bases' || item.path === 'agents' || item.path === 'organizations' || item.path === 'creatChat'
+        item.path === 'knowledge-bases'
     );
 });
 
