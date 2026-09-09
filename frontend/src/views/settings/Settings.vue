@@ -327,6 +327,11 @@ const canSeeSection = (key: string): boolean => {
   return authStore.hasRole(min)
 }
 
+// 私有化定制（WEK-44）：设置弹窗导航只保留 用户信息/模型管理/向量数据库引擎/解析引擎 四个分区，
+// 其余配置分区（通用/Ollama/WeKnora Cloud/网络搜索/对话历史/存储引擎/MCP/版本信息/空间信息/成员/
+// 发布集成/系统管理…）全部隐藏。
+const PRIVATE_SETTINGS_ALLOW = new Set(['userprofile', 'models', 'vectorstore', 'parser'])
+
 const navItems = computed(() => {
   // 一律走 SECTION_MIN_ROLE 表，避免 ad-hoc isAdmin/isOwner 散落在多处。
   // 服务端在每条路由上仍以 g.Viewer/Admin/Owner 为准，这里只决定 UI 是
@@ -365,7 +370,7 @@ const navItems = computed(() => {
   if (!authStore.currentTenantRole && !authStore.canAccessAllTenants) {
     return [] as NavItem[]
   }
-  return all.filter((it) => canSeeSection(it.key))
+  return all.filter((it) => PRIVATE_SETTINGS_ALLOW.has(it.key) && canSeeSection(it.key))
 })
 
 const navGroups = computed<NavGroup[]>(() => {
@@ -534,7 +539,9 @@ watch(
 // 如果 currentSection 落到了不再显示的 key 上，就回退到第一个可见项。
 watch(navItems, (items) => {
   if (!items.some((item) => item.key === currentSection.value)) {
-    currentSection.value = items[0]?.key || 'general'
+    // 私有化定制（WEK-44）：默认落到「用户信息」，其次第一个可见项
+    const userprofile = items.find((item) => item.key === 'userprofile')
+    currentSection.value = userprofile?.key || items[0]?.key || 'general'
     currentSubSection.value = ''
   }
 })

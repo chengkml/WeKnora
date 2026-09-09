@@ -70,17 +70,23 @@
             :title="$t('tenant.switcher.menuLabel')" />
         </div>
         <div class="menu-divider"></div>
-        <!-- QuickNav 入口与 Settings 的最低角色对齐：members/models/websearch/mcp/api
-             分别对应 viewer/viewer/admin/admin/owner（详情见 Settings.vue 的
-             SECTION_MIN_ROLE）。低角色用户看到这些入口点进去也只能看到
-             role-denied 兜底页，索性藏起来。 -->
-        <div v-if="canSeeQuickNav('members')" class="menu-item" @click="handleQuickNav('members')">
-          <t-icon name="usergroup" class="menu-icon" />
-          <span>{{ $t('tenantMember.title') }}</span>
+        <!-- 私有化定制（WEK-44）：用户名下拉只保留 用户信息/模型管理/向量数据库引擎/解析引擎
+             四个配置直达入口，其余配置入口（成员/网络搜索/MCP/API/全部设置/系统管理）全部隐藏。 -->
+        <div v-if="canSeeQuickNav('userprofile')" class="menu-item" @click="handleQuickNav('userprofile')">
+          <t-icon name="user" class="menu-icon" />
+          <span>{{ $t('userProfile.title') }}</span>
         </div>
         <div v-if="canSeeQuickNav('models')" class="menu-item" @click="handleQuickNav('models')">
           <t-icon name="control-platform" class="menu-icon" />
           <span>{{ $t('settings.modelManagement') }}</span>
+        </div>
+        <div v-if="canSeeQuickNav('vectorstore')" class="menu-item" @click="handleQuickNav('vectorstore')">
+          <t-icon name="data-base" class="menu-icon" />
+          <span>{{ $t('settings.vectorStoreEngine') }}</span>
+        </div>
+        <div v-if="canSeeQuickNav('parser')" class="menu-item" @click="handleQuickNav('parser')">
+          <t-icon name="file-search" class="menu-icon" />
+          <span>{{ $t('settings.parserEngine') }}</span>
         </div>
         <div v-if="canSeeQuickNav('websearch')" class="menu-item" @click="handleQuickNav('websearch')">
           <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"
@@ -103,24 +109,17 @@
           <t-icon name="secured" class="menu-icon" />
           <span>{{ $t('integrations.tabs.api') }}</span>
         </div>
-        <div class="menu-divider"></div>
-        <div class="menu-item" @click="handleSettings">
-          <t-icon name="setting" class="menu-icon" />
-          <span>{{ $t('general.allSettings') }}</span>
-        </div>
         <!--
           System administration entry — visible only to users with the
           platform-wide is_system_admin flag. Hidden for everyone else,
           including tenant Owners. Real authorisation lives server-side
           (RequireSystemAdmin middleware); this is UI gating only.
         -->
-        <div v-if="authStore.isSystemAdmin" class="menu-item" @click="handleSystemAdmin">
+        <div v-if="false" class="menu-item" @click="handleSystemAdmin">
           <t-icon name="server" class="menu-icon" />
           <span>{{ $t('settings.system') }}</span>
         </div>
-        <!-- 切换空间入口在下拉「当前空间」区块 hover；此处仅为分隔线与菜单项。 -->
-        <div class="menu-divider"></div>
-        <div class="menu-item" :title="$t('common.githubStarTip')" @click="openGithub">
+        <div v-if="false" class="menu-item" :title="$t('common.githubStarTip')" @click="openGithub">
           <t-icon name="logo-github" class="menu-icon" />
           <span class="menu-text-with-icon">
             <span>{{ $t('common.github') }}</span>
@@ -248,15 +247,18 @@ const showTenantIdentityLine = computed(() => {
 })
 
 // 与 Settings.vue 的 SECTION_MIN_ROLE 同步；这里只挂 quickNav 直接跳转的
-// 那 4 项。改这张表前请同步 Settings.vue 的对照注释。
+// 那几项。改这张表前请同步 Settings.vue 的对照注释。
+// 私有化定制（WEK-44）：用户名下拉只保留 用户信息/模型管理/向量数据库引擎/解析引擎。
 const QUICKNAV_MIN_ROLE: Record<string, 'viewer' | 'contributor' | 'admin' | 'owner'> = {
-  members: 'viewer',
+  userprofile: 'viewer',
   models: 'viewer',
-  websearch: 'admin',
-  mcp: 'admin',
-  'integration-api': 'owner',
+  vectorstore: 'admin',
+  parser: 'admin',
 }
+// 不在白名单里的 quickNav 键（members/websearch/mcp/integration-api 等旧行）永远不渲染。
+const QUICKNAV_PRIVATE_ALLOW = new Set(['userprofile', 'models', 'vectorstore', 'parser'])
 const canSeeQuickNav = (key: string): boolean => {
+  if (!QUICKNAV_PRIVATE_ALLOW.has(key)) return false
   if (authStore.canAccessAllTenants) return true
   return authStore.hasRole(QUICKNAV_MIN_ROLE[key] ?? 'viewer')
 }
@@ -305,13 +307,6 @@ const handleQuickNav = (section: string) => {
     const event = new CustomEvent('settings-nav', { detail: { section } })
     window.dispatchEvent(event)
   }, 100)
-}
-
-// 打开设置
-const handleSettings = () => {
-  menuVisible.value = false
-  uiStore.openSettings()
-  router.push('/platform/settings')
 }
 
 // Open the platform administration area inside the standard Settings
