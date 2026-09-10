@@ -71,15 +71,34 @@ func maybeNotifyAgentForWikiBuild(ctx context.Context, db *gorm.DB, knowledgeID 
 		docName = k.Title
 	}
 
+	// 加载知识库绑定的摘要模型配置（名字/base_url/api_key），随任务传给
+	// agent-gateway：技能脚本据此用知识库自己的模型做 wiki 构建（2026-09-10 WEK-46）。
+	// ModelParameters.Scan 已自动解密 api_key（DecryptStoredSecretLenient），此处即明文。
+	modelName, modelBaseURL, modelAPIKey := "", "", ""
+	if kb.SummaryModelID != "" {
+		var mdl types.Model
+		if err := db.WithContext(ctx).Model(&types.Model{}).
+			Where("id = ?", kb.SummaryModelID).Take(&mdl).Error; err == nil {
+			modelName = mdl.Name
+			modelBaseURL = mdl.Parameters.BaseURL
+			modelAPIKey = mdl.Parameters.APIKey
+		} else {
+			logger.Warnf(ctx, "[agent-notify] load summary model %s for kb %s failed: %v",
+				kb.SummaryModelID, kb.ID, err)
+		}
+	}
+
 	// Fire async (goroutine survives this call; detached from request ctx).
-	go postAgentTask(callbackURL, kb.ID, knowledgeID, docName)
+	go postAgentTask(callbackURL, kb.ID, knowledgeID, docName, modelName, modelBaseURL, modelAPIKey)
 }
 
 // postAgentTask POSTs a task to the OpenAI-Agents gateway. The task input
 // instructs the agent to run the wiki build skill for the given document,
 // passing the exact kb_id and document id so the agent does not need to
-// discover them.
-func postAgentTask(callbackURL, kbID, knowledgeID, docName string) {
+// discover them. When the knowledge base has a bound summary model
+// (SummaryModelID), its name/base_url/api_key are forwarded in config so the
+// skill scripts use the KB's own model instead of the gateway default.
+func postAgentTask(callbackURL, kbID, knowledgeID, docName, modelName, modelBaseURL, modelAPIKey string) {
 	ctx, cancel := context.WithTimeout(context.Background(), agentGatewayTimeout)
 	defer cancel()
 
@@ -88,17 +107,30 @@ func postAgentTask(callbackURL, kbID, knowledgeID, docName string) {
 		"（文件名: " + docName + "）。按技能 SKILL.md 的标准流程完整执行：" +
 		"找文件→血缘/版本家族解析→建目录→摘要→实体→关键词→索引，并通过 wiki_log_write MCP 工具按大步骤回报进度。"
 
+	cfg := map[string]interface{}{
+		// 结构化任务上下文：runner 注入 WEKNORA_KB_ID / WEKNORA_KNOWLEDGE_ID
+		// 环境变量，技能脚本据此覆盖 config.yaml 的固定 kb_id（多库动态触发）。
+		"kb_id":        kbID,
+		"knowledge_id": knowledgeID,
+		"doc_name":     docName,
+	}
+	// 知识库绑定模型的配置：runner 注入 WEKNORA_LLM_MODEL / WEKNORA_LLM_BASE_URL /
+	// WEKNORA_LLM_API_KEY，技能脚本 llm_config() 优先读任务级配置。
+	if modelName != "" {
+		cfg["model"] = modelName
+	}
+	if modelBaseURL != "" {
+		cfg["base_url"] = modelBaseURL
+	}
+	if modelAPIKey != "" {
+		cfg["api_key"] = modelAPIKey
+	}
+
 	payload := map[string]interface{}{
 		"input":        "为 WeKnora 文档构建 wiki 知识：kb_id=" + kbID + "，knowledge_id=" + knowledgeID + "，文件名=" + docName,
 		"agent_name":   "",
 		"instructions": instructions,
-		"config": map[string]interface{}{
-			// 结构化任务上下文：runner 注入 WEKNORA_KB_ID / WEKNORA_KNOWLEDGE_ID
-			// 环境变量，技能脚本据此覆盖 config.yaml 的固定 kb_id（多库动态触发）。
-			"kb_id":         kbID,
-			"knowledge_id":  knowledgeID,
-			"doc_name":      docName,
-		},
+		"config":       cfg,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
