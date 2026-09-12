@@ -88,8 +88,18 @@ func maybeNotifyAgentForWikiBuild(ctx context.Context, db *gorm.DB, knowledgeID 
 		}
 	}
 
+	// 技能名：从知识库 wiki_config.skill 读取（data_supply 新建/编辑知识库时指定），
+	// 空则默认 supply-management-policy-compiler。用于通知 agent-gateway 用哪个技能构建。
+	agentSkillName := ""
+	if kb.WikiConfig != nil {
+		agentSkillName = kb.WikiConfig.Skill
+	}
+	if agentSkillName == "" {
+		agentSkillName = "supply-management-policy-compiler"
+	}
+
 	// Fire async (goroutine survives this call; detached from request ctx).
-	go postAgentTask(callbackURL, kb.ID, knowledgeID, docName, modelName, modelBaseURL, modelAPIKey)
+	go postAgentTask(callbackURL, kb.ID, knowledgeID, docName, modelName, modelBaseURL, modelAPIKey, agentSkillName)
 }
 
 // postAgentTask POSTs a task to the OpenAI-Agents gateway. The task input
@@ -98,11 +108,13 @@ func maybeNotifyAgentForWikiBuild(ctx context.Context, db *gorm.DB, knowledgeID 
 // discover them. When the knowledge base has a bound summary model
 // (SummaryModelID), its name/base_url/api_key are forwarded in config so the
 // skill scripts use the KB's own model instead of the gateway default.
-func postAgentTask(callbackURL, kbID, knowledgeID, docName, modelName, modelBaseURL, modelAPIKey string) {
+func postAgentTask(callbackURL, kbID, knowledgeID, docName, modelName, modelBaseURL, modelAPIKey, agentSkillName string) {
 	ctx, cancel := context.WithTimeout(context.Background(), agentGatewayTimeout)
 	defer cancel()
 
-	instructions := "使用 supply-management-policy-compiler 技能为指定文档构建 WeKnora wiki 知识。" +
+	// 技能名：随通知上下文传入（空则默认 supply-management-policy-compiler）。
+	// 实际技能名在 maybeNotifyAgentForWikiBuild 里从 kb.WikiConfig.Skill 解析后传入。
+	instructions := "使用 " + agentSkillName + " 技能为指定文档构建 WeKnora wiki 知识。" +
 		"目标知识库 kb_id=" + kbID + "，文档 knowledge_id=" + knowledgeID +
 		"（文件名: " + docName + "）。按技能 SKILL.md 的标准流程完整执行：" +
 		"找文件→血缘/版本家族解析→建目录→摘要→实体→关键词→索引，并通过 wiki_log_write MCP 工具按大步骤回报进度。"
@@ -113,6 +125,7 @@ func postAgentTask(callbackURL, kbID, knowledgeID, docName, modelName, modelBase
 		"kb_id":        kbID,
 		"knowledge_id": knowledgeID,
 		"doc_name":     docName,
+		"skill":        agentSkillName,
 	}
 	// 知识库绑定模型的配置：runner 注入 WEKNORA_LLM_MODEL / WEKNORA_LLM_BASE_URL /
 	// WEKNORA_LLM_API_KEY，技能脚本 llm_config() 优先读任务级配置。

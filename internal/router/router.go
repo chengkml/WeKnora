@@ -1256,6 +1256,8 @@ func RegisterSkillRoutes(r *gin.RouterGroup, skillHandler *handler.SkillHandler,
 	{
 		// List all preloaded skills — Viewer+
 		skills.GET("", g.Viewer(), skillHandler.ListSkills)
+		// Upload & install a skill ZIP — Admin+ (skills run sandboxed code on tenant resources)
+		skills.POST("/upload", g.Admin(), skillHandler.UploadSkill)
 	}
 }
 

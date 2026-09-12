@@ -460,6 +460,9 @@ type WikiConfig struct {
 	// ContentInstructions controls tone, structure and emphasis for generated
 	// summary/entity/index prose. Citation and merge rules remain system-owned.
 	ContentInstructions string `yaml:"content_instructions,omitempty" json:"content_instructions,omitempty"`
+	// Skill is the agent skill used for external wiki building (data_supply 选定的技能，
+	// 空 = 默认 supply-management-policy-compiler)。由 agent-gateway 执行。
+	Skill string `yaml:"skill,omitempty" json:"skill,omitempty"`
 	// ExtractionInstructions tells candidate extraction which domain concepts
 	// to emphasize without replacing the stable JSON/citation protocol.
 	ExtractionInstructions string `yaml:"extraction_instructions,omitempty" json:"extraction_instructions,omitempty"`

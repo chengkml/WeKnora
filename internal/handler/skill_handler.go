@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"io"
 	"net/http"
 	"os"
 
@@ -68,5 +69,56 @@ func (h *SkillHandler) ListSkills(c *gin.Context) {
 		"success":          true,
 		"data":             response,
 		"skills_available": skillsAvailable,
+	})
+}
+
+// UploadSkill godoc
+// @Summary      上传并安装技能
+// @Description  上传技能 ZIP（含 SKILL.md），解压安装到 WeKnora 技能目录，并同步安装到 agent-gateway。Admin 权限。
+// @Tags         Skills
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        file         formData file true  "技能 ZIP 包（<skillname>/SKILL.md）"
+// @Param        name         formData string false "可选技能名覆盖"
+// @Success      200  {object}  map[string]interface{} "技能元数据"
+// @Failure      400  {object}  errors.AppError "ZIP 或技能名非法"
+// @Router       /skills/upload [post]
+func (h *SkillHandler) UploadSkill(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.Error(errors.NewBadRequestError("请上传技能 ZIP 文件（字段名 file）"))
+		return
+	}
+	f, err := fileHeader.Open()
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewBadRequestError("读取上传文件失败"))
+		return
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewBadRequestError("读取上传文件失败"))
+		return
+	}
+
+	forceName := c.PostForm("name")
+
+	meta, err := h.skillService.UploadSkill(ctx, data, forceName)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"name":        meta.Name,
+			"description": meta.Description,
+		},
 	})
 }
