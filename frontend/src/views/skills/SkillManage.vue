@@ -79,9 +79,10 @@ async function loadSkills() {
   loading.value = true;
   try {
     const resp = await listSkills() as any;
-    const data = resp?.data ?? resp;
-    skillsAvailable.value = data?.skills_available !== false;
-    skills.value = Array.isArray(data?.data) ? data.data : [];
+    // 响应结构: { data: SkillInfo[], skills_available: bool, success: bool }
+    // data 直接是技能数组（顶层平级），不是两层嵌套
+    skillsAvailable.value = resp?.skills_available !== false;
+    skills.value = Array.isArray(resp?.data) ? resp.data : [];
   } catch (e: any) {
     Message.error(e?.message || '获取技能列表失败');
     skills.value = [];
