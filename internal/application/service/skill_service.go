@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -331,3 +332,112 @@ func (w *zipFileWriter) build() error {
 }
 
 func (w *zipFileWriter) contentType() string { return w.ct }
+
+// DeleteSkill removes a skill from the preloaded directory, reloads the loader,
+// and best-effort notifies the agent-gateway DELETE /skills/{name} so the
+// gateway's install dir also drops it.
+func (s *skillService) DeleteSkill(ctx context.Context, name string) error {
+	if err := s.ensureInitialized(ctx); err != nil {
+		return fmt.Errorf("failed to initialize skill service: %w", err)
+	}
+	name = strings.TrimSpace(name)
+	if name == "" || !skillNamePattern.MatchString(name) {
+		return fmt.Errorf("非法技能名: %q", name)
+	}
+	destDir := filepath.Join(s.preloadedDir, name)
+	if _, err := os.Stat(destDir); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("技能不存在: %s", name)
+		}
+		return err
+	}
+	if err := os.RemoveAll(destDir); err != nil {
+		return fmt.Errorf("删除技能目录失败: %w", err)
+	}
+
+	// reload loader so it's gone from discovery now
+	s.mu.Lock()
+	if s.loader != nil {
+		if _, err := s.loader.Reload(); err != nil {
+			logger.Warnf(ctx, "[skill-delete] loader reload warn: %v", err)
+		}
+	}
+	s.mu.Unlock()
+
+	// best-effort notify gateway
+	if err := s.deleteSkillFromGateway(ctx, name); err != nil {
+		logger.Warnf(ctx, "[skill-delete] gateway delete failed (WeKnora 侧已删): %v", err)
+	}
+	logger.Infof(ctx, "[skill-delete] skill removed: %s", name)
+	return nil
+}
+
+// deleteSkillFromGateway calls agent-gateway DELETE /skills/{name}
+// (best-effort: the skill is already removed from WeKnora's own directory).
+func (s *skillService) deleteSkillFromGateway(ctx context.Context, name string) error {
+	gwURL := resolveAgentGatewayURL()
+	if gwURL == "" {
+		logger.Warnf(ctx, "[skill-delete] WEKNORA_AGENT_CALLBACK_URL/WEKNORA_AGENT_GATEWAY_URL 未配置，跳过 gateway 删除 skill=%s", name)
+		return nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, gwURL+"/skills/"+url.PathEscape(name), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		logger.Warnf(ctx, "[skill-delete] gateway delete returned %d: %s", resp.StatusCode, string(b))
+		return fmt.Errorf("gateway delete status %d", resp.StatusCode)
+	}
+	logger.Infof(ctx, "[skill-delete] gateway skill removed: %s", name)
+	return nil
+}
+
+// GetSkillDetail returns a skill's file listing for the management UI.
+func (s *skillService) GetSkillDetail(ctx context.Context, name string) (*interfaces.SkillDetail, error) {
+	if err := s.ensureInitialized(ctx); err != nil {
+		return nil, fmt.Errorf("failed to initialize skill service: %w", err)
+	}
+	name = strings.TrimSpace(name)
+	meta, err := s.GetSkillByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	base := meta.BasePath
+	detail := &interfaces.SkillDetail{
+		Name:        meta.Name,
+		Description: meta.Description,
+		Path:        base,
+	}
+	if base != "" {
+		_ = filepath.Walk(base, func(p string, fi os.FileInfo, err error) error {
+			if err != nil || fi == nil {
+				return nil
+			}
+			if fi.IsDir() {
+				return nil
+			}
+			rel, rerr := filepath.Rel(base, p)
+			if rerr != nil {
+				return nil
+			}
+			rel = filepath.ToSlash(rel)
+			if strings.Contains(rel, "__pycache__") {
+				return nil
+			}
+			detail.Files = append(detail.Files, interfaces.SkillFile{Path: rel, Size: fi.Size()})
+			if len(detail.Files) >= 500 {
+				return filepath.SkipAll
+			}
+			return nil
+		})
+	}
+	detail.FileCount = len(detail.Files)
+	detail.TotalFiles = len(detail.Files)
+	return detail, nil
+}

@@ -1,4 +1,6 @@
-export default {
+
+
+export default {
   menu: {
       knowledgeBase: "知识库",
       skills: "技能管理",
@@ -55,6 +57,12 @@
     disabledDesc: "当前配置未启用技能，请联系管理员",
     emptyTitle: "暂无技能",
     emptyDesc: "点击右上角「上传技能」安装第一个技能包",
+    viewDetail: "查看",
+    delete: "删除",
+    deleteConfirm: "确定删除技能「{name}」吗？将同时从 agent 执行端移除。",
+    detailTitle: "技能详情",
+    fileCount: "共 {n} 个文件",
+    noFiles: "技能目录为空",
   },
       chatHeader: {
     moreActions: "更多对话操作",

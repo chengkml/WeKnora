@@ -122,3 +122,58 @@ func (h *SkillHandler) UploadSkill(c *gin.Context) {
 		},
 	})
 }
+
+// DeleteSkill godoc
+// @Summary      删除技能
+// @Description  从 WeKnora 技能目录删除指定技能，并同步通知 agent-gateway 删除。Admin 权限。
+// @Tags         Skills
+// @Accept       json
+// @Produce      json
+// @Param        name  path  string  true  "技能名"
+// @Success      200  {object}  map[string]interface{} "删除结果"
+// @Failure      400  {object}  errors.AppError "技能名非法或不存在"
+// @Router       /skills/{name} [delete]
+func (h *SkillHandler) DeleteSkill(c *gin.Context) {
+	ctx := c.Request.Context()
+	name := c.Param("name")
+
+	if err := h.skillService.DeleteSkill(ctx, name); err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{"skill": name})
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"name": name,
+		},
+	})
+}
+
+// GetSkillDetail godoc
+// @Summary      查看技能详情
+// @Description  返回指定技能的文件清单（相对路径 + 大小），供技能管理界面详情展示。
+// @Tags         Skills
+// @Accept       json
+// @Produce      json
+// @Param        name  path  string  true  "技能名"
+// @Success      200  {object}  map[string]interface{} "技能详情"
+// @Failure      400  {object}  errors.AppError "技能不存在"
+// @Router       /skills/{name} [get]
+func (h *SkillHandler) GetSkillDetail(c *gin.Context) {
+	ctx := c.Request.Context()
+	name := c.Param("name")
+
+	detail, err := h.skillService.GetSkillDetail(ctx, name)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{"skill": name})
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    detail,
+	})
+}

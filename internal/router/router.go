@@ -1258,6 +1258,10 @@ func RegisterSkillRoutes(r *gin.RouterGroup, skillHandler *handler.SkillHandler,
 		skills.GET("", g.Viewer(), skillHandler.ListSkills)
 		// Upload & install a skill ZIP — Admin+ (skills run sandboxed code on tenant resources)
 		skills.POST("/upload", g.Admin(), skillHandler.UploadSkill)
+		// Skill detail (file listing) — Viewer+
+		skills.GET("/:name", g.Viewer(), skillHandler.GetSkillDetail)
+		// Delete a skill — Admin+ (removes from WeKnora dir + agent-gateway install dir)
+		skills.DELETE("/:name", g.Admin(), skillHandler.DeleteSkill)
 	}
 }
 
