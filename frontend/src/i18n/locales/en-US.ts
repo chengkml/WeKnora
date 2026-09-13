@@ -1,7 +1,8 @@
-export default {
+export default {
   menu: {
     knowledgeBase: 'Knowledge Base',
-    agents: 'Agents',
+        skills: 'Skill Management',
+        agents: 'Agents',
     integrations: 'Publish & Integrations',
     organizations: 'Shared Spaces',
     chat: 'Chat',
@@ -43,6 +44,17 @@ export default {
     otherSources: 'Other sources',
     noSessions: 'No conversations yet',
     loadMoreSessions: 'Load more',
+      },
+  skillManage: {
+    upload: 'Upload Skill',
+    uploadHint: 'Upload a skill ZIP package (must contain SKILL.md). Installed skills become selectable when creating a wiki knowledge base.',
+    uploading: 'Uploading…',
+    subtitle: 'Manage wiki knowledge building skills: uploaded packages are auto-installed to the agent endpoint and can be selected when creating a knowledge base.',
+    loading: 'Loading skills…',
+    disabledTitle: 'Skill sandbox disabled',
+    disabledDesc: 'Skills are not enabled in the current configuration. Contact your administrator.',
+    emptyTitle: 'No skills yet',
+    emptyDesc: 'Click "Upload Skill" in the top-right corner to install your first skill package.',
   },
   chatHeader: {
     moreActions: 'More conversation actions',

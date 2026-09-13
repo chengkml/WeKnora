@@ -1,3 +1,4 @@
+
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -80,20 +81,20 @@ const router = createRouter({
           query: code ? { invite_code: code } : {}
         }
       },
-      meta: { requiresInit: true, requiresAuth: true }
+          meta: { requiresInit: true, requiresAuth: true }
     },
     {
       path: "/knowledgeBase",
       name: "home",
-      component: () => import("../views/knowledge/KnowledgeBase.vue"),
-      meta: { requiresInit: true, requiresAuth: true }
+          component: () => import("../views/knowledge/KnowledgeBase.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
     },
     {
       path: "/platform",
       name: "Platform",
       redirect: "/platform/knowledge-bases",
       component: () => import("../views/platform/index.vue"),
-      meta: { requiresInit: true, requiresAuth: true },
+          meta: { requiresInit: true, requiresAuth: true },
       children: [
         {
           path: "tenant",
@@ -115,6 +116,12 @@ const router = createRouter({
           path: "knowledge-bases/:kbId",
           name: "knowledgeBaseDetail",
           component: () => import("../views/knowledge/KnowledgeBase.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
+        },
+        {
+          path: "skills",
+          name: "skillManage",
+          component: () => import("../views/skills/SkillManage.vue"),
           meta: { requiresInit: true, requiresAuth: true }
         },
         {

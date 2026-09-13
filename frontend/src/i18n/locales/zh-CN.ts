@@ -1,7 +1,8 @@
-export default {
+export default {
   menu: {
-    knowledgeBase: "知识库",
-    agents: "智能体",
+      knowledgeBase: "知识库",
+      skills: "技能管理",
+      agents: "智能体",
     integrations: "发布集成",
     organizations: "共享空间",
     chat: "对话",
@@ -42,9 +43,20 @@ export default {
     chatsSection: "网页对话",
     otherSources: "其他来源",
     noSessions: "暂无对话",
-    loadMoreSessions: "加载更多",
+        loadMoreSessions: "加载更多",
+      },
+  skillManage: {
+    upload: "上传技能",
+    uploadHint: "上传技能 ZIP 包（需包含 SKILL.md），安装后即可在新建 wiki 知识库时选用",
+    uploading: "上传中…",
+    subtitle: "管理 wiki 知识构建技能：上传的技能包会自动安装到 agent 执行端，支持在新建知识库时指定使用",
+    loading: "技能列表加载中…",
+    disabledTitle: "技能沙箱未启用",
+    disabledDesc: "当前配置未启用技能，请联系管理员",
+    emptyTitle: "暂无技能",
+    emptyDesc: "点击右上角「上传技能」安装第一个技能包",
   },
-  chatHeader: {
+      chatHeader: {
     moreActions: "更多对话操作",
     copySessionId: "复制会话 ID",
     copyLink: "复制对话链接",
