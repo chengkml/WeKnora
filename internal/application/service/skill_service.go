@@ -348,18 +348,28 @@ func (s *skillService) DeleteSkill(ctx context.Context, name string) error {
 	if strings.ContainsAny(name, "/\\") || name == "." || name == ".." || strings.Contains(name, "..") {
 		return fmt.Errorf("非法技能名: %q", name)
 	}
-	destDir := filepath.Join(s.preloadedDir, name)
-	if _, err := os.Stat(destDir); err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("技能不存在: %s", name)
-		}
-		return err
+
+	// 通过 loader 按 name 找到真实目录（name 可能是中文显示名，目录可能是英文，不能直接拼接）
+	meta, err := s.GetSkillByName(ctx, name)
+	if err != nil {
+		return fmt.Errorf("技能不存在: %s", name)
 	}
+	destDir := meta.BasePath
+	if destDir == "" {
+		return fmt.Errorf("技能目录未知: %s", name)
+	}
+
 	// 安全：确认目标在 preloadedDir 内（防符号链接逃逸）
 	baseAbs, _ := filepath.Abs(s.preloadedDir)
 	destAbs, _ := filepath.Abs(destDir)
 	if !strings.HasPrefix(destAbs, filepath.Clean(baseAbs)+string(os.PathSeparator)) && destAbs != filepath.Clean(baseAbs) {
 		return fmt.Errorf("非法技能路径: %q", name)
+	}
+	if _, err := os.Stat(destDir); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("技能不存在: %s", name)
+		}
+		return err
 	}
 	if err := os.RemoveAll(destDir); err != nil {
 		return fmt.Errorf("删除技能目录失败: %w", err)
@@ -378,7 +388,7 @@ func (s *skillService) DeleteSkill(ctx context.Context, name string) error {
 	if err := s.deleteSkillFromGateway(ctx, name); err != nil {
 		logger.Warnf(ctx, "[skill-delete] gateway delete failed (WeKnora 侧已删): %v", err)
 	}
-	logger.Infof(ctx, "[skill-delete] skill removed: %s", name)
+	logger.Infof(ctx, "[skill-delete] skill removed: %s -> %s", name, destDir)
 	return nil
 }
 
