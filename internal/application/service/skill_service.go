@@ -341,7 +341,11 @@ func (s *skillService) DeleteSkill(ctx context.Context, name string) error {
 		return fmt.Errorf("failed to initialize skill service: %w", err)
 	}
 	name = strings.TrimSpace(name)
-	if name == "" || !skillNamePattern.MatchString(name) {
+	if name == "" {
+		return fmt.Errorf("技能名不能为空")
+	}
+	// 防路径穿越：技能名不允许包含路径分隔符或相对路径片段
+	if strings.ContainsAny(name, "/\\") || name == "." || name == ".." || strings.Contains(name, "..") {
 		return fmt.Errorf("非法技能名: %q", name)
 	}
 	destDir := filepath.Join(s.preloadedDir, name)
@@ -350,6 +354,12 @@ func (s *skillService) DeleteSkill(ctx context.Context, name string) error {
 			return fmt.Errorf("技能不存在: %s", name)
 		}
 		return err
+	}
+	// 安全：确认目标在 preloadedDir 内（防符号链接逃逸）
+	baseAbs, _ := filepath.Abs(s.preloadedDir)
+	destAbs, _ := filepath.Abs(destDir)
+	if !strings.HasPrefix(destAbs, filepath.Clean(baseAbs)+string(os.PathSeparator)) && destAbs != filepath.Clean(baseAbs) {
+		return fmt.Errorf("非法技能路径: %q", name)
 	}
 	if err := os.RemoveAll(destDir); err != nil {
 		return fmt.Errorf("删除技能目录失败: %w", err)
