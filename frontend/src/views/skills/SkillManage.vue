@@ -38,7 +38,6 @@
           :columns="columns"
           row-key="name"
           :hover="true"
-          :pagination="{ pageSize: 20 }"
           :loading="loading"
         >
           <template #name="{ row }">
