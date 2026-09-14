@@ -56,7 +56,7 @@
                 {{ $t('skillManage.viewDetail') }}
               </t-button>
               <t-popconfirm :content="$t('skillManage.deleteConfirm', { name: row.name })" theme="danger" @confirm="handleDelete(row.name)">
-                <t-button variant="text" theme="danger" size="small">
+                <t-button variant="text" theme="danger" size="small" :loading="deletingName === row.name">
                   {{ $t('skillManage.delete') }}
                 </t-button>
               </t-popconfirm>
@@ -95,12 +95,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { Message } from 'tdesign-vue-next';
+import { MessagePlugin } from 'tdesign-vue-next';
 import { listSkills, uploadSkill, getSkillDetail, deleteSkill, type SkillInfo, type SkillDetail } from '@/api/skill';
 
 const skills = ref<SkillInfo[]>([]);
 const loading = ref(false);
 const uploading = ref(false);
+const deletingName = ref('');
 const skillsAvailable = ref(true);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
@@ -126,7 +127,7 @@ async function loadSkills() {
     skillsAvailable.value = resp?.skills_available !== false;
     skills.value = Array.isArray(resp?.data) ? resp.data : [];
   } catch (e: any) {
-    Message.error(e?.message || '获取技能列表失败');
+    MessagePlugin.error(e?.message || '获取技能列表失败');
     skills.value = [];
   } finally {
     loading.value = false;
@@ -143,7 +144,7 @@ async function handleFileChange(e: Event) {
   if (!file) return;
 
   if (!file.name.toLowerCase().endsWith('.zip')) {
-    Message.warning('请选择 ZIP 格式的技能包');
+    MessagePlugin.warning('请选择 ZIP 格式的技能包');
     input.value = '';
     return;
   }
@@ -153,17 +154,17 @@ async function handleFileChange(e: Event) {
     const resp = await uploadSkill(file);
     const ok = resp?.success !== false;
     if (ok) {
-      Message.success(`技能「${file.name}」上传安装成功`);
-      input.value = '';
-      await loadSkills();
+      MessagePlugin.success(`技能「${file.name}」上传安装成功`);
     } else {
-      Message.error(resp?.message || '上传失败');
+      MessagePlugin.error(resp?.message || '上传失败');
     }
   } catch (e: any) {
-    Message.error(e?.message || '上传失败，请检查技能包格式（需包含 SKILL.md）');
+    MessagePlugin.error(e?.message || '上传失败，请检查技能包格式（需包含 SKILL.md）');
   } finally {
     uploading.value = false;
     input.value = '';
+    // 无论成功失败都刷新列表，避免「操作后列表不变、须刷新页面才知道结果」
+    await loadSkills();
   }
 }
 
@@ -175,7 +176,7 @@ async function handleViewDetail(name: string) {
     const resp = await getSkillDetail(name) as any;
     detail.value = resp?.data ?? resp ?? null;
   } catch (e: any) {
-    Message.error(e?.message || '获取技能详情失败');
+    MessagePlugin.error(e?.message || '获取技能详情失败');
     detail.value = null;
   } finally {
     detailLoading.value = false;
@@ -183,16 +184,20 @@ async function handleViewDetail(name: string) {
 }
 
 async function handleDelete(name: string) {
+  deletingName.value = name;
   try {
-    const resp = await deleteSkill(name) as any;
-    Message.success(`技能「${name}」已删除`);
-    await loadSkills();
+    await deleteSkill(name);
+    MessagePlugin.success(`技能「${name}」已删除`);
     if (detail.value?.name === name) {
       detailVisible.value = false;
       detail.value = null;
     }
   } catch (e: any) {
-    Message.error(e?.message || '删除失败');
+    MessagePlugin.error(e?.message || '删除失败');
+  } finally {
+    deletingName.value = '';
+    // 无论成功失败都刷新列表
+    await loadSkills();
   }
 }
 
