@@ -45,7 +45,10 @@ type wikiPageService struct {
 	chunkRepo       interfaces.ChunkRepository
 	kbService       interfaces.KnowledgeBaseService
 	taskPendingRepo interfaces.TaskPendingOpsRepository
-	redisClient     *redis.Client
+	// knowledgeRepo resolves the display name of a source reference so that
+	// source_refs always store "<knowledge_id>|<file name>".
+	knowledgeRepo interfaces.KnowledgeRepository
+	redisClient   *redis.Client
 }
 
 // NewWikiPageService creates a new wiki page service
@@ -54,6 +57,7 @@ func NewWikiPageService(
 	chunkRepo interfaces.ChunkRepository,
 	kbService interfaces.KnowledgeBaseService,
 	taskPendingRepo interfaces.TaskPendingOpsRepository,
+	knowledgeRepo interfaces.KnowledgeRepository,
 	redisClient *redis.Client,
 ) interfaces.WikiPageService {
 	return &wikiPageService{
@@ -61,8 +65,68 @@ func NewWikiPageService(
 		chunkRepo:       chunkRepo,
 		kbService:       kbService,
 		taskPendingRepo: taskPendingRepo,
+		knowledgeRepo:   knowledgeRepo,
 		redisClient:     redisClient,
 	}
+}
+
+// sourceRefSeparator separates the knowledge id from its display name inside a
+// source reference — "<knowledge_id>|<file name>" as rendered by the wiki page
+// "来源文档" (source documents) list.
+const sourceRefSeparator = "|"
+
+// normalizeSourceRefs guarantees that every source reference carries a readable
+// document name. Callers such as the MCP gateway or the external "文档转 wiki"
+// skills may send a bare knowledge id (the MCP parameter is documented as a list
+// of knowledge ids), which would otherwise be rendered as a raw UUID in the wiki
+// page's "来源文档" field.
+//
+// Refs already shaped as "<id>|<name>" are kept untouched, bare knowledge ids are
+// enriched with the knowledge file name (falling back to its title), and anything
+// that can not be resolved (unknown id, non-UUID ref) is preserved as-is.
+func (s *wikiPageService) normalizeSourceRefs(ctx context.Context, refs types.StringArray) types.StringArray {
+	if len(refs) == 0 || s.knowledgeRepo == nil {
+		return refs
+	}
+	names := make(map[string]string, len(refs))
+	out := make(types.StringArray, 0, len(refs))
+	for _, raw := range refs {
+		ref := strings.TrimSpace(raw)
+		id, name, hasSep := strings.Cut(ref, sourceRefSeparator)
+		id = strings.TrimSpace(id)
+		if hasSep && strings.TrimSpace(name) != "" {
+			out = append(out, ref)
+			continue
+		}
+		if _, err := uuid.Parse(id); err != nil {
+			out = append(out, raw)
+			continue
+		}
+		display, cached := names[id]
+		if !cached {
+			display = s.lookupSourceName(ctx, id)
+			names[id] = display
+		}
+		if display == "" {
+			out = append(out, raw)
+			continue
+		}
+		out = append(out, id+sourceRefSeparator+display)
+	}
+	return out
+}
+
+// lookupSourceName resolves the file name (falling back to the title) of a
+// knowledge document, returning an empty string when it can not be resolved.
+func (s *wikiPageService) lookupSourceName(ctx context.Context, knowledgeID string) string {
+	kn, err := s.knowledgeRepo.GetKnowledgeByIDOnly(ctx, knowledgeID)
+	if err != nil || kn == nil {
+		return ""
+	}
+	if kn.FileName != "" {
+		return kn.FileName
+	}
+	return kn.Title
 }
 
 // CreatePage creates a new wiki page
@@ -83,6 +147,7 @@ func (s *wikiPageService) CreatePage(ctx context.Context, page *types.WikiPage) 
 		page.Version = 1
 	}
 	stripWikiPageInlineChunkCitations(page)
+	page.SourceRefs = s.normalizeSourceRefs(ctx, page.SourceRefs)
 
 	// Normalize the multi-folder membership so the primary FolderID (which
 	// drives the derived path caches) is derived from the request consistently.
@@ -146,7 +211,7 @@ func (s *wikiPageService) UpdatePage(ctx context.Context, page *types.WikiPage) 
 	existing.Content = page.Content
 	existing.Summary = page.Summary
 	existing.PageType = page.PageType
-	existing.SourceRefs = page.SourceRefs
+	existing.SourceRefs = s.normalizeSourceRefs(ctx, page.SourceRefs)
 	existing.ChunkRefs = page.ChunkRefs
 	existing.PageMetadata = page.PageMetadata
 	existing.ParentSlug = page.ParentSlug
