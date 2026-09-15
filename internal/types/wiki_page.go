@@ -764,6 +764,35 @@ type WikiPageFeedbackListResult struct {
 	Size  int                 `json:"page_size"`
 }
 
+// WikiKeywordRow is a raw lightweight projection of a frequent_keyword page
+// (slug, title, and the head of the content text) used to aggregate the
+// KB-wide keyword overview without loading full page content.
+type WikiKeywordRow struct {
+	Slug        string `json:"slug"`
+	Title       string `json:"title"`
+	ContentHead string `gorm:"column:content_head" json:"content_head"`
+}
+
+// WikiKeywordStat is one row of the KB-wide high-frequency keyword overview: a
+// keyword with its aggregated frequency and the number of documents it appears
+// in. Frequencies originate from the wiki ingest pipeline's statistical term
+// discovery (per-document N-gram counting with PMI/entropy filtering),
+// aggregated into the page's opening line "本关键词在 N 篇文档中高频出现（总频次：M）".
+type WikiKeywordStat struct {
+	Slug      string `json:"slug"`
+	Keyword   string `json:"keyword"`
+	TotalFreq int    `json:"total_freq"`
+	DocCount  int    `json:"doc_count"`
+}
+
+// WikiKeywordOverviewResponse is a page of the ranked keyword overview.
+type WikiKeywordOverviewResponse struct {
+	Items    []*WikiKeywordStat `json:"items"`
+	Total    int64              `json:"total"`
+	Page     int                `json:"page"`
+	PageSize int                `json:"page_size"`
+}
+
 // WikiIndexEntry is a single row in the structured wiki index response.
 // Only the columns needed to render a clickable directory entry are
 // carried — the backend projects SELECT slug, title, summary so a 40k-

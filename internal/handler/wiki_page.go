@@ -1043,6 +1043,50 @@ func (h *WikiPageHandler) ListFeedback(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// ListKeywordOverview godoc
+// @Summary      List high-frequency keywords ranked by frequency
+// @Description  Aggregates every frequent_keyword page in the knowledge base
+// @Description  into a frequency-descending overview (total frequency, then
+// @Description  document count), with optional keyword search, explicit
+// @Description  sort/order and offset pagination.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id     path  string  true  "Knowledge base ID"
+// @Param        search    query  string false "Filter keywords by substring"
+// @Param        sort      query  string false "Sort field: freq (default) | keyword"
+// @Param        order     query  string false "Sort order: desc (default) | asc"
+// @Param        page      query  int    false "Page number (default 1)"
+// @Param        page_size query  int    false "Page size (default 50, max 200)"
+// @Success      200  {object}  types.WikiKeywordOverviewResponse
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/keywords/overview [get]
+func (h *WikiPageHandler) ListKeywordOverview(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	search := strings.TrimSpace(c.Query("search"))
+	sortBy := c.DefaultQuery("sort", "freq")
+	if sortBy != "keyword" {
+		sortBy = "freq"
+	}
+	order := c.DefaultQuery("order", "desc")
+	if order != "asc" {
+		order = "desc"
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "50"))
+
+	result, err := h.wikiService.ListKeywordOverview(c.Request.Context(), kbID, search, sortBy, order, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 // UpdateFeedbackStatus godoc
 // @Summary      Update wiki page feedback status
 // @Description  Transitions a feedback item's status (pending|resolved|ignored).

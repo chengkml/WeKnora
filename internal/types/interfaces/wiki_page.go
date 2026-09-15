@@ -233,6 +233,11 @@ type WikiPageService interface {
 
 	// DeleteFeedback soft-deletes a feedback item.
 	DeleteFeedback(ctx context.Context, feedbackID string) error
+
+	// ListKeywordOverview aggregates the KB's frequent_keyword pages into a
+	// ranked overview (frequency descending by default), with keyword search,
+	// explicit sort/order and offset pagination.
+	ListKeywordOverview(ctx context.Context, kbID string, search string, sortBy string, order string, page int, pageSize int) (*types.WikiKeywordOverviewResponse, error)
 }
 
 // WikiPageRepository defines the wiki page data persistence interface.
@@ -276,6 +281,11 @@ type WikiPageRepository interface {
 	// non-archived count. Used by the structured index API so reads do not
 	// have to materialize TEXT content for every wiki_pages row.
 	ListByTypeLight(ctx context.Context, kbID string, pageType string, limit int, offset int) ([]types.WikiIndexEntry, int64, error)
+
+	// ListFrequentKeywordRows loads the lightweight rows (slug, title, content
+	// head) of every non-archived frequent_keyword page in a knowledge base,
+	// used to aggregate the KB-wide keyword frequency overview.
+	ListFrequentKeywordRows(ctx context.Context, kbID string) ([]types.WikiKeywordRow, error)
 
 	// ListBySourceRef retrieves all wiki pages that reference a given source knowledge ID.
 	ListBySourceRef(ctx context.Context, kbID string, sourceKnowledgeID string) ([]*types.WikiPage, error)

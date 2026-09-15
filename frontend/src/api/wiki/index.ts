@@ -390,6 +390,40 @@ export function deleteWikiFeedback(kbId: string, feedbackId: string) {
   return del(`/api/v1/knowledgebase/${kbId}/wiki/feedback/${feedbackId}`);
 }
 
+// ---- High-frequency keyword overview (aggregated, ranked by total frequency) ----
+
+export interface WikiKeywordStat {
+  slug: string;
+  keyword: string;
+  total_freq: number;
+  doc_count: number;
+}
+
+export interface WikiKeywordOverviewResponse {
+  items: WikiKeywordStat[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// listWikiKeywords lists the KB's high-frequency keywords, by default ranked
+// by total frequency descending.
+export function listWikiKeywords(
+  kbId: string,
+  params?: { search?: string; sort?: 'freq' | 'keyword'; order?: 'desc' | 'asc'; page?: number; page_size?: number },
+) {
+  const query = new URLSearchParams();
+  if (params) {
+    if (params.search) query.set('search', params.search);
+    if (params.sort) query.set('sort', params.sort);
+    if (params.order) query.set('order', params.order);
+    if (params.page !== undefined) query.set('page', String(params.page));
+    if (params.page_size !== undefined) query.set('page_size', String(params.page_size));
+  }
+  const qs = query.toString();
+  return get(`/api/v1/knowledgebase/${kbId}/wiki/keywords/overview${qs ? '?' + qs : ''}`);
+}
+
 export function rebuildWikiLinks(kbId: string) {
   return post(`/api/v1/knowledgebase/${kbId}/wiki/rebuild-links`, {});
 }

@@ -1313,6 +1313,121 @@ func (s *wikiPageService) DeleteFeedback(ctx context.Context, feedbackID string)
 	return s.repo.DeleteFeedback(ctx, feedbackID)
 }
 
+// --- High-frequency keyword overview ---
+
+// wikiKeywordHeadRE matches the canonical opening line written by the wiki
+// ingest pipeline: "本关键词在 5 篇文档中高频出现（总频次：73）。"
+var wikiKeywordHeadRE = regexp.MustCompile(`在\s*(\d+)\s*篇文档中高频出现（总频次：\s*(\d+)\s*）`)
+
+// wikiKeywordFreqRE matches a per-document group frequency "（频次：21）",
+// used as a fallback when the opening line lacks the aggregated totals
+// (older single-table format).
+var wikiKeywordFreqRE = regexp.MustCompile(`（频次：(\d+)）`)
+
+// parseWikiKeywordHead extracts (docCount, totalFreq) from a frequent_keyword
+// page's opening text. The canonical line carries both numbers; older pages
+// fall back to summing per-document frequencies with a document count of 1.
+// Unparseable pages yield (1, 0) so they sort last in the overview.
+func parseWikiKeywordHead(head string) (docs, freq int) {
+	if m := wikiKeywordHeadRE.FindStringSubmatch(head); m != nil {
+		docs, _ = strconv.Atoi(m[1])
+		freq, _ = strconv.Atoi(m[2])
+	} else {
+		docs = 1
+		for _, m := range wikiKeywordFreqRE.FindAllStringSubmatch(head, -1) {
+			n, _ := strconv.Atoi(m[1])
+			freq += n
+		}
+	}
+	if docs < 1 {
+		docs = 1
+	}
+	return docs, freq
+}
+
+// ListKeywordOverview aggregates every frequent_keyword page in the KB into a
+// frequency-ranked list. Default sort is total frequency descending, then
+// document count descending, then keyword ascending (stable tie-break);
+// `sortBy` may be "keyword" and `order` may be "asc". `search` filters the
+// keyword by substring before sorting. Offset pagination is applied last.
+func (s *wikiPageService) ListKeywordOverview(ctx context.Context, kbID, search, sortBy, order string, page, pageSize int) (*types.WikiKeywordOverviewResponse, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 50
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	rows, err := s.repo.ListFrequentKeywordRows(ctx, kbID)
+	if err != nil {
+		return nil, fmt.Errorf("list frequent keyword rows: %w", err)
+	}
+
+	stats := make([]*types.WikiKeywordStat, 0, len(rows))
+	for _, row := range rows {
+		keyword := strings.TrimSpace(row.Title)
+		if keyword == "" {
+			keyword = strings.TrimSpace(row.Slug)
+		}
+		if search != "" && !strings.Contains(keyword, search) {
+			continue
+		}
+		docs, freq := parseWikiKeywordHead(row.ContentHead)
+		stats = append(stats, &types.WikiKeywordStat{
+			Slug:      row.Slug,
+			Keyword:   keyword,
+			TotalFreq: freq,
+			DocCount:  docs,
+		})
+	}
+
+	asc := order == "asc"
+	switch sortBy {
+	case "keyword":
+		sort.SliceStable(stats, func(i, j int) bool {
+			if asc {
+				return stats[i].Keyword < stats[j].Keyword
+			}
+			return stats[i].Keyword > stats[j].Keyword
+		})
+	default: // freq
+		sort.SliceStable(stats, func(i, j int) bool {
+			a, b := stats[i], stats[j]
+			if a.TotalFreq != b.TotalFreq {
+				if asc {
+					return a.TotalFreq < b.TotalFreq
+				}
+				return a.TotalFreq > b.TotalFreq
+			}
+			if a.DocCount != b.DocCount {
+				if asc {
+					return a.DocCount < b.DocCount
+				}
+				return a.DocCount > b.DocCount
+			}
+			return a.Keyword < b.Keyword // stable tie-break both directions
+		})
+	}
+
+	total := int64(len(stats))
+	start := (page - 1) * pageSize
+	if start > len(stats) {
+		start = len(stats)
+	}
+	end := start + pageSize
+	if end > len(stats) {
+		end = len(stats)
+	}
+	return &types.WikiKeywordOverviewResponse{
+		Items:    stats[start:end],
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
 // --- Folder tree (wiki_folders) ---
 
 // wikiFolderSegments splits a materialized folder path ("AI/RAG") into cleaned

@@ -1252,6 +1252,23 @@ func (r *wikiPageRepository) CreateFeedback(ctx context.Context, feedback *types
 	return r.db.WithContext(ctx).Create(feedback).Error
 }
 
+// ListFrequentKeywordRows loads slug/title/content-head for every non-archived
+// frequent_keyword page in the KB. The head of the content (300 chars) is
+// enough to parse the aggregated frequency line, so the overview never loads
+// full TEXT content. `substring()` is PostgreSQL/SQLite portable.
+func (r *wikiPageRepository) ListFrequentKeywordRows(ctx context.Context, kbID string) ([]types.WikiKeywordRow, error) {
+	var rows []types.WikiKeywordRow
+	err := r.db.WithContext(ctx).
+		Model(&types.WikiPage{}).
+		Where("knowledge_base_id = ? AND page_type = ?", kbID, types.WikiPageTypeFrequentKeyword).
+		Select("slug, title, substring(content from 1 for 300) AS content_head").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (r *wikiPageRepository) ListFeedback(ctx context.Context, req *types.WikiPageFeedbackListRequest) (*types.WikiPageFeedbackListResult, error) {
 	if req == nil {
 		req = &types.WikiPageFeedbackListRequest{}

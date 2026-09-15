@@ -48,6 +48,7 @@ import type { KnowledgeProcessOverrides } from '@/types/knowledgeProcess';
 import { useUploadConfirmStore, type UploadConfirmResult } from '@/stores/uploadConfirm';
 import WikiBrowser from './wiki/WikiBrowser.vue';
 import WikiMaintenance from './wiki/WikiMaintenance.vue';
+import WikiKeywords from './wiki/WikiKeywords.vue';
 import { getWikiStats } from '@/api/wiki';
 import {
   isKnowledgeParseInFlight,
@@ -68,7 +69,7 @@ const kbLoading = ref(false);
 const docListLoading = ref(true);
 const isFAQ = computed(() => (kbInfo.value?.type || '') === 'faq');
 const isWiki = computed(() => !!kbInfo.value?.indexing_strategy?.wiki_enabled);
-const validTabs = ['documents', 'wiki', 'graph', 'maintenance'] as const
+const validTabs = ['documents', 'wiki', 'graph', 'keywords', 'maintenance'] as const
 type KbTab = typeof validTabs[number]
 const initTab = validTabs.includes(route.query.tab as any) ? (route.query.tab as KbTab) : 'documents'
 const activeKbTab = ref<KbTab>(initTab);
@@ -2051,6 +2052,13 @@ async function createNewSession(value: string): Promise<void> {
                   </span>
                 </t-tooltip>
                 <span class="breadcrumb-tab-sep">/</span>
+                <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.tabKeywordsTip')" placement="bottom">
+                  <span :class="['breadcrumb-tab', { active: activeKbTab === 'keywords' }]"
+                    @click="activeKbTab = 'keywords'">
+                    {{ $t('knowledgeEditor.wikiBrowser.tabKeywords') }}
+                  </span>
+                </t-tooltip>
+                <span class="breadcrumb-tab-sep">/</span>
                 <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.tabMaintenanceTip')" placement="bottom">
                   <span :class="['breadcrumb-tab', { active: activeKbTab === 'maintenance' }]"
                     @click="activeKbTab = 'maintenance'">
@@ -2093,6 +2101,12 @@ async function createNewSession(value: string): Promise<void> {
         <WikiBrowser v-if="kbId" :knowledge-base-id="kbId" :view="activeKbTab === 'graph' ? 'graph' : 'browser'"
           :can-edit="canEdit" @open-source-doc="openSourceDoc" @status-change="onWikiStatusChange"
           @view-graph="onViewWikiInGraph" />
+      </div>
+
+      <!-- Wiki high-frequency keywords (aggregated, ranked by frequency) -->
+      <div v-if="isWiki && activeKbTab === 'keywords'" class="wiki-main-area">
+        <WikiKeywords v-if="kbId" :knowledge-base-id="kbId"
+          @open-page="onOpenWikiPageFromMaintenance" />
       </div>
 
       <!-- Wiki Maintenance (feedback / comments / questions across the whole KB) -->
