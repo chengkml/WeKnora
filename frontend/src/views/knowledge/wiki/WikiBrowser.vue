@@ -519,15 +519,13 @@
                     </template>
                   </t-popup>
 
-                  <t-dropdown :options="feedbackQuickOptions" trigger="click" placement="bottom-right"
-                    :disabled="quickFeedbackSubmitting" @click="handleQuickFeedback">
-                    <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.feedbackQuickTitle')" placement="bottom">
-                      <button type="button" class="wiki-feedback-trigger"
-                        :aria-label="$t('knowledgeEditor.wikiBrowser.feedbackQuickTitle')">
-                        <t-icon name="chat-bubble-add" size="16px" />
-                      </button>
-                    </t-tooltip>
-                  </t-dropdown>
+                  <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.feedbackQuickTitle')" placement="bottom">
+                    <button type="button" class="wiki-feedback-trigger"
+                      :aria-label="$t('knowledgeEditor.wikiBrowser.feedbackQuickTitle')"
+                      @click="openFeedbackDialog">
+                      <t-icon name="chat-bubble-add" size="16px" />
+                    </button>
+                  </t-tooltip>
                 </h2>
                 <div v-if="selectedPage.aliases && selectedPage.aliases.length" class="wiki-reader-aliases">
                   <span class="wiki-alias-label">{{ $t('knowledgeEditor.wikiBrowser.aliases') }}:</span>
@@ -747,18 +745,28 @@
           <span class="wff-label">{{ $t('knowledgeEditor.wikiBrowser.feedbackPageLabel') }}</span>
           <span class="wff-page" :title="selectedPage?.slug">{{ selectedPage?.title }}</span>
         </div>
-        <div class="wiki-feedback-form-type">
-          <span class="wff-label">{{ $t('knowledgeEditor.wikiBrowser.feedbackTypeLabel') }}</span>
-          <t-radio-group v-model="feedbackType">
-            <t-radio-button value="comment">{{ $t('knowledgeEditor.wikiMaintenance.typeComment') }}</t-radio-button>
-            <t-radio-button value="question">{{ $t('knowledgeEditor.wikiMaintenance.typeQuestion') }}</t-radio-button>
-          </t-radio-group>
+        <div class="wiki-feedback-form-preset">
+          <span class="wff-label">{{ $t('knowledgeEditor.wikiBrowser.feedbackPresetLabel') }}</span>
+          <t-select v-model="feedbackPreset" :options="feedbackPresetSelectOptions" clearable
+            :placeholder="$t('knowledgeEditor.wikiBrowser.feedbackPresetPlaceholder')" />
         </div>
-        <div class="wiki-feedback-form-content">
-          <span class="wff-label">{{ $t('knowledgeEditor.wikiBrowser.feedbackContentLabel') }}</span>
-          <t-textarea v-model="feedbackContent" :placeholder="$t('knowledgeEditor.wikiBrowser.feedbackContentPlaceholder')"
-            :maxlength="1000" :autosize="{ minRows: 4, maxRows: 8 }" />
+        <div v-if="feedbackPreset && feedbackPreset !== FEEDBACK_PRESET_CUSTOM" class="wiki-feedback-preset-preview">
+          {{ $t('knowledgeEditor.wikiBrowser.feedbackPresetPreview', { label: feedbackPresetLabel }) }}
         </div>
+        <template v-else>
+          <div class="wiki-feedback-form-type">
+            <span class="wff-label">{{ $t('knowledgeEditor.wikiBrowser.feedbackTypeLabel') }}</span>
+            <t-radio-group v-model="feedbackType">
+              <t-radio-button value="comment">{{ $t('knowledgeEditor.wikiMaintenance.typeComment') }}</t-radio-button>
+              <t-radio-button value="question">{{ $t('knowledgeEditor.wikiMaintenance.typeQuestion') }}</t-radio-button>
+            </t-radio-group>
+          </div>
+          <div class="wiki-feedback-form-content">
+            <span class="wff-label">{{ $t('knowledgeEditor.wikiBrowser.feedbackContentLabel') }}</span>
+            <t-textarea v-model="feedbackContent" :placeholder="$t('knowledgeEditor.wikiBrowser.feedbackContentPlaceholder')"
+              :maxlength="1000" :autosize="{ minRows: 4, maxRows: 8 }" />
+          </div>
+        </template>
         <div class="wiki-feedback-hint">{{ $t('knowledgeEditor.wikiBrowser.feedbackHint') }}</div>
       </div>
     </t-dialog>
@@ -1039,24 +1047,28 @@ const stats = ref<WikiStats | null>(null)
 // Manual feedback (comment / question) dialog state
 const showFeedbackDialog = ref(false)
 const feedbackSubmitting = ref(false)
-const quickFeedbackSubmitting = ref(false)
 const feedbackType = ref<'comment' | 'question'>('comment')
 const feedbackContent = ref('')
+const feedbackPreset = ref('')
 const feedbackDialogTitle = computed(() => t('knowledgeEditor.wikiBrowser.feedbackDialogTitle'))
 
-// One-click quick feedback options. Keys must match the server-side whitelist
-// (types.WikiFeedbackPresetKeys); labels come from i18n. The trailing
-// "__custom__" entry (visually separated via .wiki-feedback-custom-item) opens
-// the manual comment/question dialog instead of submitting immediately.
+// Quick-mark options shown as a dropdown INSIDE the feedback dialog. Keys must
+// match the server-side whitelist (types.WikiFeedbackPresetKeys); labels come
+// from i18n. The trailing "__custom__" entry reveals the manual
+// comment/question form instead of submitting a preset.
 const FEEDBACK_PRESET_CUSTOM = '__custom__'
-const feedbackQuickOptions = computed(() => [
-  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetContentError'), value: 'content_error' },
-  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetOutdated'), value: 'outdated' },
-  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetBrokenLink'), value: 'broken_link' },
-  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetFormatIssue'), value: 'format_issue' },
-  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetIncomplete'), value: 'incomplete' },
-  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetCustom'), value: FEEDBACK_PRESET_CUSTOM, class: 'wiki-feedback-custom-item' },
+const feedbackPresetSelectOptions = computed(() => [
+  { label: t('knowledgeEditor.wikiBrowser.feedbackPresetContentError'), value: 'content_error' },
+  { label: t('knowledgeEditor.wikiBrowser.feedbackPresetOutdated'), value: 'outdated' },
+  { label: t('knowledgeEditor.wikiBrowser.feedbackPresetBrokenLink'), value: 'broken_link' },
+  { label: t('knowledgeEditor.wikiBrowser.feedbackPresetFormatIssue'), value: 'format_issue' },
+  { label: t('knowledgeEditor.wikiBrowser.feedbackPresetIncomplete'), value: 'incomplete' },
+  { label: t('knowledgeEditor.wikiBrowser.feedbackPresetCustom'), value: FEEDBACK_PRESET_CUSTOM },
 ])
+const feedbackPresetLabel = computed(() => {
+  const opt = feedbackPresetSelectOptions.value.find(o => o.value === feedbackPreset.value)
+  return opt ? opt.label : ''
+})
 const graphData = ref<WikiGraphData | null>(null)
 const searchQuery = ref('')
 const graphSearchValue = ref('')
@@ -1122,17 +1134,44 @@ function openFeedbackDialog() {
   if (!selectedPage.value) return
   feedbackType.value = 'comment'
   feedbackContent.value = ''
+  feedbackPreset.value = ''
   showFeedbackDialog.value = true
 }
 
 function resetFeedbackDialog() {
   feedbackContent.value = ''
+  feedbackPreset.value = ''
   feedbackSubmitting.value = false
 }
 
 async function submitFeedback() {
   const page = selectedPage.value
   if (!page) return
+  const preset = feedbackPreset.value
+
+  // One-click quick mark: a preset key is enough — the server auto-fills the
+  // canonical label and records it as a `question`-type item.
+  if (preset && preset !== FEEDBACK_PRESET_CUSTOM) {
+    feedbackSubmitting.value = true
+    try {
+      await createWikiFeedback(props.knowledgeBaseId, {
+        slug: page.slug,
+        feedback_type: 'question',
+        preset,
+      })
+      MessagePlugin.success(t('knowledgeEditor.wikiBrowser.feedbackSubmitted'))
+      showFeedbackDialog.value = false
+      resetFeedbackDialog()
+    } catch (e) {
+      console.error('Failed to submit quick wiki feedback:', e)
+      MessagePlugin.error(t('knowledgeEditor.wikiBrowser.feedbackSubmitFailed'))
+    } finally {
+      feedbackSubmitting.value = false
+    }
+    return
+  }
+
+  // Custom comment / question requires typed content.
   const content = feedbackContent.value.trim()
   if (!content) {
     MessagePlugin.warning(t('knowledgeEditor.wikiBrowser.feedbackContentRequired'))
@@ -1153,37 +1192,6 @@ async function submitFeedback() {
     MessagePlugin.error(t('knowledgeEditor.wikiBrowser.feedbackSubmitFailed'))
   } finally {
     feedbackSubmitting.value = false
-  }
-}
-
-// handleQuickFeedback submits a one-click preset (or opens the custom dialog
-// for the "__custom__" entry). Presets are recorded as `question` type with
-// the preset key so the maintenance view can tell quick marks from typed text.
-// The dropdown's onClick hands over the whole DropdownOption; only `value`
-// (the preset key) is meaningful here.
-async function handleQuickFeedback(item: any) {
-  const page = selectedPage.value
-  if (!page || quickFeedbackSubmitting.value) return
-  const value = item?.value
-  if (value === FEEDBACK_PRESET_CUSTOM) {
-    openFeedbackDialog()
-    return
-  }
-  const preset = String(value ?? '')
-  if (!preset) return
-  quickFeedbackSubmitting.value = true
-  try {
-    await createWikiFeedback(props.knowledgeBaseId, {
-      slug: page.slug,
-      feedback_type: 'question',
-      preset,
-    })
-    MessagePlugin.success(t('knowledgeEditor.wikiBrowser.feedbackSubmitted'))
-  } catch (e) {
-    console.error('Failed to submit quick wiki feedback:', e)
-    MessagePlugin.error(t('knowledgeEditor.wikiBrowser.feedbackSubmitFailed'))
-  } finally {
-    quickFeedbackSubmitting.value = false
   }
 }
 
@@ -6301,6 +6309,15 @@ onUnmounted(() => {
   color: var(--td-text-color-placeholder);
 }
 
+.wiki-feedback-preset-preview {
+  font-size: 13px;
+  color: var(--td-brand-color);
+  background: var(--td-brand-color-light);
+  border: 1px solid var(--td-brand-color-light-2);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
 .wiki-issue-popup-content {
   display: flex;
   flex-direction: column;
@@ -6463,13 +6480,5 @@ onUnmounted(() => {
     padding-bottom: 0 !important;
     margin: 0 !important;
   }
-}
-
-/* Quick-feedback dropdown: visual separator above the "custom comment/question"
-   entry. Unscoped because the dropdown popup teleports to body. */
-.t-dropdown__item.wiki-feedback-custom-item {
-  margin-top: 4px;
-  border-top: 1px solid var(--td-border-level-1-color);
-  border-radius: 0;
 }
 </style>
