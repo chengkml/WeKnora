@@ -20,6 +20,42 @@ func (f *fakeKeywordRowsRepo) ListFrequentKeywordRows(_ context.Context, _ strin
 	return f.rows, nil
 }
 
+func TestParseWikiKeywordMeaning(t *testing.T) {
+	cases := []struct {
+		name string
+		head string
+		want string
+	}{
+		{
+			name: "full-width colon meaning present",
+			head: "# 违规干预采购\n\n**释义**：违反规定介入或影响采购活动的行为\n\n本关键词在 1 篇文档中高频出现（总频次：2）。",
+			want: "违反规定介入或影响采购活动的行为",
+		},
+		{
+			name: "half-width colon",
+			head: "**释义**: just a definition",
+			want: "just a definition",
+		},
+		{
+			name: "no meaning section",
+			head: "# 记录\n\n本关键词在 5 篇文档中高频出现（总频次：73）。",
+			want: "",
+		},
+		{
+			name: "empty head",
+			head: "",
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseWikiKeywordMeaning(tc.head); got != tc.want {
+				t.Errorf("parseWikiKeywordMeaning() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseWikiKeywordHead(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -77,6 +113,7 @@ func keywordTestRows() []types.WikiKeywordRow {
 		{"kw/c", "医疗器械经营", "本关键词在 3 篇文档中高频出现（总频次：45）。"},
 		{"kw/d", "行政", "本关键词在 1 篇文档中高频出现（总频次：12）。"},
 		{"kw/e", "未解析词", "# 未解析词\n\n没有数字。"},
+		{"kw/f", "违规干预采购", "# 违规干预采购\n\n**释义**：违反规定介入或影响采购活动的行为\n\n本关键词在 1 篇文档中高频出现（总频次：2）。"},
 	}
 	out := make([]types.WikiKeywordRow, 0, len(rows))
 	for _, r := range rows {
@@ -91,18 +128,20 @@ func TestListKeywordOverviewDefaultDesc(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListKeywordOverview() error: %v", err)
 	}
-	if res.Total != 5 {
-		t.Fatalf("Total = %d, want 5", res.Total)
+	if res.Total != 6 {
+		t.Fatalf("Total = %d, want 6", res.Total)
 	}
 	want := []struct {
-		kw   string
-		freq int
+		kw      string
+		freq    int
+		meaning string
 	}{
-		{"优先审评审批", 120},
-		{"记录", 73},
-		{"医疗器械经营", 45},
-		{"行政", 12},
-		{"未解析词", 0},
+		{"优先审评审批", 120, ""},
+		{"记录", 73, ""},
+		{"医疗器械经营", 45, ""},
+		{"行政", 12, ""},
+		{"违规干预采购", 2, "违反规定介入或影响采购活动的行为"},
+		{"未解析词", 0, ""},
 	}
 	if len(res.Items) != len(want) {
 		t.Fatalf("len(Items) = %d, want %d", len(res.Items), len(want))
@@ -111,6 +150,9 @@ func TestListKeywordOverviewDefaultDesc(t *testing.T) {
 		it := res.Items[i]
 		if it.Keyword != w.kw || it.TotalFreq != w.freq {
 			t.Errorf("Items[%d] = %s@%d, want %s@%d", i, it.Keyword, it.TotalFreq, w.kw, w.freq)
+		}
+		if it.Meaning != w.meaning {
+			t.Errorf("Items[%d] meaning = %q, want %q", i, it.Meaning, w.meaning)
 		}
 	}
 }
@@ -132,8 +174,8 @@ func TestListKeywordOverviewSearchAndPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pagination error: %v", err)
 	}
-	if res.Total != 5 || len(res.Items) != 2 || res.Items[0].Keyword != "医疗器械经营" {
-		t.Errorf("page2: total %d len %d first %s; want 5/2/医疗器械经营", res.Total, len(res.Items), res.Items[0].Keyword)
+	if res.Total != 6 || len(res.Items) != 2 || res.Items[0].Keyword != "医疗器械经营" {
+		t.Errorf("page2: total %d len %d first %s; want 6/2/医疗器械经营", res.Total, len(res.Items), res.Items[0].Keyword)
 	}
 
 	// out-of-range page returns empty items but the true total
@@ -141,8 +183,8 @@ func TestListKeywordOverviewSearchAndPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("out-of-range error: %v", err)
 	}
-	if res.Total != 5 || len(res.Items) != 0 {
-		t.Errorf("page99: total %d len %d; want 5/0", res.Total, len(res.Items))
+	if res.Total != 6 || len(res.Items) != 0 {
+		t.Errorf("page99: total %d len %d; want 6/0", res.Total, len(res.Items))
 	}
 }
 
@@ -167,7 +209,7 @@ func TestListKeywordOverviewSortVariants(t *testing.T) {
 	}
 	// Chinese ordering in Go's byte-wise comparison is not meaningful, but the
 	// sort must be deterministic and cover all rows
-	if len(res.Items) != 5 {
-		t.Errorf("keyword sort len = %d, want 5", len(res.Items))
+	if len(res.Items) != 6 {
+		t.Errorf("keyword sort len = %d, want 6", len(res.Items))
 	}
 }

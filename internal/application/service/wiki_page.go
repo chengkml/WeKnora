@@ -1324,6 +1324,20 @@ var wikiKeywordHeadRE = regexp.MustCompile(`在\s*(\d+)\s*篇文档中高频出�
 // (older single-table format).
 var wikiKeywordFreqRE = regexp.MustCompile(`（频次：(\d+)）`)
 
+// wikiKeywordMeaningRE matches the optional 释义 section that some keyword
+// pages carry right after the title: "**释义**：违反规定介入或影响采购活动的行为".
+// The meaning is captured up to the end of the line.
+var wikiKeywordMeaningRE = regexp.MustCompile(`\*\*释义\*\*[：:]\s*([^\n]+)`)
+
+// parseWikiKeywordMeaning extracts the keyword's 释义 (meaning) line from the
+// page content head, or "" when the page has no such section.
+func parseWikiKeywordMeaning(head string) string {
+	if m := wikiKeywordMeaningRE.FindStringSubmatch(head); m != nil {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
+}
+
 // parseWikiKeywordHead extracts (docCount, totalFreq) from a frequent_keyword
 // page's opening text. The canonical line carries both numbers; older pages
 // fall back to summing per-document frequencies with a document count of 1.
@@ -1378,6 +1392,7 @@ func (s *wikiPageService) ListKeywordOverview(ctx context.Context, kbID, search,
 		stats = append(stats, &types.WikiKeywordStat{
 			Slug:      row.Slug,
 			Keyword:   keyword,
+			Meaning:   parseWikiKeywordMeaning(row.ContentHead),
 			TotalFreq: freq,
 			DocCount:  docs,
 		})

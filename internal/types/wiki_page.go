@@ -774,13 +774,15 @@ type WikiKeywordRow struct {
 }
 
 // WikiKeywordStat is one row of the KB-wide high-frequency keyword overview: a
-// keyword with its aggregated frequency and the number of documents it appears
-// in. Frequencies originate from the wiki ingest pipeline's statistical term
-// discovery (per-document N-gram counting with PMI/entropy filtering),
-// aggregated into the page's opening line "本关键词在 N 篇文档中高频出现（总频次：M）".
+// keyword with its aggregated frequency, the number of documents it appears
+// in, and its meaning (释义) when the keyword page carries one. Frequencies
+// originate from the wiki ingest pipeline's statistical term discovery
+// (per-document N-gram counting with PMI/entropy filtering), aggregated into
+// the page's opening line "本关键词在 N 篇文档中高频出现（总频次：M）".
 type WikiKeywordStat struct {
 	Slug      string `json:"slug"`
 	Keyword   string `json:"keyword"`
+	Meaning   string `json:"meaning"`
 	TotalFreq int    `json:"total_freq"`
 	DocCount  int    `json:"doc_count"`
 }

@@ -395,6 +395,7 @@ export function deleteWikiFeedback(kbId: string, feedbackId: string) {
 export interface WikiKeywordStat {
   slug: string;
   keyword: string;
+  meaning: string;
   total_freq: number;
   doc_count: number;
 }
