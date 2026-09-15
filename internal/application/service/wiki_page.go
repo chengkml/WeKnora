@@ -1198,6 +1198,17 @@ func (s *wikiPageService) UpdateIssueStatus(ctx context.Context, issueID string,
 
 // --- Feedback (manual comments / questions) ---
 
+// feedbackPresetKeysList returns the sorted, comma-joined preset keys for
+// error messages (deterministic ordering for tests).
+func feedbackPresetKeysList() string {
+	keys := make([]string, 0, len(types.WikiFeedbackPresetKeys))
+	for k := range types.WikiFeedbackPresetKeys {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ", ")
+}
+
 // CreateFeedback validates and persists a manually-added feedback item,
 // generating a UUID when missing and denormalizing the target page's title
 // so the maintenance view never has to join wiki_pages to render the list.
@@ -1211,7 +1222,20 @@ func (s *wikiPageService) CreateFeedback(ctx context.Context, feedback *types.Wi
 	if strings.TrimSpace(feedback.Slug) == "" {
 		return nil, errors.New("wiki page slug is required")
 	}
-	if strings.TrimSpace(feedback.Content) == "" {
+	// One-click quick feedback (preset key) is valid without typed content:
+	// the canonical label is auto-filled so the maintenance view stays readable.
+	if feedback.Preset != "" {
+		label, ok := types.WikiFeedbackPresetKeys[feedback.Preset]
+		if !ok {
+			return nil, fmt.Errorf("invalid preset: %q (allowed: %s)", feedback.Preset, feedbackPresetKeysList())
+		}
+		if strings.TrimSpace(feedback.Content) == "" {
+			feedback.Content = label
+		}
+		if feedback.FeedbackType == "" {
+			feedback.FeedbackType = string(types.WikiFeedbackQuestion)
+		}
+	} else if strings.TrimSpace(feedback.Content) == "" {
 		return nil, errors.New("feedback content is required")
 	}
 	if feedback.FeedbackType == "" {

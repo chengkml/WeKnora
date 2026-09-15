@@ -519,12 +519,15 @@
                     </template>
                   </t-popup>
 
-                  <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.feedbackAddTitle')" placement="bottom">
-                    <button type="button" class="wiki-feedback-trigger" :aria-label="$t('knowledgeEditor.wikiBrowser.feedbackAddTitle')"
-                      @click="openFeedbackDialog">
-                      <t-icon name="chat-bubble-add" size="16px" />
-                    </button>
-                  </t-tooltip>
+                  <t-dropdown :options="feedbackQuickOptions" trigger="click" placement="bottom-right"
+                    :disabled="quickFeedbackSubmitting" @click="handleQuickFeedback">
+                    <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.feedbackQuickTitle')" placement="bottom">
+                      <button type="button" class="wiki-feedback-trigger"
+                        :aria-label="$t('knowledgeEditor.wikiBrowser.feedbackQuickTitle')">
+                        <t-icon name="chat-bubble-add" size="16px" />
+                      </button>
+                    </t-tooltip>
+                  </t-dropdown>
                 </h2>
                 <div v-if="selectedPage.aliases && selectedPage.aliases.length" class="wiki-reader-aliases">
                   <span class="wiki-alias-label">{{ $t('knowledgeEditor.wikiBrowser.aliases') }}:</span>
@@ -1036,9 +1039,24 @@ const stats = ref<WikiStats | null>(null)
 // Manual feedback (comment / question) dialog state
 const showFeedbackDialog = ref(false)
 const feedbackSubmitting = ref(false)
+const quickFeedbackSubmitting = ref(false)
 const feedbackType = ref<'comment' | 'question'>('comment')
 const feedbackContent = ref('')
 const feedbackDialogTitle = computed(() => t('knowledgeEditor.wikiBrowser.feedbackDialogTitle'))
+
+// One-click quick feedback options. Keys must match the server-side whitelist
+// (types.WikiFeedbackPresetKeys); labels come from i18n. The trailing
+// "__custom__" entry (visually separated via .wiki-feedback-custom-item) opens
+// the manual comment/question dialog instead of submitting immediately.
+const FEEDBACK_PRESET_CUSTOM = '__custom__'
+const feedbackQuickOptions = computed(() => [
+  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetContentError'), value: 'content_error' },
+  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetOutdated'), value: 'outdated' },
+  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetBrokenLink'), value: 'broken_link' },
+  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetFormatIssue'), value: 'format_issue' },
+  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetIncomplete'), value: 'incomplete' },
+  { content: t('knowledgeEditor.wikiBrowser.feedbackPresetCustom'), value: FEEDBACK_PRESET_CUSTOM, class: 'wiki-feedback-custom-item' },
+])
 const graphData = ref<WikiGraphData | null>(null)
 const searchQuery = ref('')
 const graphSearchValue = ref('')
@@ -1135,6 +1153,37 @@ async function submitFeedback() {
     MessagePlugin.error(t('knowledgeEditor.wikiBrowser.feedbackSubmitFailed'))
   } finally {
     feedbackSubmitting.value = false
+  }
+}
+
+// handleQuickFeedback submits a one-click preset (or opens the custom dialog
+// for the "__custom__" entry). Presets are recorded as `question` type with
+// the preset key so the maintenance view can tell quick marks from typed text.
+// The dropdown's onClick hands over the whole DropdownOption; only `value`
+// (the preset key) is meaningful here.
+async function handleQuickFeedback(item: any) {
+  const page = selectedPage.value
+  if (!page || quickFeedbackSubmitting.value) return
+  const value = item?.value
+  if (value === FEEDBACK_PRESET_CUSTOM) {
+    openFeedbackDialog()
+    return
+  }
+  const preset = String(value ?? '')
+  if (!preset) return
+  quickFeedbackSubmitting.value = true
+  try {
+    await createWikiFeedback(props.knowledgeBaseId, {
+      slug: page.slug,
+      feedback_type: 'question',
+      preset,
+    })
+    MessagePlugin.success(t('knowledgeEditor.wikiBrowser.feedbackSubmitted'))
+  } catch (e) {
+    console.error('Failed to submit quick wiki feedback:', e)
+    MessagePlugin.error(t('knowledgeEditor.wikiBrowser.feedbackSubmitFailed'))
+  } finally {
+    quickFeedbackSubmitting.value = false
   }
 }
 
@@ -6414,5 +6463,13 @@ onUnmounted(() => {
     padding-bottom: 0 !important;
     margin: 0 !important;
   }
+}
+
+/* Quick-feedback dropdown: visual separator above the "custom comment/question"
+   entry. Unscoped because the dropdown popup teleports to body. */
+.t-dropdown__item.wiki-feedback-custom-item {
+  margin-top: 4px;
+  border-top: 1px solid var(--td-border-level-1-color);
+  border-radius: 0;
 }
 </style>

@@ -314,12 +314,12 @@ func (WikiFolder) TableName() string {
 // lives here. The join uses a hard primary key — no soft delete — so a page's
 // membership is always replaceable without tombstone collisions.
 type WikiPageFolder struct {
-	PageID           string    `json:"page_id" gorm:"type:varchar(36);primaryKey"`
-	FolderID         string    `json:"folder_id" gorm:"type:varchar(36);primaryKey;index"`
-	KnowledgeBaseID  string    `json:"knowledge_base_id" gorm:"type:varchar(36);index"`
-	TenantID         uint64    `json:"tenant_id" gorm:"index"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	PageID          string    `json:"page_id" gorm:"type:varchar(36);primaryKey"`
+	FolderID        string    `json:"folder_id" gorm:"type:varchar(36);primaryKey;index"`
+	KnowledgeBaseID string    `json:"knowledge_base_id" gorm:"type:varchar(36);index"`
+	TenantID        uint64    `json:"tenant_id" gorm:"index"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // TableName specifies the database table name
@@ -691,7 +691,7 @@ func (WikiPageIssue) TableName() string {
 type WikiPageFeedbackType string
 
 const (
-	WikiFeedbackComment  WikiPageFeedbackType = "comment" // general remark / note
+	WikiFeedbackComment  WikiPageFeedbackType = "comment"  // general remark / note
 	WikiFeedbackQuestion WikiPageFeedbackType = "question" // a question to be answered or used for refinement
 )
 
@@ -704,6 +704,21 @@ const (
 	WikiFeedbackIgnored  WikiPageFeedbackStatus = "ignored"  // intentionally skipped
 )
 
+// WikiFeedbackPresetKeys is the whitelist of one-click quick-feedback options
+// offered on the wiki page detail view (the dropdown next to the custom
+// comment/question dialog). Keys are stored in wiki_page_feedback.preset so the
+// maintenance view can distinguish quick issue marks from typed feedback; values
+// are the canonical Chinese labels auto-filled into content when the client does
+// not send one. Frontend dropdown labels live in the i18n locales and must keep
+// the same keys.
+var WikiFeedbackPresetKeys = map[string]string{
+	"content_error": "内容有误",
+	"outdated":      "信息过时",
+	"broken_link":   "链接失效",
+	"format_issue":  "格式问题",
+	"incomplete":    "信息不完整",
+}
+
 // WikiPageFeedback is a manually-added comment or question on a specific wiki
 // page. It complements WikiPageIssue (agent/linter-generated findings): unlike
 // those, feedback is authored by a human in the KB's "维护" (maintenance)
@@ -715,6 +730,7 @@ type WikiPageFeedback struct {
 	Slug            string         `json:"slug" gorm:"type:varchar(255);index"`
 	PageTitle       string         `json:"page_title" gorm:"type:varchar(255)"` // denormalized at write time for maintenance list display
 	FeedbackType    string         `json:"feedback_type" gorm:"type:varchar(20);index"`
+	Preset          string         `json:"preset" gorm:"type:varchar(50);default:''"` // key of a one-click quick-feedback option, "" = typed feedback
 	Content         string         `json:"content" gorm:"type:text"`
 	Status          string         `json:"status" gorm:"type:varchar(20);default:'pending';index"`
 	ReportedByID    string         `json:"reported_by_id" gorm:"type:varchar(100)"`

@@ -337,6 +337,7 @@ export interface WikiPageFeedback {
   slug: string;
   page_title: string;
   feedback_type: WikiFeedbackType;
+  preset?: string;
   content: string;
   status: WikiFeedbackStatus;
   reported_by_id: string;
@@ -353,9 +354,11 @@ export interface WikiFeedbackListResponse {
 }
 
 // createWikiFeedback adds a manual comment or question against a wiki page.
+// Pass a `preset` key for one-click quick feedback (content may be omitted —
+// the server auto-fills the canonical label).
 export function createWikiFeedback(
   kbId: string,
-  data: { slug: string; feedback_type: WikiFeedbackType; content: string; status?: WikiFeedbackStatus },
+  data: { slug: string; feedback_type: WikiFeedbackType; preset?: string; content?: string; status?: WikiFeedbackStatus },
 ) {
   return post(`/api/v1/knowledgebase/${kbId}/wiki/feedback`, data);
 }

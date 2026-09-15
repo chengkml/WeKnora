@@ -1,8 +1,8 @@
 package handler
 
 import (
-	stderrors "errors"
 	"context"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -652,11 +652,11 @@ func (h *WikiPageHandler) GetLog(c *gin.Context) {
 // running inside an OpenAI Agents gateway) to record processing progress back
 // into WeKnora's per-KB operation log.
 type PostLogRequest struct {
-	Action       string `json:"action" binding:"required"`
-	KnowledgeID  string `json:"knowledge_id"`
-	DocTitle     string `json:"doc_title"`
-	Summary      string `json:"summary"`
-	PageSlugs    []string `json:"page_slugs"`
+	Action      string   `json:"action" binding:"required"`
+	KnowledgeID string   `json:"knowledge_id"`
+	DocTitle    string   `json:"doc_title"`
+	Summary     string   `json:"summary"`
+	PageSlugs   []string `json:"page_slugs"`
 }
 
 // PostLog godoc
@@ -693,13 +693,13 @@ func (h *WikiPageHandler) PostLog(c *gin.Context) {
 		refs = append(refs, types.WikiLogPageRef{Slug: slug})
 	}
 	entry := &types.WikiLogEntry{
-		TenantID:         tenantID,
-		KnowledgeBaseID:  kbID,
-		Action:           req.Action,
-		KnowledgeID:      req.KnowledgeID,
-		DocTitle:         req.DocTitle,
-		Summary:          req.Summary,
-		PagesAffected:    refs,
+		TenantID:        tenantID,
+		KnowledgeBaseID: kbID,
+		Action:          req.Action,
+		KnowledgeID:     req.KnowledgeID,
+		DocTitle:        req.DocTitle,
+		Summary:         req.Summary,
+		PagesAffected:   refs,
 	}
 	if err := h.logEntryService.AppendBatch(c.Request.Context(), []*types.WikiLogEntry{entry}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -962,6 +962,7 @@ func (h *WikiPageHandler) CreateFeedback(c *gin.Context) {
 	var req struct {
 		Slug         string `json:"slug"`
 		FeedbackType string `json:"feedback_type"`
+		Preset       string `json:"preset"`
 		Content      string `json:"content"`
 		Status       string `json:"status"`
 	}
@@ -973,8 +974,8 @@ func (h *WikiPageHandler) CreateFeedback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Slug is required"})
 		return
 	}
-	if strings.TrimSpace(req.Content) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Content is required"})
+	if strings.TrimSpace(req.Content) == "" && strings.TrimSpace(req.Preset) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Content or preset is required"})
 		return
 	}
 
@@ -985,6 +986,7 @@ func (h *WikiPageHandler) CreateFeedback(c *gin.Context) {
 		KnowledgeBaseID: kbID,
 		Slug:            strings.TrimSpace(req.Slug),
 		FeedbackType:    req.FeedbackType,
+		Preset:          strings.TrimSpace(req.Preset),
 		Content:         req.Content,
 		Status:          req.Status,
 		ReportedByID:    userID,
