@@ -78,9 +78,10 @@ export interface MCPGatewayTestResult {
 /**
  * 全量下发当前空间的 MCP 服务到 agent-gateway（幂等、覆盖式）。
  * 仅在网关不可达 / 配置非法时抛错；被跳过的服务通过 skipped/warnings 返回。
+ * force=true 才允许下发空配置（否则后端会以 400 拦截，避免误清空网关配置）。
  */
-export async function syncMCPGateway(): Promise<MCPGatewaySyncResult> {
-  const response: any = await post('/api/v1/mcp-gateway/sync', {})
+export async function syncMCPGateway(force = false): Promise<MCPGatewaySyncResult> {
+  const response: any = await post(`/api/v1/mcp-gateway/sync${force ? '?force=true' : ''}`, {})
   return (response?.data ?? response) as MCPGatewaySyncResult
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,11 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
+
+// ErrMCPGatewayEmptySync 表示本次同步会向 agent-gateway 下发空配置。
+// 网关侧是全量覆盖语义，空列表会清掉网关现有 MCP 配置，因此默认拦截，
+// 只有显式 force（?force=true）才允许。
+var ErrMCPGatewayEmptySync = errors.New("mcp gateway sync blocked: empty payload")
 
 // MCP → agent-gateway 同步。
 //
@@ -105,7 +111,7 @@ func NewMCPGatewaySyncService(mcpServiceRepo interfaces.MCPServiceRepository) *M
 // Sync 把当前空间（含对所有租户可见的内建服务）的 MCP 配置全量覆盖式下发到
 // agent-gateway。幂等：网关侧以 name 为键整体替换，Enabled=false 的服务不在
 // 请求体里，因此也会同时从网关配置中剔除。
-func (s *MCPGatewaySyncService) Sync(ctx context.Context, tenantID uint64) (*MCPGatewaySyncResult, error) {
+func (s *MCPGatewaySyncService) Sync(ctx context.Context, tenantID uint64, force bool) (*MCPGatewaySyncResult, error) {
 	gwURL := resolveAgentGatewayURL()
 	if gwURL == "" {
 		return nil, fmt.Errorf("WIKI_AGENT_GATEWAY_URL/WIKI_AGENT_CALLBACK_URL 未配置，无法同步 MCP 服务到 agent-gateway")
@@ -160,6 +166,16 @@ func (s *MCPGatewaySyncService) Sync(ctx context.Context, tenantID uint64) (*MCP
 		seenNames[server.Name] = svc.ID
 		servers = append(servers, *server)
 		result.Synced = append(result.Synced, server.Name)
+	}
+
+	// 空配置保护：网关是全量覆盖语义，空列表会把网关现有 MCP 配置清空。
+	// 只有显式 force（?force=true）才允许。
+	if len(servers) == 0 && !force {
+		return nil, fmt.Errorf(
+			"%w: 当前空间没有启用中的 MCP 服务，已阻止用空配置覆盖 agent-gateway（避免误清空）；"+
+				"请先新建/启用 MCP 服务，或显式携带 ?force=true 强制清空",
+			ErrMCPGatewayEmptySync,
+		)
 	}
 
 	body, err := json.Marshal(map[string][]mcpGatewayServer{"servers": servers})

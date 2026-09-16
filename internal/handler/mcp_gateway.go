@@ -1,6 +1,7 @@
 package handler
 
 import (
+	stderrors "errors"
 	"net/http"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -49,8 +50,16 @@ func (h *MCPGatewayHandler) SyncMCPGateway(c *gin.Context) {
 		return
 	}
 
-	result, err := h.mcpGatewaySyncService.Sync(ctx, tenantID)
+	// force=true 才允许用空配置覆盖网关（网关是全量覆盖语义，空列表会清空现有配置）
+	force := c.Query("force") == "true"
+
+	result, err := h.mcpGatewaySyncService.Sync(ctx, tenantID, force)
 	if err != nil {
+		if stderrors.Is(err, service.ErrMCPGatewayEmptySync) {
+			logger.Warnf(ctx, "MCP gateway sync blocked (empty payload), tenant_id=%d", tenantID)
+			c.Error(errors.NewBadRequestError(err.Error()))
+			return
+		}
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{"tenant_id": tenantID})
 		c.Error(errors.NewInternalServerError("Failed to sync MCP services to agent-gateway: " + err.Error()))
 		return
