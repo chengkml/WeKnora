@@ -68,6 +68,7 @@ type RouterParams struct {
 	InitializationHandler        *handler.InitializationHandler
 	SystemHandler                *handler.SystemHandler
 	MCPServiceHandler            *handler.MCPServiceHandler
+	MCPGatewayHandler            *handler.MCPGatewayHandler
 	MCPCredentialsHandler        *handler.MCPCredentialsHandler
 	MCPOAuthHandler              *handler.MCPOAuthHandler
 	WebSearchHandler             *handler.WebSearchHandler
@@ -256,6 +257,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterSystemRoutes(v1, params.SystemHandler, rbacGuards)
 		RegisterSystemAdminRoutes(v1, params.SystemHandler, params.AuditLogHandler, rbacGuards)
 		RegisterMCPServiceRoutes(v1, params.MCPServiceHandler, params.MCPCredentialsHandler, params.MCPOAuthHandler, rbacGuards)
+		RegisterMCPGatewayRoutes(v1, params.MCPGatewayHandler, rbacGuards)
 		RegisterWebSearchRoutes(v1, params.WebSearchHandler, rbacGuards)
 		RegisterWebSearchProviderRoutes(v1, params.WebSearchProviderHandler, params.WebSearchCredentialsHandler, rbacGuards)
 		RegisterVectorStoreRoutes(v1, params.VectorStoreHandler, rbacGuards)
@@ -1106,6 +1108,29 @@ func RegisterMCPServiceRoutes(
 		// Same tenant-member (Viewer+) gating rationale as tool-approvals.
 		agentTool.POST("/mcp-oauth-resolutions/:pending_id", g.Viewer(), oauthHandler.ResolveMCPOAuth)
 		agentTool.POST("/mcp-oauth-resolutions/:pending_id/cancel", g.Viewer(), oauthHandler.CancelMCPOAuth)
+	}
+}
+
+// RegisterMCPGatewayRoutes registers the MCP → agent-gateway sync routes.
+//
+// WeKnora stays the source of truth for MCP service config; these endpoints
+// only push a derived copy to the agent-gateway (the process that actually
+// executes agent runs) and report drift between the two. Reads are Viewer+,
+// while the full-overwrite push and the gateway-side connectivity probe are
+// Admin+ — the probe opens an outbound connection from the gateway host with
+// whatever credentials the service row holds.
+func RegisterMCPGatewayRoutes(r *gin.RouterGroup, handler *handler.MCPGatewayHandler, g *rbacGuards) {
+	// Same API-key capability as the /mcp-services group: a key allowed to
+	// manage MCP services may also publish them to the gateway.
+	mcpGateway := g.apiKeyGroup(r.Group("/mcp-gateway"), apiKeyManageMCPServices(apiKeyFullAccess()))
+	{
+		// Drift report: WeKnora's desired set vs. what the gateway serves
+		mcpGateway.GET("/status", g.Viewer(), handler.MCPGatewayStatus)
+		// Full overwrite push to the gateway (idempotent)
+		mcpGateway.POST("/sync", g.Admin(), handler.SyncMCPGateway)
+		// Connectivity test executed by the gateway (tool list comes from
+		// the real executing side)
+		mcpGateway.POST("/servers/:id/test", g.Admin(), handler.TestMCPGatewayServer)
 	}
 }
 

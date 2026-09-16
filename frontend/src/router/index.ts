@@ -125,6 +125,14 @@ const router = createRouter({
           meta: { requiresInit: true, requiresAuth: true }
         },
         {
+          // 私有化定制：MCP 管理（侧栏第三项）。复用 views/settings 下既有的 MCP 组件，
+          // 并串联 /api/v1/mcp-gateway/*（同步到 agent-gateway）。
+          path: "mcp",
+          name: "mcpManage",
+          component: () => import("../views/mcp/McpManage.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
+        },
+        {
           path: "knowledge-search",
           // 旧路径保留为重定向，打开全局命令面板（⌘K），带上可选的 q 参数
           redirect: (to) => {

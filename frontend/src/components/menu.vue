@@ -80,7 +80,9 @@
                         :class="['menu_item', item.childrenPath && item.childrenPath == currentpath ? 'menu_item_c_active' : isMenuItemActive(item.path) ? 'menu_item_active' : '']">
                         <div class="menu_item-box">
                             <div class="menu_icon">
-                                <img class="icon"
+                                <!-- 私有化定制：MCP 管理用 tdesign 图标（图标集内无 mcp/plug，故用 server），其余菜单项仍用 assets/img -->
+                                <t-icon v-if="item.iconName" class="icon" :name="item.iconName" size="18px" />
+                                <img v-else class="icon"
                                     :src="getImgSrc(item.icon == 'zhishiku' ? knowledgeIcon : item.icon == 'agent' ? agentIcon : item.icon == 'organization' ? organizationIcon : item.icon == 'logout' ? logoutIcon : item.icon == 'setting' ? settingIcon : prefixIcon)"
                                     alt="">
                             </div>
@@ -279,7 +281,7 @@ const PLATFORM_LOGO: Record<string, string> = {
 
 const platformLogo = (p: string): string => (p ? PLATFORM_LOGO[p] || '' : '');
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const usemenuStore = useMenuStore();
 const authStore = useAuthStore();
 const orgStore = useOrganizationStore();
@@ -331,7 +333,7 @@ const activeBucket = computed(() => sessionBuckets.value[activeSessionBucketKey.
 const hasAnySession = computed(() =>
     Object.values(sessionBuckets.value).some((bucket) => bucket.items.length > 0),
 );
-type MenuItem = { title: string; icon: string; path: string; childrenPath?: string; children?: any[] };
+type MenuItem = { title: string; icon: string; path: string; childrenPath?: string; children?: any[]; iconName?: string };
 const { menuArr, visibleMenuArr } = storeToRefs(usemenuStore);
 let activeSubmenu = ref<string>('');
 const isLiteEdition = ref(false);
@@ -405,6 +407,12 @@ const isMenuItemActive = (itemPath: string): boolean => {
             return currentRoute === 'kbCreatChat' || currentRoute === 'globalCreatChat';
         case 'settings':
             return currentRoute === 'settings';
+        // 私有化定制（WEK-44）：侧栏精简后的「技能管理 / MCP 管理」两项。
+        // 注意 currentpath 存的是 route.name，而菜单项 path 是短名，故必须显式按路由名判定高亮。
+        case 'skills':
+            return currentRoute === 'skillManage';
+        case 'mcp':
+            return currentRoute === 'mcpManage';
         default:
             return itemPath === currentpath.value;
     }
@@ -428,11 +436,23 @@ const getIconActiveState = (itemPath: string) => {
 
 // 分离上下两部分菜单（使用 visibleMenuArr 以便 lite 模式过滤 logout）
 // 私有化定制（WEK-44）：隐藏侧栏「新对话(creatChat)/智能体(agents)/共享空间(organizations)」三个入口，
-// 仅保留「知识库」+「技能管理」。不动 store 的 menuArr（会话列表/active 状态等逻辑依赖它），路由深链仍可达。
+// 保留「知识库」+「技能管理」；本次再追加第三项「MCP 管理」（见下）。
+// 不动 store 的 menuArr（会话列表/active 状态等逻辑依赖它），路由深链仍可达。
 const topMenuItems = computed<MenuItem[]>(() => {
-    return (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) =>
+    const items = (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) =>
         item.path === 'knowledge-bases' || item.path === 'skills'
     );
+    // 私有化定制：侧栏第三项「MCP 管理」。不写入 stores/menu.ts 的 menuArr（会话列表等逻辑依赖它），
+    // 仅在本组件的可见项末尾追加；标题走 i18n 的 menu.mcp，随语言切换更新（显式读取 locale 建立依赖）。
+    // 图标：tdesign 图标集内无 mcp/plug，实测存在 server，故用 iconName 走 <t-icon>（见模板 menu_icon）。
+    void locale.value;
+    const mcpMenuItem: MenuItem = {
+        title: t('menu.mcp'),
+        icon: 'mcp-manage',
+        iconName: 'server',
+        path: 'mcp',
+    };
+    return [...items, mcpMenuItem];
 });
 
 const bottomMenuItems = computed<MenuItem[]>(() => {
