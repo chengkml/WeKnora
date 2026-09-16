@@ -736,6 +736,10 @@ var WikiFeedbackPresetKeys = map[string]string{
 	"broken_link":   "链接失效",
 	"format_issue":  "格式问题",
 	"incomplete":    "信息不完整",
+	// 高频词业务含义标注（2026-09-15）：人工判断词条本身是否有实际业务含义/提取是否正确
+	"kw_meaningful":    "有业务含义",
+	"kw_noise":         "无业务含义（噪音）",
+	"kw_mis_extracted": "提取不准确",
 }
 
 // WikiPageFeedback is a manually-added comment or question on a specific wiki
@@ -804,6 +808,9 @@ type WikiKeywordStat struct {
 	Meaning   string `json:"meaning"`
 	TotalFreq int    `json:"total_freq"`
 	DocCount  int    `json:"doc_count"`
+	// FeedbackCounts 是该词页收到的快捷标注计数（preset 键 → 条数），如
+	// {"kw_meaningful":3,"kw_noise":1,"kw_mis_extracted":0}。无标注时省略。
+	FeedbackCounts map[string]int `json:"feedback_counts,omitempty"`
 }
 
 // WikiKeywordOverviewResponse is a page of the ranked keyword overview.

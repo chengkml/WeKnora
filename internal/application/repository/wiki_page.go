@@ -1252,6 +1252,33 @@ func (r *wikiPageRepository) CreateFeedback(ctx context.Context, feedback *types
 	return r.db.WithContext(ctx).Create(feedback).Error
 }
 
+// CountFeedbackByPreset aggregates non-empty preset counts per page slug,
+// used to render keyword-meaning annotation tallies on the keyword overview.
+func (r *wikiPageRepository) CountFeedbackByPreset(ctx context.Context, kbID string) (map[string]map[string]int, error) {
+	var rows []struct {
+		Slug   string `gorm:"column:slug"`
+		Preset string `gorm:"column:preset"`
+		Count  int64  `gorm:"column:cnt"`
+	}
+	err := r.db.WithContext(ctx).
+		Model(&types.WikiPageFeedback{}).
+		Select("slug, preset, count(*) AS cnt").
+		Where("knowledge_base_id = ? AND preset <> ''", kbID).
+		Group("slug, preset").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]map[string]int, len(rows))
+	for _, row := range rows {
+		if out[row.Slug] == nil {
+			out[row.Slug] = make(map[string]int)
+		}
+		out[row.Slug][row.Preset] = int(row.Count)
+	}
+	return out, nil
+}
+
 // ListFrequentKeywordRows loads slug/title/content-head for every non-archived
 // frequent_keyword page in the KB. The head of the content (500 chars) covers
 // both the aggregated frequency line and the optional 释义 (meaning) section,

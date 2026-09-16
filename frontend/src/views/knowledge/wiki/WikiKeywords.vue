@@ -40,6 +40,7 @@
               <th class="wk-col-meaning">{{ $t('knowledgeEditor.wikiKeywords.meaning') }}</th>
               <th class="wk-col-num">{{ $t('knowledgeEditor.wikiKeywords.freq') }}</th>
               <th class="wk-col-num">{{ $t('knowledgeEditor.wikiKeywords.docCount') }}</th>
+              <th class="wk-col-mark">{{ $t('knowledgeEditor.wikiKeywords.markColumn') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -61,6 +62,28 @@
                 </button>
               </td>
               <td class="wk-col-num">{{ item.doc_count }}</td>
+              <td class="wk-col-mark">
+                <div class="wk-mark-cell" @click.stop>
+                  <button type="button" class="wk-mark-btn" @click="openMarkDialog(item)">
+                    <t-icon name="chat-bubble-add" size="14px" />
+                    <span>{{ $t('knowledgeEditor.wikiKeywords.markAction') }}</span>
+                  </button>
+                  <div v-if="hasMarks(item)" class="wk-mark-counts">
+                    <span v-if="item.feedback_counts?.kw_meaningful" class="wk-mark-count wk-mark-ok"
+                      :title="$t('knowledgeEditor.wikiKeywords.presetMeaningful')">
+                      ✅ {{ item.feedback_counts.kw_meaningful }}
+                    </span>
+                    <span v-if="item.feedback_counts?.kw_noise" class="wk-mark-count wk-mark-no"
+                      :title="$t('knowledgeEditor.wikiKeywords.presetNoise')">
+                      ❌ {{ item.feedback_counts.kw_noise }}
+                    </span>
+                    <span v-if="item.feedback_counts?.kw_mis_extracted" class="wk-mark-count wk-mark-warn"
+                      :title="$t('knowledgeEditor.wikiKeywords.presetMisExtracted')">
+                      ⚠️ {{ item.feedback_counts.kw_mis_extracted }}
+                    </span>
+                  </div>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -79,15 +102,42 @@
       <div v-else-if="drawerContent" class="wk-drawer-content" v-html="drawerContent"></div>
       <div v-else class="wk-drawer-empty">{{ $t('knowledgeEditor.wikiKeywords.drawerEmpty') }}</div>
     </t-drawer>
+
+    <!-- Mark keyword meaning dialog: annotate whether the keyword has real business
+         meaning / was correctly extracted. Reuses the manual-feedback pipeline
+         (preset keys kw_meaningful / kw_noise / kw_mis_extracted). -->
+    <t-dialog v-model:visible="markDialog.visible" :header="$t('knowledgeEditor.wikiKeywords.markTitle')" :width="480"
+      destroy-on-close
+      :confirm-btn="{ theme: 'primary', content: $t('common.confirm'), loading: markDialog.submitting }"
+      :cancel-btn="$t('common.cancel')" @confirm="submitMark" @close="resetMarkDialog">
+      <div class="wk-mark-form">
+        <div class="wk-mark-row">
+          <span class="wk-mark-label">{{ $t('knowledgeEditor.wikiKeywords.markWordLabel') }}</span>
+          <span class="wk-mark-word">{{ markDialog.keyword }}</span>
+        </div>
+        <div class="wk-mark-row">
+          <span class="wk-mark-label">{{ $t('knowledgeEditor.wikiKeywords.markTypeLabel') }}</span>
+          <t-select v-model="markDialog.preset" :options="markOptions"
+            :placeholder="$t('knowledgeEditor.wikiKeywords.markPlaceholder')" />
+        </div>
+        <div v-if="markDialog.preset === FEEDBACK_PRESET_CUSTOM" class="wk-mark-custom">
+          <span class="wk-mark-label">{{ $t('knowledgeEditor.wikiKeywords.markContentLabel') }}</span>
+          <t-textarea v-model="markDialog.content"
+            :placeholder="$t('knowledgeEditor.wikiKeywords.markContentPlaceholder')"
+            :maxlength="1000" :autosize="{ minRows: 3, maxRows: 6 }" />
+        </div>
+        <div class="wk-mark-hint">{{ $t('knowledgeEditor.wikiKeywords.markHint') }}</div>
+      </div>
+    </t-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
-import { listWikiKeywords, getWikiPage, type WikiKeywordStat } from '@/api/wiki'
+import { listWikiKeywords, getWikiPage, createWikiFeedback, type WikiKeywordStat } from '@/api/wiki'
 import { sanitizeMarkdownHTML } from '@/utils/security'
 
 const props = defineProps<{
@@ -146,6 +196,75 @@ function onPageChange() {
 
 function openPage(slug: string) {
   emit('open-page', slug)
+}
+
+// --- Keyword meaning mark (reuses the manual-feedback pipeline) ---
+
+const FEEDBACK_PRESET_CUSTOM = '__custom__'
+const markOptions = computed(() => [
+  { label: t('knowledgeEditor.wikiKeywords.presetMeaningful'), value: 'kw_meaningful' },
+  { label: t('knowledgeEditor.wikiKeywords.presetNoise'), value: 'kw_noise' },
+  { label: t('knowledgeEditor.wikiKeywords.presetMisExtracted'), value: 'kw_mis_extracted' },
+  { label: t('knowledgeEditor.wikiKeywords.feedbackPresetCustom'), value: FEEDBACK_PRESET_CUSTOM },
+])
+const markDialog = reactive({
+  visible: false,
+  submitting: false,
+  slug: '',
+  keyword: '',
+  preset: '',
+  content: '',
+})
+
+function hasMarks(item: WikiKeywordStat): boolean {
+  const c = item.feedback_counts
+  return !!c && ((c.kw_meaningful || 0) + (c.kw_noise || 0) + (c.kw_mis_extracted || 0)) > 0
+}
+
+function openMarkDialog(item: WikiKeywordStat) {
+  markDialog.slug = item.slug
+  markDialog.keyword = item.keyword
+  markDialog.preset = ''
+  markDialog.content = ''
+  markDialog.visible = true
+}
+
+function resetMarkDialog() {
+  markDialog.content = ''
+  markDialog.submitting = false
+}
+
+async function submitMark() {
+  const slug = markDialog.slug
+  if (!slug) return
+  markDialog.submitting = true
+  try {
+    if (markDialog.preset === FEEDBACK_PRESET_CUSTOM) {
+      const content = markDialog.content.trim()
+      if (!content) {
+        MessagePlugin.warning(t('knowledgeEditor.wikiKeywords.markContentRequired'))
+        markDialog.submitting = false
+        return
+      }
+      await createWikiFeedback(props.knowledgeBaseId, { slug, feedback_type: 'comment', content })
+    } else if (markDialog.preset) {
+      await createWikiFeedback(props.knowledgeBaseId, { slug, feedback_type: 'question', preset: markDialog.preset })
+    } else {
+      MessagePlugin.warning(t('knowledgeEditor.wikiKeywords.markRequired'))
+      markDialog.submitting = false
+      return
+    }
+    MessagePlugin.success(t('knowledgeEditor.wikiKeywords.markSubmitted'))
+    markDialog.visible = false
+    resetMarkDialog()
+    // 刷新行内标注计数（保持当前页）
+    reload(currentPage.value)
+  } catch (e) {
+    console.error('Failed to submit keyword mark:', e)
+    MessagePlugin.error(t('knowledgeEditor.wikiKeywords.markSubmitFailed'))
+  } finally {
+    markDialog.submitting = false
+  }
 }
 
 // --- Detail drawer (clicking the total frequency opens the keyword page here) ---
@@ -365,6 +484,65 @@ onMounted(() => reload(1))
     color: var(--td-text-color-secondary);
   }
 
+  .wk-col-mark {
+    width: 200px;
+    white-space: nowrap;
+
+    .wk-mark-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .wk-mark-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid var(--td-component-border);
+      border-radius: 6px;
+      background: var(--td-bg-color-container);
+      color: var(--td-text-color-secondary);
+      padding: 3px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+
+      &:hover {
+        color: var(--td-brand-color);
+        border-color: var(--td-brand-color);
+      }
+    }
+
+    .wk-mark-counts {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .wk-mark-count {
+      font-size: 12px;
+      padding: 1px 6px;
+      border-radius: 10px;
+      background: var(--td-bg-color-component);
+      color: var(--td-text-color-secondary);
+    }
+
+    .wk-mark-ok {
+      background: var(--td-success-color-light);
+      color: var(--td-success-color);
+    }
+
+    .wk-mark-no {
+      background: var(--td-error-color-light);
+      color: var(--td-error-color);
+    }
+
+    .wk-mark-warn {
+      background: var(--td-warning-color-light);
+      color: var(--td-warning-color);
+    }
+  }
+
   .wk-freq-link {
     border: none;
     background: none;
@@ -420,6 +598,40 @@ onMounted(() => reload(1))
     th {
       background: var(--td-bg-color-component);
     }
+  }
+}
+
+.wk-mark-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  .wk-mark-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .wk-mark-label {
+    font-size: 12px;
+    color: var(--td-text-color-secondary);
+  }
+
+  .wk-mark-word {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--td-text-color-primary);
+  }
+
+  .wk-mark-custom {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .wk-mark-hint {
+    font-size: 12px;
+    color: var(--td-text-color-placeholder);
   }
 }
 </style>

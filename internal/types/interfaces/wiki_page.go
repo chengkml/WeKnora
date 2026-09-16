@@ -287,6 +287,11 @@ type WikiPageRepository interface {
 	// used to aggregate the KB-wide keyword frequency overview.
 	ListFrequentKeywordRows(ctx context.Context, kbID string) ([]types.WikiKeywordRow, error)
 
+	// CountFeedbackByPreset aggregates quick-feedback (preset) counts per wiki
+	// page slug across the KB, e.g. keyword-meaning annotations. Returns
+	// slug → preset key → count, only for rows with non-empty preset.
+	CountFeedbackByPreset(ctx context.Context, kbID string) (map[string]map[string]int, error)
+
 	// ListBySourceRef retrieves all wiki pages that reference a given source knowledge ID.
 	ListBySourceRef(ctx context.Context, kbID string, sourceKnowledgeID string) ([]*types.WikiPage, error)
 

@@ -398,7 +398,13 @@ export interface WikiKeywordStat {
   meaning: string;
   total_freq: number;
   doc_count: number;
+  /** 快捷标注计数: preset 键 → 条数(如 {"kw_meaningful":3}) */
+  feedback_counts?: Record<string, number>;
 }
+
+// 高频词业务含义标注预设键(必须与后端 types.WikiFeedbackPresetKeys 一致)
+export const KW_FEEDBACK_PRESETS = ['kw_meaningful', 'kw_noise', 'kw_mis_extracted'] as const;
+export type KWFeedbackPreset = typeof KW_FEEDBACK_PRESETS[number];
 
 export interface WikiKeywordOverviewResponse {
   items: WikiKeywordStat[];

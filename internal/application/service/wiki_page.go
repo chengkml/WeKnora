@@ -1378,6 +1378,11 @@ func (s *wikiPageService) ListKeywordOverview(ctx context.Context, kbID, search,
 	if err != nil {
 		return nil, fmt.Errorf("list frequent keyword rows: %w", err)
 	}
+	// 每词页的快捷标注计数（preset → 条数），用于行内展示 ✅/❌/⚠️
+	counts, err := s.repo.CountFeedbackByPreset(ctx, kbID)
+	if err != nil {
+		return nil, fmt.Errorf("count feedback by preset: %w", err)
+	}
 
 	stats := make([]*types.WikiKeywordStat, 0, len(rows))
 	for _, row := range rows {
@@ -1389,13 +1394,17 @@ func (s *wikiPageService) ListKeywordOverview(ctx context.Context, kbID, search,
 			continue
 		}
 		docs, freq := parseWikiKeywordHead(row.ContentHead)
-		stats = append(stats, &types.WikiKeywordStat{
+		stat := &types.WikiKeywordStat{
 			Slug:      row.Slug,
 			Keyword:   keyword,
 			Meaning:   parseWikiKeywordMeaning(row.ContentHead),
 			TotalFreq: freq,
 			DocCount:  docs,
-		})
+		}
+		if c, ok := counts[row.Slug]; ok && len(c) > 0 {
+			stat.FeedbackCounts = c
+		}
+		stats = append(stats, stat)
 	}
 
 	asc := order == "asc"

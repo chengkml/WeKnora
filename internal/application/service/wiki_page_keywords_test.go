@@ -13,11 +13,16 @@ import (
 // method call would nil-panic, which is the signal we want in these tests.
 type fakeKeywordRowsRepo struct {
 	interfaces.WikiPageRepository
-	rows []types.WikiKeywordRow
+	rows   []types.WikiKeywordRow
+	counts map[string]map[string]int
 }
 
 func (f *fakeKeywordRowsRepo) ListFrequentKeywordRows(_ context.Context, _ string) ([]types.WikiKeywordRow, error) {
 	return f.rows, nil
+}
+
+func (f *fakeKeywordRowsRepo) CountFeedbackByPreset(_ context.Context, _ string) (map[string]map[string]int, error) {
+	return f.counts, nil
 }
 
 func TestParseWikiKeywordMeaning(t *testing.T) {
@@ -154,6 +159,39 @@ func TestListKeywordOverviewDefaultDesc(t *testing.T) {
 		if it.Meaning != w.meaning {
 			t.Errorf("Items[%d] meaning = %q, want %q", i, it.Meaning, w.meaning)
 		}
+	}
+}
+
+func TestListKeywordOverviewFeedbackCounts(t *testing.T) {
+	svc := &wikiPageService{repo: &fakeKeywordRowsRepo{
+		rows: keywordTestRows(),
+		counts: map[string]map[string]int{
+			"kw/a": {"kw_meaningful": 3, "kw_noise": 1},
+			"kw/b": {"kw_mis_extracted": 2},
+		},
+	}}
+	res, err := svc.ListKeywordOverview(context.Background(), "kb1", "", "freq", "desc", 1, 50)
+	if err != nil {
+		t.Fatalf("ListKeywordOverview() error: %v", err)
+	}
+	var gotA, gotB map[string]int
+	for _, it := range res.Items {
+		switch it.Slug {
+		case "kw/a":
+			gotA = it.FeedbackCounts
+		case "kw/b":
+			gotB = it.FeedbackCounts
+		case "kw/c":
+			if it.FeedbackCounts != nil {
+				t.Errorf("kw/c should have no counts, got %v", it.FeedbackCounts)
+			}
+		}
+	}
+	if gotA["kw_meaningful"] != 3 || gotA["kw_noise"] != 1 {
+		t.Errorf("kw/a counts = %v, want {kw_meaningful:3 kw_noise:1}", gotA)
+	}
+	if gotB["kw_mis_extracted"] != 2 {
+		t.Errorf("kw/b counts = %v, want {kw_mis_extracted:2}", gotB)
 	}
 }
 
