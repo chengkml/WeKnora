@@ -30,10 +30,10 @@ const agentGatewayTimeout = 10 * time.Second
 // maybeNotifyAgentForWikiBuild checks whether the completed document belongs to
 // a wiki-enabled + custom-wiki-generation knowledge base and, if so, schedules
 // an asynchronous POST to the agent gateway (configured via
-// WEKNORA_AGENT_CALLBACK_URL). Called from FinalizeSubtask when the promote to
+// WIKI_AGENT_CALLBACK_URL). Called from FinalizeSubtask when the promote to
 // "completed" wins.
 func maybeNotifyAgentForWikiBuild(ctx context.Context, db *gorm.DB, knowledgeID string) {
-	callbackURL := os.Getenv("WEKNORA_AGENT_CALLBACK_URL")
+	callbackURL := os.Getenv("WIKI_AGENT_CALLBACK_URL")
 	if callbackURL == "" {
 		return
 	}

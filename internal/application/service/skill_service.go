@@ -145,14 +145,14 @@ func (s *skillService) GetPreloadedDir() string {
 var skillNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-_]*$`)
 
 // resolveAgentGatewayURL returns the agent-gateway base URL used for skill
-// installation. Derived from WEKNORA_AGENT_CALLBACK_URL (which points to
+// installation. Derived from WIKI_AGENT_CALLBACK_URL (which points to
 // {gateway}/tasks) by stripping the trailing /tasks; falls back to
-// WEKNORA_AGENT_GATEWAY_URL if set directly.
+// WIKI_AGENT_GATEWAY_URL if set directly.
 func resolveAgentGatewayURL() string {
-	if u := os.Getenv("WEKNORA_AGENT_GATEWAY_URL"); u != "" {
+	if u := os.Getenv("WIKI_AGENT_GATEWAY_URL"); u != "" {
 		return strings.TrimRight(u, "/")
 	}
-	if u := os.Getenv("WEKNORA_AGENT_CALLBACK_URL"); u != "" {
+	if u := os.Getenv("WIKI_AGENT_CALLBACK_URL"); u != "" {
 		return strings.TrimRight(u, "/tasks")
 	}
 	return ""
@@ -165,7 +165,7 @@ func resolveAgentGatewayURL() string {
 func (s *skillService) pushSkillToGateway(ctx context.Context, zipData []byte, skillName string) error {
 	gwURL := resolveAgentGatewayURL()
 	if gwURL == "" {
-		logger.Warnf(ctx, "[skill-upload] WEKNORA_AGENT_CALLBACK_URL/WEKNORA_AGENT_GATEWAY_URL 未配置，跳过 gateway 安装 skill=%s", skillName)
+		logger.Warnf(ctx, "[skill-upload] WIKI_AGENT_CALLBACK_URL/WIKI_AGENT_GATEWAY_URL 未配置，跳过 gateway 安装 skill=%s", skillName)
 		return nil
 	}
 	var body bytes.Buffer
@@ -397,7 +397,7 @@ func (s *skillService) DeleteSkill(ctx context.Context, name string) error {
 func (s *skillService) deleteSkillFromGateway(ctx context.Context, name string) error {
 	gwURL := resolveAgentGatewayURL()
 	if gwURL == "" {
-		logger.Warnf(ctx, "[skill-delete] WEKNORA_AGENT_CALLBACK_URL/WEKNORA_AGENT_GATEWAY_URL 未配置，跳过 gateway 删除 skill=%s", name)
+		logger.Warnf(ctx, "[skill-delete] WIKI_AGENT_CALLBACK_URL/WIKI_AGENT_GATEWAY_URL 未配置，跳过 gateway 删除 skill=%s", name)
 		return nil
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, gwURL+"/skills/"+url.PathEscape(name), nil)
