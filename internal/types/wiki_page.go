@@ -590,6 +590,25 @@ type WikiPageListResponse struct {
 	TotalPages int         `json:"total_pages"`
 }
 
+// WikiPageLookupItem is one slug -> title resolution result in
+// WikiPageLookupResponse. Slugs that do not exist in the KB (deleted page,
+// wrong KB) are simply absent from the item list, so callers can render them
+// as dead links instead of guessing.
+type WikiPageLookupItem struct {
+	Slug     string `json:"slug"`
+	Title    string `json:"title"`
+	PageType string `json:"page_type,omitempty"`
+	Status   string `json:"status,omitempty"`
+}
+
+// WikiPageLookupResponse backs POST /knowledgebase/{kb_id}/wiki/pages/lookup.
+// It lets clients resolve a batch of slugs to titles in one round-trip instead
+// of paging through the whole KB (a large KB holds tens of thousands of pages).
+type WikiPageLookupResponse struct {
+	Items []WikiPageLookupItem `json:"items"`
+	Total int                  `json:"total"`
+}
+
 // WikiGraphMode enumerates the graph query modes exposed to the API.
 const (
 	// WikiGraphModeOverview returns the top-N most-connected pages as an

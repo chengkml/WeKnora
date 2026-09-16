@@ -44,6 +44,16 @@ func NewWikiPageHandler(
 	}
 }
 
+// LookupPagesRequest is the JSON body of POST /knowledgebase/{kb_id}/wiki/pages/lookup.
+type LookupPagesRequest struct {
+	Slugs []string `json:"slugs"`
+}
+
+// maxLookupSlugs caps a single lookup request. Callers only send the slugs
+// they could not resolve locally (a page's in/out links), so the cap is
+// generous while still bounding the generated IN (...) clause.
+const maxLookupSlugs = 500
+
 // validateWikiKB validates that the KB exists and is a wiki type
 func (h *WikiPageHandler) validateWikiKB(c *gin.Context) (string, uint64, error) {
 	ctx := c.Request.Context()
@@ -475,6 +485,81 @@ func (h *WikiPageHandler) GetPage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, page)
+}
+
+// LookupPages godoc
+// @Summary      Resolve wiki page titles by slug
+// @Description  Resolve a batch of slugs to {slug,title,page_type,status} with a single query. Used by detail pages to render back-link / out-link chips without paging through the whole knowledge base. Blank and duplicate slugs are ignored; slugs not present in the KB are omitted from the response.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        request body  handler.LookupPagesRequest  true  "Slugs to resolve"
+// @Success      200  {object}  types.WikiPageLookupResponse
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/lookup [post]
+func (h *WikiPageHandler) LookupPages(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req LookupPagesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Normalise: drop blanks, de-duplicate, keep first-seen order so the
+	// caller can align results with its own slug list.
+	slugs := make([]string, 0, len(req.Slugs))
+	seen := make(map[string]struct{}, len(req.Slugs))
+	for _, raw := range req.Slugs {
+		slug := strings.TrimSpace(raw)
+		if slug == "" {
+			continue
+		}
+		if _, dup := seen[slug]; dup {
+			continue
+		}
+		seen[slug] = struct{}{}
+		slugs = append(slugs, slug)
+	}
+	if len(slugs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "slugs is required"})
+		return
+	}
+	if len(slugs) > maxLookupSlugs {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("too many slugs: %d (max %d)", len(slugs), maxLookupSlugs),
+		})
+		return
+	}
+
+	lite, err := h.wikiService.ListBySlugs(c.Request.Context(), kbID, slugs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp := types.WikiPageLookupResponse{Items: make([]types.WikiPageLookupItem, 0, len(lite))}
+	for _, slug := range slugs {
+		page, ok := lite[slug]
+		if !ok || page == nil {
+			continue
+		}
+		resp.Items = append(resp.Items, types.WikiPageLookupItem{
+			Slug:     page.Slug,
+			Title:    page.Title,
+			PageType: page.PageType,
+			Status:   page.Status,
+		})
+	}
+	resp.Total = len(resp.Items)
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // UpdatePage godoc
