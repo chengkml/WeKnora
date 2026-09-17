@@ -1,6 +1,7 @@
 <template>
   <div class="kb-list-container">
-    <ListSpaceSidebar v-if="!authStore.isLiteMode" v-model="spaceSelection" :count-all="allKnowledgeBases"
+    <!-- 私有化定制(2026-09-17):左侧「全部/收藏/最近/本空间」筛选栏移除,列表直接展示全部 -->
+    <ListSpaceSidebar v-if="false" v-model="spaceSelection" :count-all="allKnowledgeBases"
       :count-mine="kbs.length" :count-by-org="effectiveSharedCountByOrg" :count-favorites="kbFavoritesCount"
       :count-recents="kbRecentsCount" />
     <div class="kb-list-content">
@@ -882,6 +883,8 @@ interface KB {
   creator_id?: string;
   // creator_name 由后端 list 接口回填，仅用于卡片右下角来源徽章的 tooltip。
   creator_name?: string;
+  /** 知识库归属类型(personal/team),卡片归属徽章用 */
+  ownership_type?: 'personal' | 'team';
 }
 
 const kbs = ref<KB[]>([])

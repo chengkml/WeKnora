@@ -1,6 +1,7 @@
 <template>
   <div class="agent-list-container">
-    <ListSpaceSidebar v-if="!authStore.isLiteMode" v-model="spaceSelection" :count-all="allAgentsCount"
+    <!-- 私有化定制(2026-09-17):左侧「全部/收藏/最近/本空间」筛选栏移除,列表直接展示全部 -->
+    <ListSpaceSidebar v-if="false" v-model="spaceSelection" :count-all="allAgentsCount"
       :count-mine="agents.length" :count-by-org="effectiveSharedCountByOrg" :count-favorites="agentFavoritesCount"
       :count-recents="agentRecentsCount" />
     <div class="agent-list-content">
