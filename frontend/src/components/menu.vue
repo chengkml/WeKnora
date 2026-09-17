@@ -407,12 +407,14 @@ const isMenuItemActive = (itemPath: string): boolean => {
             return currentRoute === 'kbCreatChat' || currentRoute === 'globalCreatChat';
         case 'settings':
             return currentRoute === 'settings';
-        // 私有化定制（WEK-44）：侧栏精简后的「技能管理 / MCP 管理」两项。
+        // 私有化定制（WEK-44）：侧栏精简后的「技能管理 / Agent 任务监控 / MCP 管理」三项。
         // 注意 currentpath 存的是 route.name，而菜单项 path 是短名，故必须显式按路由名判定高亮。
         case 'skills':
             return currentRoute === 'skillManage';
         case 'mcp':
             return currentRoute === 'mcpManage';
+        case 'agent-tasks':
+            return currentRoute === 'agentTaskMonitor';
         default:
             return itemPath === currentpath.value;
     }
@@ -436,11 +438,11 @@ const getIconActiveState = (itemPath: string) => {
 
 // 分离上下两部分菜单（使用 visibleMenuArr 以便 lite 模式过滤 logout）
 // 私有化定制（WEK-44）：隐藏侧栏「新对话(creatChat)/智能体(agents)/共享空间(organizations)」三个入口，
-// 保留「知识库」+「技能管理」；本次再追加第三项「MCP 管理」（见下）。
+// 保留「知识库」+「技能管理」+「Agent 任务监控」；再追加「MCP 管理」（见下）。
 // 不动 store 的 menuArr（会话列表/active 状态等逻辑依赖它），路由深链仍可达。
 const topMenuItems = computed<MenuItem[]>(() => {
     const items = (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) =>
-        item.path === 'knowledge-bases' || item.path === 'skills'
+        item.path === 'knowledge-bases' || item.path === 'skills' || item.path === 'agent-tasks'
     );
     // 私有化定制：侧栏第三项「MCP 管理」。不写入 stores/menu.ts 的 menuArr（会话列表等逻辑依赖它），
     // 仅在本组件的可见项末尾追加；标题走 i18n 的 menu.mcp，随语言切换更新（显式读取 locale 建立依赖）。
@@ -457,7 +459,7 @@ const topMenuItems = computed<MenuItem[]>(() => {
 
 const bottomMenuItems = computed<MenuItem[]>(() => {
     return (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) => {
-        if (item.path === 'knowledge-bases' || item.path === 'agents' || item.path === 'organizations' || item.path === 'creatChat') {
+        if (item.path === 'knowledge-bases' || item.path === 'agents' || item.path === 'organizations' || item.path === 'creatChat' || item.path === 'agent-tasks') {
             return false;
         }
         return true;

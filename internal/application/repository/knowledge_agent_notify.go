@@ -1,15 +1,14 @@
 package repository
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"net/http"
 	"os"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -98,19 +97,31 @@ func maybeNotifyAgentForWikiBuild(ctx context.Context, db *gorm.DB, knowledgeID 
 		agentSkillName = "supply-management-policy-compiler"
 	}
 
-	// Fire async (goroutine survives this call; detached from request ctx).
-	go postAgentTask(callbackURL, kb.ID, knowledgeID, docName, modelName, modelBaseURL, modelAPIKey, agentSkillName)
+	// Persist the hand-off instead of firing a detached goroutine: this row is
+	// the durable queue the agent build dispatcher consumes, and it is what makes
+	// the document visible, retryable and cancellable on the agent task page.
+	enqueueAgentBuildTask(ctx, db, callbackURL, kb.ID, knowledgeID, docName,
+		modelName, modelBaseURL, modelAPIKey, agentSkillName, kb.TenantID)
 }
 
-// postAgentTask POSTs a task to the OpenAI-Agents gateway. The task input
-// instructs the agent to run the wiki build skill for the given document,
-// passing the exact kb_id and document id so the agent does not need to
-// discover them. When the knowledge base has a bound summary model
+// enqueueAgentBuildTask renders the hand-off payload and writes it to
+// agent_build_tasks as a `queued` row.
+//
+// The task input instructs the agent to run the wiki build skill for the given
+// document, passing the exact kb_id and document id so the agent does not need
+// to discover them. When the knowledge base has a bound summary model
 // (SummaryModelID), its name/base_url/api_key are forwarded in config so the
 // skill scripts use the KB's own model instead of the gateway default.
-func postAgentTask(callbackURL, kbID, knowledgeID, docName, modelName, modelBaseURL, modelAPIKey, agentSkillName string) {
-	ctx, cancel := context.WithTimeout(context.Background(), agentGatewayTimeout)
-	defer cancel()
+//
+// The payload is stored verbatim and POSTed later by the agent build dispatcher,
+// which caps how many builds are in flight at the gateway at any moment.
+func enqueueAgentBuildTask(
+	ctx context.Context,
+	db *gorm.DB,
+	callbackURL, kbID, knowledgeID, docName string,
+	modelName, modelBaseURL, modelAPIKey, agentSkillName string,
+	tenantID uint64,
+) {
 
 	// 技能名：随通知上下文传入（空则默认 supply-management-policy-compiler）。
 	// 实际技能名在 maybeNotifyAgentForWikiBuild 里从 kb.WikiConfig.Skill 解析后传入。
@@ -145,30 +156,49 @@ func postAgentTask(callbackURL, kbID, knowledgeID, docName, modelName, modelBase
 		"instructions": instructions,
 		"config":       cfg,
 	}
-	body, err := json.Marshal(payload)
+	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		logger.Warnf(ctx, "[agent-notify] marshal payload failed: %v", err)
 		return
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, callbackURL, bytes.NewReader(body))
-	if err != nil {
-		logger.Warnf(ctx, "[agent-notify] build request failed: %v", err)
+	// One live build per document: re-parsing or re-uploading a file must not
+	// stack duplicate builds on the gateway.
+	var active int64
+	if err := db.WithContext(ctx).Model(&types.AgentBuildTask{}).
+		Where("knowledge_id = ?", knowledgeID).
+		Where("status IN ?", []string{types.AgentBuildStatusQueued, types.AgentBuildStatusRunning}).
+		Count(&active).Error; err != nil {
+		logger.Warnf(ctx, "[agent-notify] duplicate check failed kb=%s knowledge=%s: %v", kbID, knowledgeID, err)
 		return
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if active > 0 {
+		logger.Infof(ctx, "[agent-notify] wiki build already queued for knowledge=%s, skip duplicate", knowledgeID)
+		return
+	}
 
-	client := &http.Client{Timeout: agentGatewayTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		logger.Warnf(ctx, "[agent-notify] POST %s failed: %v", callbackURL, err)
+	now := time.Now()
+	task := &types.AgentBuildTask{
+		ID:              uuid.NewString(),
+		TenantID:        tenantID,
+		KnowledgeBaseID: kbID,
+		KnowledgeID:     knowledgeID,
+		DocName:         docName,
+		Skill:           agentSkillName,
+		Status:          types.AgentBuildStatusQueued,
+		MaxAttempts:     types.DefaultAgentBuildMaxAttempts,
+		GatewayURL:      callbackURL,
+		Payload:         string(payloadJSON),
+		QueuedAt:        now,
+		NextAttemptAt:   now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := db.WithContext(ctx).Create(task).Error; err != nil {
+		logger.Warnf(ctx, "[agent-notify] enqueue failed kb=%s knowledge=%s doc=%s: %v",
+			kbID, knowledgeID, docName, err)
 		return
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		logger.Warnf(ctx, "[agent-notify] POST %s returned status %d", callbackURL, resp.StatusCode)
-		return
-	}
-	logger.Infof(ctx, "[agent-notify] wiki build task submitted: kb=%s knowledge=%s doc=%s",
-		kbID, knowledgeID, docName)
+	logger.Infof(ctx, "[agent-notify] wiki build queued: id=%s kb=%s knowledge=%s doc=%s skill=%s",
+		task.ID, kbID, knowledgeID, docName, agentSkillName)
 }

@@ -9,6 +9,8 @@ interface MenuItem {
   title: string
   titleKey?: string
   icon: string
+  /** 可选：tdesign 图标名。设置后侧栏用 <t-icon> 渲染，否则回退到 assets/img 图片 */
+  iconName?: string
   path: string
   childrenPath?: string
   children?: MenuChild[]
@@ -28,6 +30,7 @@ export const useMenuStore = defineStore('menuStore', () => {
     },
     { title: '', titleKey: 'menu.knowledgeBase', icon: 'zhishiku', path: 'knowledge-bases' },
     { title: '', titleKey: 'menu.skills', icon: 'integration', path: 'skills' },
+    { title: '', titleKey: 'menu.agentTasks', icon: 'agent-tasks', iconName: 'chart-line', path: 'agent-tasks' },
     { title: '', titleKey: 'menu.agents', icon: 'agent', path: 'agents' },
     { title: '', titleKey: 'menu.organizations', icon: 'organization', path: 'organizations' },
     { title: '', titleKey: 'menu.settings', icon: 'setting', path: 'settings' },

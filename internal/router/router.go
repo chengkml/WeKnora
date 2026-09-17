@@ -94,6 +94,7 @@ type RouterParams struct {
 	WikiPageHandler              *handler.WikiPageHandler
 	GraphHandler                 *handler.GraphHandler
 	TokenizerHandler             *handler.TokenizerHandler
+	AgentTaskHandler             *handler.AgentTaskHandler
 }
 
 // NewRouter 创建新的路由
@@ -256,6 +257,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterInitializationRoutes(v1, params.InitializationHandler, rbacGuards)
 		RegisterSystemRoutes(v1, params.SystemHandler, rbacGuards)
 		RegisterSystemAdminRoutes(v1, params.SystemHandler, params.AuditLogHandler, rbacGuards)
+		RegisterAgentTaskRoutes(v1, params.AgentTaskHandler, rbacGuards)
 		RegisterMCPServiceRoutes(v1, params.MCPServiceHandler, params.MCPCredentialsHandler, params.MCPOAuthHandler, rbacGuards)
 		RegisterMCPGatewayRoutes(v1, params.MCPGatewayHandler, rbacGuards)
 		RegisterWebSearchRoutes(v1, params.WebSearchHandler, rbacGuards)

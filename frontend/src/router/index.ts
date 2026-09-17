@@ -133,6 +133,15 @@ const router = createRouter({
           meta: { requiresInit: true, requiresAuth: true }
         },
         {
+          // Agent 任务监控：WeKnora → agent-gateway「wiki 构建」任务的全生命周期
+          // （运行中 / 排队 / 重试 / 取消）。后端 /api/v1/system/admin/agent-tasks
+          // 为 SystemAdmin 专用，故复用 /platform/system/* 的 requiresSystemAdmin 门禁。
+          path: "agent-tasks",
+          name: "agentTaskMonitor",
+          component: () => import("../views/system/AgentTasks.vue"),
+          meta: { requiresInit: true, requiresAuth: true, requiresSystemAdmin: true }
+        },
+        {
           path: "knowledge-search",
           // 旧路径保留为重定向，打开全局命令面板（⌘K），带上可选的 q 参数
           redirect: (to) => {
