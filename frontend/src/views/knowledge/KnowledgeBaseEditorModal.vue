@@ -379,8 +379,8 @@
                   </div>
                 </div>
 
-                <!-- 音频处理（ASR）设置 -->
-                <div v-if="!isFAQ" v-show="currentSection === 'asr'" class="section">
+                <!-- 音频处理（ASR）设置(私有化定制:仅编辑模式可见) -->
+                <div v-if="!isFAQ && props.mode === 'edit'" v-show="currentSection === 'asr'" class="section">
                   <div v-if="formData" class="kb-multimodal-settings">
                     <div class="section-header">
                       <h2>{{ $t('knowledgeEditor.asr.title') }}</h2>
@@ -625,10 +625,10 @@ const navItems = computed(() => {
     items.push(
       { key: 'parser', icon: 'file-search', label: t('settings.parserEngine') },
       { key: 'multimodal', icon: 'image', label: t('knowledgeEditor.sidebar.multimodal') },
-      { key: 'asr', icon: 'sound', label: t('knowledgeEditor.sidebar.asr') },
     )
-    // 私有化定制：创建模式隐藏「存储引擎」「知识图谱」配置
+    // 私有化定制：创建模式隐藏「音频处理」「存储引擎」「知识图谱」配置
     if (props.mode === 'edit') {
+      items.push({ key: 'asr', icon: 'sound', label: t('knowledgeEditor.sidebar.asr') })
       items.push({ key: 'storage', icon: 'cloud', label: t('knowledgeEditor.sidebar.storage') })
     }
     items.push({ key: 'chunking', icon: 'file-copy', label: t('knowledgeEditor.sidebar.chunking') })
