@@ -440,6 +440,7 @@
                     ref="advancedSettingsRef"
                     v-if="formData"
                     :question-generation="formData.questionGenerationConfig"
+                    :hide-question-generation="mode === 'create'"
                     :rag-enabled="formData.indexingStrategy?.vectorEnabled || formData.indexingStrategy?.keywordEnabled"
                     :all-models="allModels"
                     :table-metadata-instructions="formData.chunkingConfig.tableMetadataInstructions"
@@ -785,7 +786,8 @@ const initFormData = (type: 'document' | 'faq' = 'document') => {
       customInstructions: ''
     },
     questionGenerationConfig: {
-      enabled: true,
+      // 私有化定制(2026-09-17):新建知识集默认关闭且配置入口隐藏
+      enabled: false,
       questionCount: 3,
       customInstructions: ''
     },

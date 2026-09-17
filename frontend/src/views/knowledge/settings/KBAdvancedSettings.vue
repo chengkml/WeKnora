@@ -7,7 +7,8 @@
 
     <div class="settings-group">
       <!-- Question Generation feature (only useful for RAG indexing) -->
-      <template v-if="ragEnabled !== false">
+      <!-- hideQuestionGeneration: 私有化定制,新建知识集隐藏该配置 -->
+      <template v-if="!hideQuestionGeneration && ragEnabled !== false">
       <div class="setting-row">
         <div class="setting-info">
           <label>{{ $t('knowledgeEditor.advanced.questionGeneration.label') }}</label>
@@ -90,6 +91,8 @@ interface QuestionGenerationConfig {
 
 interface Props {
   questionGeneration?: QuestionGenerationConfig
+  /** 私有化定制:创建模式隐藏「AI 问题生成」配置入口 */
+  hideQuestionGeneration?: boolean
   ragEnabled?: boolean
   allModels?: any[]
   embedded?: boolean
@@ -98,6 +101,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   embedded: false,
+  hideQuestionGeneration: false,
 })
 
 const emit = defineEmits<{
