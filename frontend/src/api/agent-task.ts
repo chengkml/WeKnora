@@ -158,7 +158,10 @@ export interface AgentTaskGatewayInfo {
   runs_ms: number
   output_text: string
   error_detail: string
+  /** 业务 run id（gateway-run-...），不是 trace 存储的索引键 */
   trace_id: string
+  /** OpenAI-Agents 的 trace id（trace_...），用于 GET /traces/{id}；旧任务可能为空 */
+  sdk_trace_id?: string
 }
 
 /** 一次 agent run 的完整 trace */

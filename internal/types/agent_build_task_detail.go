@@ -29,7 +29,13 @@ type AgentBuildGatewayTask struct {
 	RunsMs      int64  `json:"runs_ms"`
 	OutputText  string `json:"output_text"`
 	ErrorDetail string `json:"error_detail"`
+	// TraceID is the business run id (gateway-run-...). It is NOT the key of the
+	// gateway trace store, so it cannot be used against GET /traces/{id}.
 	TraceID     string `json:"trace_id"`
+	// SDKTraceID is the OpenAI-Agents trace id (trace_...) that indexes the
+	// gateway trace store; empty for tasks that ran before the gateway started
+	// returning it.
+	SDKTraceID  string `json:"sdk_trace_id"`
 }
 
 // AgentBuildTrace mirrors GET <gateway>/traces/{trace_id} (span tree flattened

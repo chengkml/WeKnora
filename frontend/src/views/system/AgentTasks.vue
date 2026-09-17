@@ -3,7 +3,6 @@
     <header class="at-header">
       <div class="at-title-block">
         <h2>{{ t('agentTasks.title') }}</h2>
-        <p class="at-subtitle">{{ t('agentTasks.subtitle') }}</p>
       </div>
       <div class="at-header-actions">
         <label class="at-auto-refresh">
@@ -85,7 +84,6 @@
         <template #doc_name="{ row }">
           <div class="at-doc-cell">
             <span class="at-doc-name" :title="row.doc_name">{{ row.doc_name || '-' }}</span>
-            <span v-if="row.knowledge_id" class="at-doc-meta">{{ row.knowledge_id }}</span>
           </div>
         </template>
 
@@ -213,7 +211,9 @@
             <span class="at-detail-key">{{ t('agentTasks.detail.gatewayTaskId') }}</span>
             <span class="at-detail-val at-detail-mono">{{ detail.gateway?.task_id || detail.task.gateway_task_id || '-' }}</span>
             <span class="at-detail-key">{{ t('agentTasks.detail.traceId') }}</span>
-            <span class="at-detail-val at-detail-mono">{{ detail.gateway?.trace_id || detail.trace?.trace_id || '-' }}</span>
+            <span class="at-detail-val at-detail-mono">
+              {{ detail.gateway?.sdk_trace_id || detail.trace?.trace_id || detail.gateway?.trace_id || '-' }}
+            </span>
             <span class="at-detail-key">{{ t('agentTasks.detail.agent') }}</span>
             <span class="at-detail-val">{{ detail.gateway?.agent_name || '-' }}</span>
           </div>

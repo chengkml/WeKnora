@@ -2223,15 +2223,14 @@ const navItems = computed(() => {
   if (hasKnowledgeBase.value) {
     items.push({ key: 'retrieval', icon: 'search', label: t('agent.editor.retrievalStrategy') });
   }
-  items.push({ key: 'websearch', icon: 'internet', label: t('agent.editor.webSearchConfig') });
-  items.push({ key: 'multimodal', icon: 'attach', label: t('agentEditor.imageUpload.navLabel') });
+  // 私有化定制（WEK-56）：新建/编辑智能体表单不再暴露「联网搜索(websearch)」与
+  // 「附件上传(multimodal)」两个配置区（按需求精简表单）。对应的 section 模板仍保留，
+  // 但既不进导航也不会被 currentSection 选中，因此用户不可达。
   // Agent 模式能力
   if (isAgentMode.value) {
     items.push({ key: 'tools', icon: 'tools', label: t('agent.editor.toolsConfig') });
-    items.push({ key: 'mcp', icon: 'server', label: t('agentEditor.mcp.label') });
-  }
-  if (isAgentMode.value && skillsAvailable.value) {
-    items.push({ key: 'skills', icon: 'lightbulb', label: t('agent.editor.skillsConfig') });
+    // 私有化定制（WEK-56）：「MCP 服务(mcp)」与「技能 Skills(skills)」也从表单移除——
+    // MCP 与技能在平台侧统一管理（技能管理页 / MCP 管理页），无需逐个智能体配置。
   }
   // 发布（仅编辑模式）
   if (editorMode.value === 'edit' && editorAgent.value?.id && !editorAgent.value?.is_builtin && !authStore.isLiteMode) {

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -102,12 +103,22 @@ func (s *agentBuildTaskService) Detail(
 	}
 	detail.Gateway = task
 
-	if strings.TrimSpace(task.TraceID) == "" {
+	// 网关的 trace 存储按 OpenAI-Agents 的 trace_id 建索引；业务 run id
+	// （gateway-run-...）查不到 trace，因此优先用 sdk_trace_id。
+	traceKey := strings.TrimSpace(task.SDKTraceID)
+	if traceKey == "" {
+		traceKey = strings.TrimSpace(task.TraceID)
+	}
+	if traceKey == "" {
 		detail.Notes = append(detail.Notes,
 			"网关任务没有 trace_id，暂时没有 trace 日志可看（任务可能仍在排队或该次运行为空）。")
 		return detail, nil
 	}
-	trace, note := s.fetchGatewayTrace(ctx, collection, task.TraceID)
+	if strings.TrimSpace(task.SDKTraceID) == "" {
+		detail.Notes = append(detail.Notes,
+			"该任务的 SDK trace id 未回传（网关版本较旧或任务早于本次升级），可能取不到 trace。")
+	}
+	trace, note := s.fetchGatewayTrace(ctx, collection, traceKey)
 	if trace == nil {
 		detail.Notes = append(detail.Notes, note)
 		return detail, nil
@@ -124,7 +135,7 @@ func (s *agentBuildTaskService) fetchGatewayTask(
 	if url == "" {
 		return nil, "网关任务地址无法推导，未读取执行日志。"
 	}
-	body, err := s.getGatewayJSON(ctx, url)
+	body, err := s.getGatewayJSON(ctx, url, "任务")
 	if err != nil {
 		logger.Warnf(ctx, "[agent-build] reading gateway task %s failed: %v", taskID, err)
 		return nil, "读取网关任务失败：" + err.Error()
@@ -137,6 +148,7 @@ func (s *agentBuildTaskService) fetchGatewayTask(
 		OutputText  string `json:"output_text"`
 		ErrorDetail string `json:"error_detail"`
 		TraceID     string `json:"trace_id"`
+		SDKTraceID  string `json:"sdk_trace_id"`
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
 		logger.Warnf(ctx, "[agent-build] decoding gateway task %s failed: %v", taskID, err)
@@ -150,6 +162,7 @@ func (s *agentBuildTaskService) fetchGatewayTask(
 		OutputText:  agentBuildPreview(out.OutputText, agentBuildDetailOutputLimit),
 		ErrorDetail: strings.TrimSpace(out.ErrorDetail),
 		TraceID:     strings.TrimSpace(out.TraceID),
+		SDKTraceID:  strings.TrimSpace(out.SDKTraceID),
 	}, ""
 }
 
@@ -162,9 +175,13 @@ func (s *agentBuildTaskService) fetchGatewayTrace(
 	if url == "" {
 		return nil, "网关 trace 地址无法推导，未读取 trace 日志。"
 	}
-	body, err := s.getGatewayJSON(ctx, url)
+	body, err := s.getGatewayJSON(ctx, url, "trace")
 	if err != nil {
 		logger.Warnf(ctx, "[agent-build] reading gateway trace %s failed: %v", traceID, err)
+		var notFound gatewayNotFoundError
+		if errors.As(err, &notFound) {
+			return nil, "网关 trace 存储里还没有这条 trace：若任务仍在执行中，trace 会在运行结束后写入，稍后刷新即可。"
+		}
 		return nil, "读取 trace 失败：" + err.Error()
 	}
 	var raw struct {
@@ -198,7 +215,7 @@ func (s *agentBuildTaskService) fetchGatewayTrace(
 }
 
 // getGatewayJSON performs a short-lived GET and returns the response body.
-func (s *agentBuildTaskService) getGatewayJSON(ctx context.Context, url string) ([]byte, error) {
+func (s *agentBuildTaskService) getGatewayJSON(ctx context.Context, url, what string) ([]byte, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, agentBuildDetailTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
@@ -216,21 +233,31 @@ func (s *agentBuildTaskService) getGatewayJSON(ctx context.Context, url string) 
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, errGatewayStatus(resp.StatusCode)
+		return nil, errGatewayStatus(resp.StatusCode, what)
 	}
 	return body, nil
 }
 
 // errGatewayStatus turns a gateway HTTP status into an operator readable note.
-func errGatewayStatus(code int) error {
+func errGatewayStatus(code int, what string) error {
 	switch code {
 	case http.StatusNotFound:
-		return fmt.Errorf("网关已无该任务记录（可能已被清理或轮转）")
+		return gatewayNotFoundError{what: what}
 	case http.StatusTooManyRequests:
 		return fmt.Errorf("网关繁忙（HTTP 429），请稍后重试")
 	default:
-		return fmt.Errorf("网关返回 HTTP %s", strconv.Itoa(code))
+		return fmt.Errorf("网关返回 HTTP %s（读取%s）", strconv.Itoa(code), what)
 	}
+}
+
+// gatewayNotFoundError marks a 404 from the gateway so callers can tell
+// "nothing there (yet)" apart from a transport or server failure.
+type gatewayNotFoundError struct {
+	what string
+}
+
+func (e gatewayNotFoundError) Error() string {
+	return fmt.Sprintf("网关已无该%s记录（可能已被清理或轮转）", e.what)
 }
 
 // flattenGatewaySpan converts one exported OpenAI-Agents span into the flat
