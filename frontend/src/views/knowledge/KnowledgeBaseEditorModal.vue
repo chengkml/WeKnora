@@ -285,8 +285,8 @@
                   />
                 </div>
 
-                <!-- 存储引擎(私有化定制:仅编辑模式可见) -->
-                <div v-if="!isFAQ && props.mode === 'edit' && formData && currentSection === 'storage'" class="section">
+                <!-- 存储引擎(私有化定制:已屏蔽,与新建配置对齐) -->
+                <div v-if="false" class="section">
                   <KBStorageSettings
                     :storage-backend-id="formData.storageBackendId"
                     :storage-provider="formData.storageProvider"
@@ -379,8 +379,8 @@
                   </div>
                 </div>
 
-                <!-- 音频处理（ASR）设置(私有化定制:仅编辑模式可见) -->
-                <div v-if="!isFAQ && props.mode === 'edit'" v-show="currentSection === 'asr'" class="section">
+                <!-- 音频处理（ASR）设置(私有化定制:已屏蔽,与新建配置对齐) -->
+                <div v-if="false" class="section">
                   <div v-if="formData" class="kb-multimodal-settings">
                     <div class="section-header">
                       <h2>{{ $t('knowledgeEditor.asr.title') }}</h2>
@@ -423,8 +423,8 @@
                   </div>
                 </div>
 
-                <!-- 知识图谱(私有化定制:仅编辑模式可见,新建默认开启图谱) -->
-                <div v-if="!isFAQ && props.mode === 'edit' && currentSection === 'graph'" class="section">
+                <!-- 知识图谱(私有化定制:已屏蔽,与新建配置对齐,新建默认开启图谱) -->
+                <div v-if="false" class="section">
                   <GraphSettings
                     v-if="formData"
                     :graph-extract="formData.nodeExtractConfig"
@@ -447,16 +447,6 @@
                     @update:question-generation="handleQuestionGenerationUpdate"
                     @update:table-metadata-instructions="(value: string) => { if (formData) formData.chunkingConfig.tableMetadataInstructions = value }"
                   />
-                </div>
-
-                <!-- 数据源管理（仅编辑模式） -->
-                <div v-if="mode === 'edit' && kbId && currentSection === 'datasource'" class="section">
-                  <DataSourceSettings :kb-id="kbId" @count="dsCount = $event" />
-                </div>
-
-                <!-- 共享设置（仅编辑模式） -->
-                <div v-if="mode === 'edit' && kbId && currentSection === 'share'" class="section">
-                  <KBShareSettings :kb-id="kbId" :can-share="canShareKB" />
                 </div>
               </div>
 
@@ -611,6 +601,9 @@ const DEFAULT_CHUNKING_PRESET = {
 } as const
 
 const navItems = computed(() => {
+  // 私有化定制(2026-09-17)：创建与编辑配置完全对齐 —— 仅保留
+  // 基本信息/模型配置/解析引擎/分块(+FAQ)。编辑模式不再出现
+  // 存储引擎/知识图谱/音频处理/数据源/共享 等新建表单没有的配置。
   const items: { key: string; icon: string; label: string; badge?: number }[] = [
     { key: 'basic', icon: 'info-circle', label: t('knowledgeEditor.sidebar.basic') },
     { key: 'models', icon: 'control-platform', label: t('knowledgeEditor.sidebar.models') },
@@ -619,22 +612,7 @@ const navItems = computed(() => {
     items.push({ key: 'faq', icon: 'help-circle', label: t('knowledgeEditor.sidebar.faq') })
   } else {
     items.push({ key: 'parser', icon: 'file-search', label: t('settings.parserEngine') })
-    // 私有化定制：创建/编辑均隐藏「音频处理」「存储引擎」「知识图谱」配置
-    if (props.mode === 'edit') {
-      items.push({ key: 'asr', icon: 'sound', label: t('knowledgeEditor.sidebar.asr') })
-      items.push({ key: 'storage', icon: 'cloud', label: t('knowledgeEditor.sidebar.storage') })
-    }
     items.push({ key: 'chunking', icon: 'file-copy', label: t('knowledgeEditor.sidebar.chunking') })
-    if (props.mode === 'edit') {
-      items.push({ key: 'graph', icon: 'chart-bubble', label: t('knowledgeEditor.sidebar.graph') })
-    }
-    // 私有化定制(2026-09-17)：向量存储绑定/图像处理/高级设置 配置入口全部隐藏
-    if (props.mode === 'edit' && props.kbId) {
-      items.push({ key: 'datasource', icon: 'cloud-download', label: t('knowledgeEditor.sidebar.datasource'), badge: dsCount.value || undefined })
-    }
-  }
-  if (props.mode === 'edit' && props.kbId && !authStore.isLiteMode) {
-    items.push({ key: 'share', icon: 'share', label: t('knowledgeEditor.sidebar.share') })
   }
   return items
 })
