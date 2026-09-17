@@ -156,7 +156,7 @@ def _gateway_managed_mcp():
         for it in items:
             if not isinstance(it, dict):
                 continue
-            if (it.get('name') or '').strip().lower() != 'weknora':
+            if (it.get('name') or '').strip().lower() not in ('wiki-tools', 'weknora'):
                 continue
             url = (it.get('url') or it.get('endpoint') or '').strip()
             headers = it.get('headers') or it.get('env') or {}
