@@ -311,14 +311,16 @@ func (s *agentBuildTaskService) syncTask(ctx context.Context, task *types.AgentB
 	}
 }
 
-// Retry puts a finished row back on the queue, so an operator can re-run a
-// build without touching the knowledge base.
+// Retry puts a failed or cancelled row back on the queue, so an operator can
+// re-run a build without touching the knowledge base. Succeeded rows are
+// refused: their wiki pages are already published, and re-queueing them used to
+// look like "a finished task turned into queued/cancelled" on the monitor page.
 func (s *agentBuildTaskService) Retry(ctx context.Context, id string) error {
 	task, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	if !types.IsTerminalAgentBuildStatus(task.Status) {
+	if !types.IsRetryableAgentBuildStatus(task.Status) {
 		return types.ErrAgentBuildTaskNotRetryable
 	}
 	affected, err := s.repo.Requeue(ctx, id)
@@ -407,30 +409,7 @@ func (s *agentBuildTaskService) List(ctx context.Context, filter types.AgentBuil
 	now := time.Now()
 	items := make([]*types.AgentBuildTaskView, 0, len(rows))
 	for _, row := range rows {
-		terminal := types.IsTerminalAgentBuildStatus(row.Status)
-		items = append(items, &types.AgentBuildTaskView{
-			ID:                row.ID,
-			KnowledgeBaseID:   row.KnowledgeBaseID,
-			KnowledgeBaseName: names[row.KnowledgeBaseID],
-			KnowledgeID:       row.KnowledgeID,
-			DocName:           row.DocName,
-			Skill:             row.Skill,
-			Status:            row.Status,
-			Attempts:          row.Attempts,
-			MaxAttempts:       row.MaxAttempts,
-			GatewayTaskID:     row.GatewayTaskID,
-			LastError:         row.LastError,
-			OutputPreview:     agentBuildPreview(row.OutputText, agentBuildOutputPreview),
-			QueuedAt:          row.QueuedAt,
-			SubmittedAt:       row.SubmittedAt,
-			StartedAt:         row.StartedAt,
-			FinishedAt:        row.FinishedAt,
-			WaitSeconds:       row.WaitSeconds(now),
-			RunSeconds:        row.RunSeconds(now),
-			DurationMs:        row.DurationMs,
-			CanRetry:          terminal,
-			CanCancel:         !terminal,
-		})
+		items = append(items, buildAgentBuildTaskView(row, names[row.KnowledgeBaseID], now))
 	}
 	return &types.AgentBuildTaskPage{
 		Items:    items,

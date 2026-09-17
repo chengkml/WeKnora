@@ -437,14 +437,14 @@ const getIconActiveState = (itemPath: string) => {
 };
 
 // 分离上下两部分菜单（使用 visibleMenuArr 以便 lite 模式过滤 logout）
-// 私有化定制（WEK-44）：隐藏侧栏「新对话(creatChat)/共享空间(organizations)」两个入口，
-// 保留「知识库」+「技能管理」+「智能体(agents)」+「Agent 任务监控」；再追加「MCP 管理」（见下）。
-// 智能体(agents) 于 2026-09-17 按需求重新开放：路由 /platform/agents 为 Viewer+ 可见，
-// 无需系统管理员，侧栏入口对工作区成员全部展示。
+// 私有化定制（WEK-44）：隐藏侧栏「共享空间(organizations)」入口，
+// 保留「新增会话(creatChat)」+「知识库」+「技能管理」+「智能体(agents)」+「任务监控」；再追加「MCP 管理」（见下）。
+// 2026-09-17 按需求重新开放：智能体(agents)（路由 /platform/agents，Viewer+ 可见）与
+// 新增会话(creatChat)（路由 /platform/creatChat，带会话列表 children）；均无系统管理员门禁。
 // 不动 store 的 menuArr（会话列表/active 状态等逻辑依赖它），路由深链仍可达。
 const topMenuItems = computed<MenuItem[]>(() => {
     const items = (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) =>
-        item.path === 'knowledge-bases' || item.path === 'skills' || item.path === 'agents' || item.path === 'agent-tasks'
+        item.path === 'creatChat' || item.path === 'knowledge-bases' || item.path === 'skills' || item.path === 'agents' || item.path === 'agent-tasks'
     );
     // 私有化定制：侧栏第三项「MCP 管理」。不写入 stores/menu.ts 的 menuArr（会话列表等逻辑依赖它），
     // 仅在本组件的可见项末尾追加；标题走 i18n 的 menu.mcp，随语言切换更新（显式读取 locale 建立依赖）。

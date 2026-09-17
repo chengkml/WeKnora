@@ -67,6 +67,10 @@ type AgentBuildTaskService interface {
 	// Summary returns the header counters for the monitor page. tenantID limits
 	// the counters to one tenant; 0 (system admin) counts every tenant.
 	Summary(ctx context.Context, tenantID uint64) (*types.AgentBuildTaskSummary, error)
+	// Detail returns one ledger row together with the gateway task snapshot and
+	// its execution trace, which is what the monitor page's log drawer shows.
+	// tenantID scopes the row: 0 means a system admin may read any tenant.
+	Detail(ctx context.Context, id string, tenantID uint64) (*types.AgentBuildTaskDetail, error)
 	// Retry puts a finished row back on the queue.
 	Retry(ctx context.Context, id string) error
 	// Cancel cancels a queued or in-flight row, best-effort cancelling it on the

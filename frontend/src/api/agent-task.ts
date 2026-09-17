@@ -120,3 +120,66 @@ export async function cancelAgentTask(id: string): Promise<AgentTaskActionRespon
   const response: any = await post(`/api/v1/agent-tasks/${encodeURIComponent(id)}/cancel`, {})
   return (response?.data ?? response) as AgentTaskActionResponse
 }
+
+// ---------------------------------------------------------------------------
+// 任务执行日志（详情抽屉）
+//
+//   GET /api/v1/agent-tasks/{id}/detail
+//     → { task, gateway?, trace?, notes? }
+//
+// 网关侧的 task/trace 由 WeKnora 服务端代理读取（浏览器不需要网关凭据）；
+// gateway / trace 字段可能缺失，缺失原因写在 notes 里。
+// ---------------------------------------------------------------------------
+
+/** 一条 trace span（后端已按类型拍平并把 input/output/detail 截断） */
+export interface AgentTaskTraceSpan {
+  id: string
+  parent_id?: string
+  type: string
+  name?: string
+  started_at?: string
+  ended_at?: string
+  duration_ms: number | null
+  /** ok | error */
+  status: string
+  error?: string
+  model?: string
+  summary?: string
+  input?: string
+  output?: string
+  detail?: string
+}
+
+/** 网关任务快照（GET <gateway>/tasks/{task_id}） */
+export interface AgentTaskGatewayInfo {
+  task_id: string
+  status: string
+  agent_name: string
+  runs_ms: number
+  output_text: string
+  error_detail: string
+  trace_id: string
+}
+
+/** 一次 agent run 的完整 trace */
+export interface AgentTaskTrace {
+  trace_id: string
+  name: string
+  span_count: number
+  spans: AgentTaskTraceSpan[]
+}
+
+/** GET /api/v1/agent-tasks/{id}/detail 的业务数据 */
+export interface AgentTaskDetail {
+  task: AgentTaskItem
+  gateway?: AgentTaskGatewayInfo
+  trace?: AgentTaskTrace
+  /** 缺失项说明（未提交网关 / 网关不可达 / trace 已轮转等） */
+  notes?: string[]
+}
+
+/** 读取单个任务的执行日志（网关任务快照 + trace span 列表）。 */
+export async function getAgentTaskDetail(id: string): Promise<AgentTaskDetail> {
+  const response: any = await get(`/api/v1/agent-tasks/${encodeURIComponent(id)}/detail`)
+  return (response?.data ?? response) as AgentTaskDetail
+}

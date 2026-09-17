@@ -81,6 +81,35 @@ func (h *AgentTaskHandler) AgentTaskSummary(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// GetAgentTaskDetail returns one ledger row together with the gateway task
+// snapshot and its execution trace, which the monitor page renders as the
+// task's execution log.
+// @Summary      任务执行详情（含 trace 日志）
+// @Description  读取该行对应的网关任务状态、输出、错误与完整 trace span 列表
+// @Tags         system
+// @Produce      json
+// @Param        id path string true "任务 ID"
+// @Success      200 {object} types.AgentBuildTaskDetail
+// @Router       /agent-tasks/{id}/detail [get]
+func (h *AgentTaskHandler) GetAgentTaskDetail(c *gin.Context) {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing task id"})
+		return
+	}
+	result, err := h.service.Detail(c.Request.Context(), id, callerTenantScope(c))
+	if err != nil {
+		if errors.Is(err, types.ErrAgentBuildTaskNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		logger.Errorf(c.Request.Context(), "[agent-task] detail failed id=%s: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load agent build task detail"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 // RetryAgentTask re-queues a finished (failed / cancelled / succeeded) task.
 // @Summary      重试 agent 构建任务
 // @Tags         system

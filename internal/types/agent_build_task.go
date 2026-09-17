@@ -35,8 +35,11 @@ const DefaultAgentBuildMaxAttempts = 3
 var ErrAgentBuildTaskNotFound = errors.New("agent build task not found")
 
 // ErrAgentBuildTaskNotRetryable is returned when a retry is requested for a row
-// that is still queued or running.
-var ErrAgentBuildTaskNotRetryable = errors.New("agent build task is still pending")
+// the operator cannot re-run: a task still queued/running, or one that already
+// succeeded (re-running a successful build would silently invalidate the wiki
+// pages an operator just reviewed, which read as "a finished task turned into
+// queued/cancelled" on the monitor page).
+var ErrAgentBuildTaskNotRetryable = errors.New("only failed or cancelled tasks can be retried")
 
 // ErrAgentBuildTaskNotCancellable is returned when a cancel is requested for a
 // row that already reached a terminal state.
@@ -47,6 +50,19 @@ var ErrAgentBuildTaskNotCancellable = errors.New("agent build task already finis
 func IsTerminalAgentBuildStatus(status string) bool {
 	switch status {
 	case AgentBuildStatusSucceeded, AgentBuildStatusFailed, AgentBuildStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsRetryableAgentBuildStatus reports whether an operator may re-queue the row.
+// Succeeded is deliberately excluded: the build output (wiki pages) is already
+// published, and re-running it from the monitor page used to look like the task
+// had "turned into" queued/cancelled after finishing.
+func IsRetryableAgentBuildStatus(status string) bool {
+	switch status {
+	case AgentBuildStatusFailed, AgentBuildStatusCancelled:
 		return true
 	default:
 		return false
