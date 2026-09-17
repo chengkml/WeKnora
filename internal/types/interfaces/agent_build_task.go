@@ -18,12 +18,13 @@ type AgentBuildTaskRepository interface {
 	GetByID(ctx context.Context, id string) (*types.AgentBuildTask, error)
 	// List returns a filtered page plus the unpaged total.
 	List(ctx context.Context, filter types.AgentBuildTaskFilter) ([]*types.AgentBuildTask, int64, error)
-	// CountByStatus groups every row by status (drives the header cards).
-	CountByStatus(ctx context.Context) (map[string]int64, error)
+	// CountByStatus groups rows by status (drives the header cards). tenantID
+	// limits the count to one tenant; 0 counts every tenant.
+	CountByStatus(ctx context.Context, tenantID uint64) (map[string]int64, error)
 	// CountFinishedSince counts rows that reached `status` at or after `since`.
-	CountFinishedSince(ctx context.Context, status string, since time.Time) (int64, error)
+	CountFinishedSince(ctx context.Context, status string, since time.Time, tenantID uint64) (int64, error)
 	// OldestQueuedAt returns the queued_at of the oldest waiting row, if any.
-	OldestQueuedAt(ctx context.Context) (*time.Time, error)
+	OldestQueuedAt(ctx context.Context, tenantID uint64) (*time.Time, error)
 	// ClaimQueued atomically flips up to `limit` eligible rows to running and
 	// returns them. Concurrent dispatchers never claim the same row twice.
 	ClaimQueued(ctx context.Context, limit int) ([]*types.AgentBuildTask, error)
@@ -63,8 +64,9 @@ type AgentBuildTaskService interface {
 	// List returns one page of the ledger, joined with knowledge base names and
 	// stripped of credential-bearing fields.
 	List(ctx context.Context, filter types.AgentBuildTaskFilter) (*types.AgentBuildTaskPage, error)
-	// Summary returns the header counters for the monitor page.
-	Summary(ctx context.Context) (*types.AgentBuildTaskSummary, error)
+	// Summary returns the header counters for the monitor page. tenantID limits
+	// the counters to one tenant; 0 (system admin) counts every tenant.
+	Summary(ctx context.Context, tenantID uint64) (*types.AgentBuildTaskSummary, error)
 	// Retry puts a finished row back on the queue.
 	Retry(ctx context.Context, id string) error
 	// Cancel cancels a queued or in-flight row, best-effort cancelling it on the

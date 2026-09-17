@@ -80,16 +80,23 @@ func (r *agentBuildTaskRepository) List(
 	return rows, total, nil
 }
 
-// CountByStatus groups every row by status.
-func (r *agentBuildTaskRepository) CountByStatus(ctx context.Context) (map[string]int64, error) {
+// CountByStatus groups rows by status. tenantID limits the count to one tenant
+// (0 = every tenant, which is what a system administrator and the dispatcher
+// backlog guard want).
+func (r *agentBuildTaskRepository) CountByStatus(
+	ctx context.Context, tenantID uint64,
+) (map[string]int64, error) {
 	var rows []struct {
 		Status string `gorm:"column:status"`
 		Total  int64  `gorm:"column:total"`
 	}
-	if err := r.db.WithContext(ctx).Model(&types.AgentBuildTask{}).
+	q := r.db.WithContext(ctx).Model(&types.AgentBuildTask{}).
 		Select("status, COUNT(*) AS total").
-		Group("status").
-		Scan(&rows).Error; err != nil {
+		Group("status")
+	if tenantID != 0 {
+		q = q.Where("tenant_id = ?", tenantID)
+	}
+	if err := q.Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make(map[string]int64, len(rows))
@@ -101,24 +108,30 @@ func (r *agentBuildTaskRepository) CountByStatus(ctx context.Context) (map[strin
 
 // CountFinishedSince counts rows that reached `status` at or after `since`.
 func (r *agentBuildTaskRepository) CountFinishedSince(
-	ctx context.Context, status string, since time.Time,
+	ctx context.Context, status string, since time.Time, tenantID uint64,
 ) (int64, error) {
 	var total int64
-	err := r.db.WithContext(ctx).Model(&types.AgentBuildTask{}).
-		Where("status = ? AND finished_at IS NOT NULL AND finished_at >= ?", status, since).
-		Count(&total).Error
+	q := r.db.WithContext(ctx).Model(&types.AgentBuildTask{}).
+		Where("status = ? AND finished_at IS NOT NULL AND finished_at >= ?", status, since)
+	if tenantID != 0 {
+		q = q.Where("tenant_id = ?", tenantID)
+	}
+	err := q.Count(&total).Error
 	return total, err
 }
 
 // OldestQueuedAt returns the queued_at of the oldest waiting row.
-func (r *agentBuildTaskRepository) OldestQueuedAt(ctx context.Context) (*time.Time, error) {
+func (r *agentBuildTaskRepository) OldestQueuedAt(ctx context.Context, tenantID uint64) (*time.Time, error) {
 	var rows []struct {
 		QueuedAt *time.Time `gorm:"column:queued_at"`
 	}
-	err := r.db.WithContext(ctx).Model(&types.AgentBuildTask{}).
+	q := r.db.WithContext(ctx).Model(&types.AgentBuildTask{}).
 		Select("queued_at").
-		Where("status = ?", types.AgentBuildStatusQueued).
-		Order("queued_at ASC").Limit(1).Scan(&rows).Error
+		Where("status = ?", types.AgentBuildStatusQueued)
+	if tenantID != 0 {
+		q = q.Where("tenant_id = ?", tenantID)
+	}
+	err := q.Order("queued_at ASC").Limit(1).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}

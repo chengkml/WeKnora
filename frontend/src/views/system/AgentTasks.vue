@@ -187,8 +187,14 @@ import {
   type AgentTaskStatus,
   type AgentTaskSummary,
 } from '@/api/agent-task'
+import { useAuthStore } from '@/stores/auth'
 
 const { t, te } = useI18n()
+
+// 读接口对本工作区成员开放（按租户限域），但 retry / cancel 打的是共享的网关队列，
+// 后端走 AdminOrSystemAdmin 闸门：非管理员点按钮只会拿到 403，所以这里直接禁用。
+const authStore = useAuthStore()
+const canOperate = computed(() => authStore.isSystemAdmin || authStore.hasRole('admin'))
 
 const POLL_INTERVAL_MS = 10000
 const DEFAULT_PAGE_SIZE = 20
@@ -211,6 +217,10 @@ const summary = ref<AgentTaskSummary>({
   failed_today: 0,
   succeeded_today: 0,
   total: 0,
+  concurrency: 0,
+  oldest_queued_seconds: 0,
+  gateway_configured: false,
+  gateway_url: '',
 })
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -272,11 +282,11 @@ function formatDuration(seconds: number | null | undefined): string {
 }
 
 function canRetry(row: AgentTaskItem): boolean {
-  return row.status === 'failed' || row.status === 'cancelled'
+  return canOperate.value && (row.status === 'failed' || row.status === 'cancelled')
 }
 
 function canCancel(row: AgentTaskItem): boolean {
-  return row.status === 'queued' || row.status === 'running'
+  return canOperate.value && (row.status === 'queued' || row.status === 'running')
 }
 
 async function load() {

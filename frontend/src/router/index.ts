@@ -134,12 +134,14 @@ const router = createRouter({
         },
         {
           // Agent 任务监控：WeKnora → agent-gateway「wiki 构建」任务的全生命周期
-          // （运行中 / 排队 / 重试 / 取消）。后端 /api/v1/system/admin/agent-tasks
-          // 为 SystemAdmin 专用，故复用 /platform/system/* 的 requiresSystemAdmin 门禁。
+          // （运行中 / 排队 / 重试 / 取消）。后端 /api/v1/agent-tasks 对工作区成员开放
+          // 并按租户限域（retry/cancel 需管理员），故这里不再挂 requiresSystemAdmin：
+          // 该门禁会把非系统管理员直接重定向到知识库页（表现为「点任务监控打开的是知识库」），
+          // 而本部署没有系统管理员账号，页面会永远打不开。
           path: "agent-tasks",
           name: "agentTaskMonitor",
           component: () => import("../views/system/AgentTasks.vue"),
-          meta: { requiresInit: true, requiresAuth: true, requiresSystemAdmin: true }
+          meta: { requiresInit: true, requiresAuth: true }
         },
         {
           path: "knowledge-search",

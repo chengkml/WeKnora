@@ -3,13 +3,13 @@ import { get, post } from '@/utils/request'
 // ---------------------------------------------------------------------------
 // WeKnora → AgentGateway「wiki 构建」任务监控（私有化定制）
 //
-// 后端契约（SystemAdmin 专用，鉴权方式与运行队列页 /api/v1/system/admin/runtime/* 一致）：
-//   GET  /api/v1/system/admin/agent-tasks            → { items, total, page, page_size }
-//   GET  /api/v1/system/admin/agent-tasks/summary    → { total, running, queued, failed_today,
+// 后端契约（读接口对本工作区成员开放、按租户限域；retry/cancel 需工作区管理员）：
+//   GET  /api/v1/agent-tasks            → { items, total, page, page_size }
+//   GET  /api/v1/agent-tasks/summary    → { total, running, queued, failed_today,
 //                                                       succeeded_today, concurrency,
 //                                                       oldest_queued_seconds, gateway_configured, gateway_url }
-//   POST /api/v1/system/admin/agent-tasks/{id}/retry  → { success: true }
-//   POST /api/v1/system/admin/agent-tasks/{id}/cancel → { success: true }
+//   POST /api/v1/agent-tasks/{id}/retry  → { success: true }
+//   POST /api/v1/agent-tasks/{id}/cancel → { success: true }
 //
 // 响应取值方式与 api/mcp-gateway.ts 保持一致：utils/request.ts 的响应拦截器已经把
 // 整个 HTTP body 作为 resolve 值返回，故这里用 response.data ?? response 兜底读出业务数据。
@@ -21,7 +21,7 @@ export type AgentTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'c
 /** 列表筛选：'' 表示不限状态 */
 export type AgentTaskStatusFilter = AgentTaskStatus | ''
 
-/** GET /api/v1/system/admin/agent-tasks 列表项（后端 JSON 为 snake_case） */
+/** GET /api/v1/agent-tasks 列表项（后端 JSON 为 snake_case） */
 export interface AgentTaskItem {
   id: string
   knowledge_base_id: string
@@ -56,7 +56,7 @@ export interface AgentTaskListParams {
   page_size?: number
 }
 
-/** GET /api/v1/system/admin/agent-tasks 的业务数据 */
+/** GET /api/v1/agent-tasks 的业务数据 */
 export interface AgentTaskListResult {
   items: AgentTaskItem[]
   total: number
@@ -64,7 +64,7 @@ export interface AgentTaskListResult {
   page_size: number
 }
 
-/** GET /api/v1/system/admin/agent-tasks/summary 的业务数据 */
+/** GET /api/v1/agent-tasks/summary 的业务数据 */
 export interface AgentTaskSummary {
   /** 全部台账行数（含已完成 / 已取消） */
   total: number
@@ -99,24 +99,24 @@ function buildQuery(params: AgentTaskListParams): Record<string, string | number
 
 /** 分页查询任务列表（支持按状态 / 知识库 / 关键词 doc_name 过滤）。 */
 export async function listAgentTasks(params: AgentTaskListParams = {}): Promise<AgentTaskListResult> {
-  const response: any = await get('/api/v1/system/admin/agent-tasks', { params: buildQuery(params) })
+  const response: any = await get('/api/v1/agent-tasks', { params: buildQuery(params) })
   return (response?.data ?? response) as AgentTaskListResult
 }
 
 /** 顶部统计卡片（运行中 / 排队中 / 今日失败 / 今日成功 / 总数）。 */
 export async function getAgentTaskSummary(): Promise<AgentTaskSummary> {
-  const response: any = await get('/api/v1/system/admin/agent-tasks/summary')
+  const response: any = await get('/api/v1/agent-tasks/summary')
   return (response?.data ?? response) as AgentTaskSummary
 }
 
 /** 重试失败或已取消的任务。 */
 export async function retryAgentTask(id: string): Promise<AgentTaskActionResponse> {
-  const response: any = await post(`/api/v1/system/admin/agent-tasks/${encodeURIComponent(id)}/retry`, {})
+  const response: any = await post(`/api/v1/agent-tasks/${encodeURIComponent(id)}/retry`, {})
   return (response?.data ?? response) as AgentTaskActionResponse
 }
 
 /** 取消排队中或执行中的任务。 */
 export async function cancelAgentTask(id: string): Promise<AgentTaskActionResponse> {
-  const response: any = await post(`/api/v1/system/admin/agent-tasks/${encodeURIComponent(id)}/cancel`, {})
+  const response: any = await post(`/api/v1/agent-tasks/${encodeURIComponent(id)}/cancel`, {})
   return (response?.data ?? response) as AgentTaskActionResponse
 }

@@ -440,19 +440,22 @@ func (s *agentBuildTaskService) List(ctx context.Context, filter types.AgentBuil
 	}, nil
 }
 
-// Summary feeds the monitor page's header cards.
-func (s *agentBuildTaskService) Summary(ctx context.Context) (*types.AgentBuildTaskSummary, error) {
-	counts, err := s.repo.CountByStatus(ctx)
+// Summary feeds the monitor page's header cards. tenantID scopes the counters
+// to the caller's workspace; 0 (system admin) counts every tenant.
+func (s *agentBuildTaskService) Summary(
+	ctx context.Context, tenantID uint64,
+) (*types.AgentBuildTaskSummary, error) {
+	counts, err := s.repo.CountByStatus(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	failedToday, err := s.repo.CountFinishedSince(ctx, types.AgentBuildStatusFailed, midnight)
+	failedToday, err := s.repo.CountFinishedSince(ctx, types.AgentBuildStatusFailed, midnight, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	succeededToday, err := s.repo.CountFinishedSince(ctx, types.AgentBuildStatusSucceeded, midnight)
+	succeededToday, err := s.repo.CountFinishedSince(ctx, types.AgentBuildStatusSucceeded, midnight, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -470,7 +473,7 @@ func (s *agentBuildTaskService) Summary(ctx context.Context) (*types.AgentBuildT
 		GatewayConfigured: gatewayBaseURL() != "",
 		GatewayURL:        gatewayBaseURL(),
 	}
-	if oldest, err := s.repo.OldestQueuedAt(ctx); err == nil && oldest != nil {
+	if oldest, err := s.repo.OldestQueuedAt(ctx, tenantID); err == nil && oldest != nil {
 		if wait := int64(now.Sub(*oldest).Seconds()); wait > 0 {
 			summary.OldestQueuedSeconds = wait
 		}

@@ -40,7 +40,7 @@ func NewAgentTaskHandler(service interfaces.AgentBuildTaskService) *AgentTaskHan
 // @Param        page query int false "页码，默认 1"
 // @Param        page_size query int false "每页条数，默认 20，最大 100"
 // @Success      200 {object} types.AgentBuildTaskPage
-// @Router       /system/admin/agent-tasks [get]
+// @Router       /agent-tasks [get]
 func (h *AgentTaskHandler) ListAgentTasks(c *gin.Context) {
 	page, pageSize, ok := parseListPagination(c)
 	if !ok {
@@ -48,6 +48,7 @@ func (h *AgentTaskHandler) ListAgentTasks(c *gin.Context) {
 		return
 	}
 	filter := types.AgentBuildTaskFilter{
+		TenantID:        callerTenantScope(c),
 		Status:          strings.TrimSpace(c.Query("status")),
 		KnowledgeBaseID: strings.TrimSpace(c.Query("knowledge_base_id")),
 		KnowledgeID:     strings.TrimSpace(c.Query("knowledge_id")),
@@ -69,9 +70,9 @@ func (h *AgentTaskHandler) ListAgentTasks(c *gin.Context) {
 // @Tags         system
 // @Produce      json
 // @Success      200 {object} types.AgentBuildTaskSummary
-// @Router       /system/admin/agent-tasks/summary [get]
+// @Router       /agent-tasks/summary [get]
 func (h *AgentTaskHandler) AgentTaskSummary(c *gin.Context) {
-	result, err := h.service.Summary(c.Request.Context())
+	result, err := h.service.Summary(c.Request.Context(), callerTenantScope(c))
 	if err != nil {
 		logger.Errorf(c.Request.Context(), "[agent-task] summary failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to summarize agent build tasks"})
@@ -86,7 +87,7 @@ func (h *AgentTaskHandler) AgentTaskSummary(c *gin.Context) {
 // @Produce      json
 // @Param        id path string true "任务 ID"
 // @Success      200 {object} object
-// @Router       /system/admin/agent-tasks/{id}/retry [post]
+// @Router       /agent-tasks/{id}/retry [post]
 func (h *AgentTaskHandler) RetryAgentTask(c *gin.Context) {
 	h.act(c, true)
 }
@@ -97,7 +98,7 @@ func (h *AgentTaskHandler) RetryAgentTask(c *gin.Context) {
 // @Produce      json
 // @Param        id path string true "任务 ID"
 // @Success      200 {object} object
-// @Router       /system/admin/agent-tasks/{id}/cancel [post]
+// @Router       /agent-tasks/{id}/cancel [post]
 func (h *AgentTaskHandler) CancelAgentTask(c *gin.Context) {
 	h.act(c, false)
 }
@@ -136,4 +137,16 @@ func (h *AgentTaskHandler) act(c *gin.Context, retry bool) {
 		logger.Errorf(ctx, "[agent-task] %s failed id=%s: %v", action, id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to " + action + " agent build task"})
 	}
+}
+
+// callerTenantScope returns the tenant the caller's ledger rows are limited to.
+//
+// A platform system administrator gets 0, meaning "every tenant"; everybody
+// else is pinned to the workspace they are acting in, so the monitor page can be
+// opened by ordinary members without leaking another tenant's build history.
+func callerTenantScope(c *gin.Context) uint64 {
+	if c.GetBool(types.SystemAdminContextKey.String()) {
+		return 0
+	}
+	return c.GetUint64(types.TenantIDContextKey.String())
 }

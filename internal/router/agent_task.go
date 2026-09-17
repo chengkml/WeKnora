@@ -8,22 +8,29 @@ import (
 
 // RegisterAgentTaskRoutes mounts the agent build task monitor endpoints.
 //
-// The whole group sits behind SystemAdmin(): the page is an operational console
-// for the wiki build hand-off to the external agent gateway, and it shows rows
-// from every knowledge base, so it is not scoped to a single KB or tenant.
+// Reads are open to every member of the active workspace instead of being
+// SystemAdmin-only: this deployment has no system administrator account at all,
+// and a SystemAdmin gate made the page unreachable (the SPA guard bounces
+// non-admins to /platform/knowledge-bases, which is what operators saw as
+// "clicking Agent 任务监控 opens the knowledge base page").
+//
+// The rows are safe to hand to a member because the handler scopes them to the
+// caller's tenant (filter.TenantID = callerTenantScope(c)), so a member only
+// sees builds belonging to their own workspace; a system administrator still
+// sees every tenant. Mutations stay Admin+: retry / cancel act on the shared
+// gateway queue, not on a single document.
 //
 // Routes are registered plain (not via apiKeyRoute) on purpose — this is an
-// interactive admin console, and no platform API-key capability is needed to
-// cover it, mirroring the /system/admin/promote style actions above it.
+// interactive console page and needs no platform API-key capability.
 func RegisterAgentTaskRoutes(r *gin.RouterGroup, h *handler.AgentTaskHandler, g *rbacGuards) {
 	if h == nil {
 		return
 	}
-	agentTasks := r.Group("/system/admin/agent-tasks", g.SystemAdmin())
+	agentTasks := r.Group("/agent-tasks")
 	{
-		agentTasks.GET("", h.ListAgentTasks)
-		agentTasks.GET("/summary", h.AgentTaskSummary)
-		agentTasks.POST("/:id/retry", h.RetryAgentTask)
-		agentTasks.POST("/:id/cancel", h.CancelAgentTask)
+		agentTasks.GET("", g.Viewer(), h.ListAgentTasks)
+		agentTasks.GET("/summary", g.Viewer(), h.AgentTaskSummary)
+		agentTasks.POST("/:id/retry", g.AdminOrSystemAdmin(), h.RetryAgentTask)
+		agentTasks.POST("/:id/cancel", g.AdminOrSystemAdmin(), h.CancelAgentTask)
 	}
 }
