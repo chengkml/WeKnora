@@ -423,8 +423,8 @@
                   </div>
                 </div>
 
-                <!-- 知识图谱 -->
-                <div v-if="!isFAQ && currentSection === 'graph'" class="section">
+                <!-- 知识图谱(私有化定制:仅编辑模式可见,新建默认开启图谱) -->
+                <div v-if="!isFAQ && props.mode === 'edit' && currentSection === 'graph'" class="section">
                   <GraphSettings
                     v-if="formData"
                     :graph-extract="formData.nodeExtractConfig"
@@ -626,18 +626,16 @@ const navItems = computed(() => {
       { key: 'parser', icon: 'file-search', label: t('settings.parserEngine') },
       { key: 'multimodal', icon: 'image', label: t('knowledgeEditor.sidebar.multimodal') },
       { key: 'asr', icon: 'sound', label: t('knowledgeEditor.sidebar.asr') },
-      { key: 'chunking', icon: 'file-copy', label: t('knowledgeEditor.sidebar.chunking') },
-      { key: 'graph', icon: 'chart-bubble', label: t('knowledgeEditor.sidebar.graph') },
-      { key: 'advanced', icon: 'setting', label: t('knowledgeEditor.sidebar.advanced') }
     )
-    // 私有化定制：创建模式隐藏「存储引擎」配置，新建知识集统一使用空间默认存储引擎
+    // 私有化定制：创建模式隐藏「存储引擎」「知识图谱」配置
     if (props.mode === 'edit') {
-      items.splice(
-        items.findIndex((item) => item.key === 'advanced'),
-        0,
-        { key: 'storage', icon: 'cloud', label: t('knowledgeEditor.sidebar.storage') }
-      )
+      items.push({ key: 'storage', icon: 'cloud', label: t('knowledgeEditor.sidebar.storage') })
     }
+    items.push({ key: 'chunking', icon: 'file-copy', label: t('knowledgeEditor.sidebar.chunking') })
+    if (props.mode === 'edit') {
+      items.push({ key: 'graph', icon: 'chart-bubble', label: t('knowledgeEditor.sidebar.graph') })
+    }
+    items.push({ key: 'advanced', icon: 'setting', label: t('knowledgeEditor.sidebar.advanced') })
     if (props.mode === 'edit' && props.kbId) {
       items.push({ key: 'datasource', icon: 'cloud-download', label: t('knowledgeEditor.sidebar.datasource'), badge: dsCount.value || undefined })
     }
@@ -803,7 +801,7 @@ const initFormData = (type: 'document' | 'faq' = 'document') => {
       vectorEnabled: true,
       keywordEnabled: true,
       wikiEnabled: false,
-      graphEnabled: false,
+      graphEnabled: true,
     },
     // Vector-store binding. Empty string means "use the env-configured
     // store"; create mode defaults to that, edit mode loads the
