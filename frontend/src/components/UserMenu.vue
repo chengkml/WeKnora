@@ -70,8 +70,8 @@
             :title="$t('tenant.switcher.menuLabel')" />
         </div>
         <div class="menu-divider"></div>
-        <!-- 私有化定制（WEK-44）：用户名下拉只保留 用户信息/模型管理/向量数据库引擎/解析引擎
-             四个配置直达入口，其余配置入口（成员/网络搜索/MCP/API/全部设置/系统管理）全部隐藏。 -->
+        <!-- 私有化定制（WEK-44/2026-09-17）：用户名下拉只保留 用户信息/模型管理
+             两个配置直达入口，其余配置入口（向量数据库引擎/解析引擎/成员/网络搜索/MCP/API/全部设置/系统管理）全部隐藏。 -->
         <div v-if="canSeeQuickNav('userprofile')" class="menu-item" @click="handleQuickNav('userprofile')">
           <t-icon name="user" class="menu-icon" />
           <span>{{ $t('userProfile.title') }}</span>
@@ -79,14 +79,6 @@
         <div v-if="canSeeQuickNav('models')" class="menu-item" @click="handleQuickNav('models')">
           <t-icon name="control-platform" class="menu-icon" />
           <span>{{ $t('settings.modelManagement') }}</span>
-        </div>
-        <div v-if="canSeeQuickNav('vectorstore')" class="menu-item" @click="handleQuickNav('vectorstore')">
-          <t-icon name="data-base" class="menu-icon" />
-          <span>{{ $t('settings.vectorStoreEngine') }}</span>
-        </div>
-        <div v-if="canSeeQuickNav('parser')" class="menu-item" @click="handleQuickNav('parser')">
-          <t-icon name="file-search" class="menu-icon" />
-          <span>{{ $t('settings.parserEngine') }}</span>
         </div>
         <div v-if="canSeeQuickNav('websearch')" class="menu-item" @click="handleQuickNav('websearch')">
           <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"
