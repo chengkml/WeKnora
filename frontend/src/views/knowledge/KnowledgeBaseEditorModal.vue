@@ -228,8 +228,8 @@
                   />
                 </div>
 
-                <!-- VectorStore 绑定 -->
-                <div v-show="currentSection === 'vectorStore'" class="section">
+                <!-- VectorStore 绑定(私有化定制:配置入口隐藏) -->
+                <div v-if="false" class="section">
                   <KBVectorStoreSettings
                     v-if="formData"
                     :mode="mode"
@@ -305,8 +305,8 @@
                   />
                 </div>
 
-                <!-- 多模态配置 -->
-                <div v-if="!isFAQ" v-show="currentSection === 'multimodal'" class="section">
+                <!-- 多模态配置(私有化定制:配置入口隐藏) -->
+                <div v-if="false" class="section">
                   <div v-if="formData" class="kb-multimodal-settings">
                     <div class="section-header">
                       <h2>{{ $t('knowledgeEditor.multimodal.title') }}</h2>
@@ -434,8 +434,8 @@
                   />
                 </div>
 
-                <!-- 高级设置 -->
-                <div v-if="!isFAQ" v-show="currentSection === 'advanced'" class="section">
+                <!-- 高级设置(私有化定制:配置入口隐藏) -->
+                <div v-if="false" class="section">
                   <KBAdvancedSettings
                     ref="advancedSettingsRef"
                     v-if="formData"
@@ -614,19 +614,12 @@ const navItems = computed(() => {
   const items: { key: string; icon: string; label: string; badge?: number }[] = [
     { key: 'basic', icon: 'info-circle', label: t('knowledgeEditor.sidebar.basic') },
     { key: 'models', icon: 'control-platform', label: t('knowledgeEditor.sidebar.models') },
-    // VectorStore binding section — present in both create and edit
-    // modes. Create mode shows a dropdown; edit mode shows the bound
-    // store read-only with an immutability hint.
-    { key: 'vectorStore', icon: 'data-base', label: t('knowledgeEditor.sidebar.vectorStore') }
   ]
   if (formData.value?.type === 'faq') {
     items.push({ key: 'faq', icon: 'help-circle', label: t('knowledgeEditor.sidebar.faq') })
   } else {
-    items.push(
-      { key: 'parser', icon: 'file-search', label: t('settings.parserEngine') },
-      { key: 'multimodal', icon: 'image', label: t('knowledgeEditor.sidebar.multimodal') },
-    )
-    // 私有化定制：创建模式隐藏「音频处理」「存储引擎」「知识图谱」配置
+    items.push({ key: 'parser', icon: 'file-search', label: t('settings.parserEngine') })
+    // 私有化定制：创建/编辑均隐藏「音频处理」「存储引擎」「知识图谱」配置
     if (props.mode === 'edit') {
       items.push({ key: 'asr', icon: 'sound', label: t('knowledgeEditor.sidebar.asr') })
       items.push({ key: 'storage', icon: 'cloud', label: t('knowledgeEditor.sidebar.storage') })
@@ -635,7 +628,7 @@ const navItems = computed(() => {
     if (props.mode === 'edit') {
       items.push({ key: 'graph', icon: 'chart-bubble', label: t('knowledgeEditor.sidebar.graph') })
     }
-    items.push({ key: 'advanced', icon: 'setting', label: t('knowledgeEditor.sidebar.advanced') })
+    // 私有化定制(2026-09-17)：向量存储绑定/图像处理/高级设置 配置入口全部隐藏
     if (props.mode === 'edit' && props.kbId) {
       items.push({ key: 'datasource', icon: 'cloud-download', label: t('knowledgeEditor.sidebar.datasource'), badge: dsCount.value || undefined })
     }

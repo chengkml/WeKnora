@@ -17,7 +17,6 @@
           </t-button>
         </t-space>
       </div>
-      <p class="mcp-manage-subtitle">{{ $t('mcpManage.subtitle') }}</p>
     </div>
 
     <div class="mcp-manage-body">

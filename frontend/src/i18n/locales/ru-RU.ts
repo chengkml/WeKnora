@@ -3203,7 +3203,7 @@ export default {
     builtinTag: 'Built-in'
   },
   createChat: {
-    title: 'Привет, я WeKnora — ваши знания всегда под рукой',
+    title: 'Привет — ваши знания всегда под рукой',
     newSessionTitle: 'Новая сессия',
     messages: {
       selectKnowledgeBase: 'Сначала выберите базу знаний',
