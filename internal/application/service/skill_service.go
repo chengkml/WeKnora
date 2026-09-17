@@ -418,6 +418,65 @@ func (s *skillService) deleteSkillFromGateway(ctx context.Context, name string) 
 	return nil
 }
 
+// ExportSkill packs a skill directory into a ZIP archive. The archive
+// layout is <skillDirName>/<rel-path> for every file — exactly the layout
+// UploadSkill accepts (it strips the leading <skillName>/ prefix), so an
+// exported ZIP can be re-imported as-is: 怎么导出就能怎么导入。
+func (s *skillService) ExportSkill(ctx context.Context, name string) ([]byte, error) {
+	if err := s.ensureInitialized(ctx); err != nil {
+		return nil, fmt.Errorf("failed to initialize skill service: %w", err)
+	}
+	name = strings.TrimSpace(name)
+	meta, err := s.GetSkillByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	base := meta.BasePath
+	rootName := filepath.Base(base)
+	if rootName == "" || rootName == "." || rootName == "/" {
+		return nil, fmt.Errorf("非法技能路径: %q", name)
+	}
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	walkErr := filepath.Walk(base, func(p string, fi os.FileInfo, err error) error {
+		if err != nil || fi == nil {
+			return nil
+		}
+		if fi.IsDir() {
+			return nil
+		}
+		rel, rerr := filepath.Rel(base, p)
+		if rerr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if strings.Contains(rel, "__pycache__") {
+			return nil
+		}
+		entry := filepath.ToSlash(filepath.Join(rootName, rel))
+		fh, ferr := zw.Create(entry)
+		if ferr != nil {
+			return ferr
+		}
+		rc, oerr := os.Open(p)
+		if oerr != nil {
+			return oerr
+		}
+		defer rc.Close()
+		_, cerr := io.Copy(fh, rc)
+		return cerr
+	})
+	if walkErr != nil {
+		zw.Close()
+		return nil, walkErr
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 // GetSkillDetail returns a skill's file listing for the management UI.
 func (s *skillService) GetSkillDetail(ctx context.Context, name string) (*interfaces.SkillDetail, error) {
 	if err := s.ensureInitialized(ctx); err != nil {

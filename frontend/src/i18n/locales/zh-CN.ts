@@ -60,6 +60,7 @@ export default {
     emptyTitle: "暂无技能",
     emptyDesc: "点击右上角「上传技能」安装第一个技能包",
     viewDetail: "查看",
+    export: "导出",
     delete: "删除",
     deleteConfirm: "确定删除技能「{name}」吗？将同时从 agent 执行端移除。",
     detailTitle: "技能详情",

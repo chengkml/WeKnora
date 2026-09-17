@@ -1,4 +1,4 @@
-import { get, postUpload, del } from "../../utils/request";
+import { get, getDown, postUpload, del } from "../../utils/request";
 import type { AxiosProgressEvent } from "axios";
 
 // Skill信息
@@ -32,6 +32,11 @@ export function uploadSkill(file: File, onUploadProgress?: (progressEvent: Axios
 // 查看技能详情（文件清单）
 export function getSkillDetail(name: string) {
   return get<{ data: SkillDetail }>(`/api/v1/skills/${encodeURIComponent(name)}`);
+}
+
+// 导出技能 ZIP（与上传安装格式一致，可直接重新导入）
+export function exportSkill(name: string) {
+  return getDown(`/api/v1/skills/${encodeURIComponent(name)}/export`);
 }
 
 // 删除技能（删除 WeKnora 侧 + 同步 agent-gateway）

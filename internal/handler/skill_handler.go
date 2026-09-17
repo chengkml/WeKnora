@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -149,6 +150,29 @@ func (h *SkillHandler) DeleteSkill(c *gin.Context) {
 			"name": name,
 		},
 	})
+}
+
+// ExportSkill godoc
+// @Summary      导出技能
+// @Description  将指定技能目录打包为 ZIP 下载，ZIP 结构与上传安装（/skills/upload）接受的格式一致，可直接重新导入。Viewer 权限。
+// @Tags         Skills
+// @Produce      application/zip
+// @Param        name  path  string  true  "技能名"
+// @Success      200  {file}  binary "技能 ZIP 包"
+// @Failure      400  {object}  errors.AppError "技能不存在或打包失败"
+// @Router       /skills/{name}/export [get]
+func (h *SkillHandler) ExportSkill(c *gin.Context) {
+	ctx := c.Request.Context()
+	name := c.Param("name")
+	zipData, err := h.skillService.ExportSkill(ctx, name)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	filename := name + ".zip"
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Data(http.StatusOK, "application/zip", zipData)
 }
 
 // GetSkillDetail godoc

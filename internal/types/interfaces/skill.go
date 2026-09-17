@@ -29,16 +29,20 @@ type SkillService interface {
 	// GetSkillDetail returns a skill's file listing (relative paths + sizes)
 	// for the management UI's detail view.
 	GetSkillDetail(ctx context.Context, name string) (*SkillDetail, error)
+	// ExportSkill packs a skill directory into a ZIP archive whose layout
+	// (<skillDir>/...) is exactly what UploadSkill accepts, so an exported
+	// ZIP can be re-imported as-is.
+	ExportSkill(ctx context.Context, name string) ([]byte, error)
 }
 
 // SkillDetail is the detail payload for a skill management view.
 type SkillDetail struct {
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Path        string       `json:"path"`
-	FileCount   int          `json:"file_count"`
-	Files       []SkillFile  `json:"files"`
-	TotalFiles  int          `json:"total_files"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Path        string      `json:"path"`
+	FileCount   int         `json:"file_count"`
+	Files       []SkillFile `json:"files"`
+	TotalFiles  int         `json:"total_files"`
 }
 
 // SkillFile is one file entry inside a skill directory.

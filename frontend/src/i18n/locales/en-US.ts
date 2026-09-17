@@ -59,6 +59,7 @@ export default {
     emptyTitle: 'No skills yet',
     emptyDesc: 'Click "Upload Skill" in the top-right corner to install your first skill package.',
     viewDetail: 'View',
+    export: 'Export',
     delete: 'Delete',
     deleteConfirm: 'Delete skill "{name}"? It will also be removed from the agent endpoint.',
     detailTitle: 'Skill Detail',

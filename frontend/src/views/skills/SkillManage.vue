@@ -54,6 +54,10 @@
               <t-button variant="text" theme="primary" size="small" @click="handleViewDetail(row.name)">
                 {{ $t('skillManage.viewDetail') }}
               </t-button>
+              <t-button variant="text" theme="primary" size="small" :loading="exportingName === row.name"
+                @click="handleExport(row.name)">
+                {{ $t('skillManage.export') }}
+              </t-button>
               <t-popconfirm :content="$t('skillManage.deleteConfirm', { name: row.name })" theme="danger" @confirm="handleDelete(row.name)">
                 <t-button variant="text" theme="danger" size="small" :loading="deletingName === row.name">
                   {{ $t('skillManage.delete') }}
@@ -95,12 +99,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { MessagePlugin } from 'tdesign-vue-next';
-import { listSkills, uploadSkill, getSkillDetail, deleteSkill, type SkillInfo, type SkillDetail } from '@/api/skill';
+import { listSkills, uploadSkill, exportSkill, getSkillDetail, deleteSkill, type SkillInfo, type SkillDetail } from '@/api/skill';
 
 const skills = ref<SkillInfo[]>([]);
 const loading = ref(false);
 const uploading = ref(false);
 const deletingName = ref('');
+const exportingName = ref('');
 const skillsAvailable = ref(true);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
@@ -197,6 +202,26 @@ async function handleDelete(name: string) {
     deletingName.value = '';
     // 无论成功失败都刷新列表
     await loadSkills();
+  }
+}
+
+async function handleExport(name: string) {
+  exportingName.value = name;
+  try {
+    const blob = await exportSkill(name);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    MessagePlugin.success(`技能「${name}」已导出`);
+  } catch (e: any) {
+    MessagePlugin.error(e?.message || '导出失败');
+  } finally {
+    exportingName.value = '';
   }
 }
 
