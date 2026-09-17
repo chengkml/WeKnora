@@ -1,5 +1,5 @@
 ---
-name: market-regulation-policy-compiler
+name: 监督管理制度文档转wiki
 description: "Use when building wiki knowledge for a market regulation KB (市场监管法规, ported from supply-management-policy-compiler)."
 ---
 
