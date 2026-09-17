@@ -18,18 +18,20 @@
               </div>
               <div class="settings-nav" data-guide="kb-editor-sidebar">
                 <template v-for="group in navGroups" :key="group.key">
-                  <div class="nav-group-title">{{ group.label }}</div>
-                  <div
-                    v-for="(item, index) in group.items"
-                    :key="index"
-                    :class="['nav-item', { 'active': currentSection === item.key }]"
-                    :data-guide="`kb-editor-nav-${item.key}`"
-                    @click="currentSection = item.key"
-                  >
-                    <t-icon :name="item.icon" class="nav-icon" />
-                    <span class="nav-label">{{ item.label }}</span>
-                    <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
-                  </div>
+                  <template v-if="group.items.length">
+                    <div class="nav-group-title">{{ group.label }}</div>
+                    <div
+                      v-for="(item, index) in group.items"
+                      :key="index"
+                      :class="['nav-item', { 'active': currentSection === item.key }]"
+                      :data-guide="`kb-editor-nav-${item.key}`"
+                      @click="currentSection = item.key"
+                    >
+                      <t-icon :name="item.icon" class="nav-icon" />
+                      <span class="nav-label">{{ item.label }}</span>
+                      <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
+                    </div>
+                  </template>
                 </template>
               </div>
             </div>
@@ -283,8 +285,8 @@
                   />
                 </div>
 
-                <!-- 存储引擎 -->
-                <div v-if="!isFAQ && formData && currentSection === 'storage'" class="section">
+                <!-- 存储引擎(私有化定制:仅编辑模式可见) -->
+                <div v-if="!isFAQ && props.mode === 'edit' && formData && currentSection === 'storage'" class="section">
                   <KBStorageSettings
                     :storage-backend-id="formData.storageBackendId"
                     :storage-provider="formData.storageProvider"
@@ -623,11 +625,18 @@ const navItems = computed(() => {
       { key: 'parser', icon: 'file-search', label: t('settings.parserEngine') },
       { key: 'multimodal', icon: 'image', label: t('knowledgeEditor.sidebar.multimodal') },
       { key: 'asr', icon: 'sound', label: t('knowledgeEditor.sidebar.asr') },
-      { key: 'storage', icon: 'cloud', label: t('knowledgeEditor.sidebar.storage') },
       { key: 'chunking', icon: 'file-copy', label: t('knowledgeEditor.sidebar.chunking') },
       { key: 'graph', icon: 'chart-bubble', label: t('knowledgeEditor.sidebar.graph') },
       { key: 'advanced', icon: 'setting', label: t('knowledgeEditor.sidebar.advanced') }
     )
+    // 私有化定制：创建模式隐藏「存储引擎」配置，新建知识集统一使用空间默认存储引擎
+    if (props.mode === 'edit') {
+      items.splice(
+        items.findIndex((item) => item.key === 'advanced'),
+        0,
+        { key: 'storage', icon: 'cloud', label: t('knowledgeEditor.sidebar.storage') }
+      )
+    }
     if (props.mode === 'edit' && props.kbId) {
       items.push({ key: 'datasource', icon: 'cloud-download', label: t('knowledgeEditor.sidebar.datasource'), badge: dsCount.value || undefined })
     }

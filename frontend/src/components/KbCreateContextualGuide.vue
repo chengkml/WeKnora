@@ -95,13 +95,6 @@ const guideSteps = computed<SpotlightGuideStep[]>(() => {
         optional: true,
       },
       {
-        key: 'storage',
-        target: '[data-guide="kb-editor-nav-storage"]',
-        placement: 'right',
-        before: () => focusSection('storage'),
-        optional: true,
-      },
-      {
         key: 'navMultimodal',
         target: '[data-guide="kb-editor-nav-multimodal"]',
         placement: 'right',
