@@ -72,10 +72,6 @@ services:
       - LOG_FORMAT=${LOG_FORMAT:-}
       # LLM 调试日志：true 写 LOG_PATH 同目录 llm_debug.log，或指定路径；留空关闭
       - LLM_DEBUG_LOG=${LLM_DEBUG_LOG:-false}
-      # SSRF 白名单附加项（部署方维护）。默认整体放行直连 IP/内网地址，
-      # 避免注册指向内网的 MCP/向量库等地址被 SSRF 校验拦截；
-      # 收紧时改为具体域名/CIDR（如 10.0.0.0/8,172.16.0.0/12），逗号分隔。
-      - SSRF_WHITELIST_EXTRA=${SSRF_WHITELIST_EXTRA:-0.0.0.0/0,::/0}
       # ========== 运行时基础 ==========
       # gin mod
       # 可选值: debug(开发模式，有详细日志), release(生产模式，禁用Swagger文档)
@@ -295,7 +291,9 @@ services:
       # overrides don't clobber it. (postgres is intentionally NOT listed: it
       # is not a user-registerable vector store, and whitelisting the app's own
       # DB host would skip the 5432 port block.)
-      - SSRF_WHITELIST_EXTRA=${SSRF_WHITELIST_EXTRA:-searxng,qdrant,milvus,weaviate,doris-fe}
+      # SSRF 白名单附加项（服务名 + 默认放行直连 IP/内网，避免注册内网 MCP 等被拦截；
+      # 收紧时覆盖为具体域名/CIDR，如 SSRF_WHITELIST_EXTRA=10.0.0.0/8,172.16.0.0/12）
+      - SSRF_WHITELIST_EXTRA=${SSRF_WHITELIST_EXTRA:-searxng,qdrant,milvus,weaviate,doris-fe,0.0.0.0/0,::/0}
       - CONCURRENCY_POOL_SIZE=${CONCURRENCY_POOL_SIZE:-5}
       - JWT_SECRET=${JWT_SECRET:-}
       # File size limit (in MB)
