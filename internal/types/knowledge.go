@@ -130,6 +130,13 @@ type Knowledge struct {
 	Channel string `json:"channel"            gorm:"type:varchar(50);default:'web'"`
 	// Parse status of the knowledge
 	ParseStatus string `json:"parse_status"`
+	// AgentBuildStatus is the latest agent-gateway wiki build status for this
+	// document (queued/running/succeeded/failed/"" = no build task). Populated
+	// on read only (gorm:"-"), never persisted; used by the doc list/card to
+	// keep the "completed" label honest for custom_wiki_generation KBs.
+	AgentBuildStatus string `json:"agent_build_status,omitempty" gorm:"-"`
+	// AgentBuildTaskID is the id of the latest agent build task (for retry).
+	AgentBuildTaskID string `json:"agent_build_task_id,omitempty" gorm:"-"`
 	// PendingSubtasksCount is the outstanding enrichment subtask count
 	// (summary + question + graph chunks). Only meaningful while
 	// ParseStatus == "finalizing"; defaults to 0 in any terminal state.

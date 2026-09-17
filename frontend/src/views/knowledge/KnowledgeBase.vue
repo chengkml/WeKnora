@@ -50,6 +50,7 @@ import WikiBrowser from './wiki/WikiBrowser.vue';
 import WikiMaintenance from './wiki/WikiMaintenance.vue';
 import WikiKeywords from './wiki/WikiKeywords.vue';
 import { getWikiStats } from '@/api/wiki';
+import { retryAgentTask } from '@/api/agent-task';
 import {
   isKnowledgeParseInFlight,
   knowledgeNeedsStatusPolling,
@@ -1085,6 +1086,10 @@ type KnowledgeCard = {
   knowledge_base_id?: string;
   parse_status: string;
   summary_status?: string;
+  /** 外部 agent-gateway wiki 构建状态(queued/running/succeeded/failed/"") */
+  agent_build_status?: string;
+  /** 最新 agent 构建任务 id(重试用) */
+  agent_build_task_id?: string;
   description?: string;
   file_name?: string;
   original_file_name?: string;
@@ -1139,6 +1144,7 @@ const updateStatus = (analyzeList: KnowledgeCard[]) => {
 
           if (cardList.value[index].parse_status !== parseStatus ||
             cardList.value[index].summary_status !== item.summary_status ||
+            cardList.value[index].agent_build_status !== item.agent_build_status ||
             cardList.value[index].description !== item.description) {
             shouldRefreshWikiStatus ||= shouldRefreshWikiStatusAfterKnowledgePoll(
               cardList.value[index],
@@ -1148,6 +1154,8 @@ const updateStatus = (analyzeList: KnowledgeCard[]) => {
             // Always update the card data
             cardList.value[index].parse_status = parseStatus;
             cardList.value[index].summary_status = item.summary_status;
+            cardList.value[index].agent_build_status = item.agent_build_status;
+            cardList.value[index].agent_build_task_id = item.agent_build_task_id;
             cardList.value[index].description = item.description;
             delete traceAvailableById[item.id];
             hasChanges = true;
@@ -1900,7 +1908,7 @@ const confirmCancelParseKnowledge = async (item: KnowledgeCard) => {
 
 // Bridge card-view actions back to existing per-card handlers.
 const handleCardAction = (
-  action: 'edit' | 'reparse' | 'cancel-parse' | 'move' | 'delete' | 'view-trace' | 'batch-manage',
+  action: 'edit' | 'reparse' | 'cancel-parse' | 'move' | 'delete' | 'view-trace' | 'batch-manage' | 'retry-wiki-build',
   item: KnowledgeCard,
 ) => {
   const idx = (cardList.value || []).findIndex((i: KnowledgeCard) => i.id === item.id);
@@ -1914,11 +1922,12 @@ const handleCardAction = (
   if (action === 'delete') return confirmDeleteKnowledge(idx, item);
   if (action === 'view-trace') return handleViewTrace(idx, item);
   if (action === 'batch-manage') return handleEnterBatchFromCard(item);
+  if (action === 'retry-wiki-build') return handleRetryWikiBuild(item);
 };
 
 // Bridge list-view actions back to existing per-card handlers.
 const handleListAction = (
-  action: 'edit' | 'reparse' | 'cancel-parse' | 'move' | 'delete' | 'view-trace' | 'batch-manage',
+  action: 'edit' | 'reparse' | 'cancel-parse' | 'move' | 'delete' | 'view-trace' | 'batch-manage' | 'retry-wiki-build',
   item: KnowledgeCard,
 ) => {
   const idx = (cardList.value || []).findIndex((i: KnowledgeCard) => i.id === item.id);
@@ -1929,6 +1938,28 @@ const handleListAction = (
   if (action === 'delete') return confirmDeleteKnowledge(idx, item);
   if (action === 'view-trace') return handleViewTrace(idx, item);
   if (action === 'batch-manage') return handleEnterBatchFromCard(item);
+  if (action === 'retry-wiki-build') return handleRetryWikiBuild(item);
+};
+
+// handleRetryWikiBuild re-enqueues a failed agent-gateway wiki build for one
+// document by calling the existing agent-tasks retry endpoint, then nudges
+// the row back into polling so the card reflects the fresh queued/running
+// state on the next poll.
+const handleRetryWikiBuild = async (item: KnowledgeCard) => {
+  const taskId = item.agent_build_task_id;
+  if (!taskId || !canEdit.value) return;
+  try {
+    await retryAgentTask(taskId);
+    MessagePlugin.success(t('knowledgeBase.wikiBuildRetrySubmitted'));
+    const idx = cardList.value.findIndex((c: KnowledgeCard) => c.id === item.id);
+    if (idx !== -1) {
+      cardList.value[idx].agent_build_status = 'queued';
+      updateStatus([cardList.value[idx]]);
+    }
+  } catch (e) {
+    console.error('Failed to retry wiki build:', e);
+    MessagePlugin.error(t('knowledgeBase.wikiBuildRetryFailed'));
+  }
 };
 
 // Clear selection on filter/tag/kb change to avoid acting on hidden items.

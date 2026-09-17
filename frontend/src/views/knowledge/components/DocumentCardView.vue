@@ -17,6 +17,10 @@ interface KnowledgeCard {
   knowledge_base_id?: string;
   parse_status: string;
   summary_status?: string;
+  /** 外部 agent-gateway wiki 构建状态(queued/running/succeeded/failed/"") */
+  agent_build_status?: string;
+  /** 最新 agent 构建任务 id(重试用) */
+  agent_build_task_id?: string;
   description?: string;
   file_name?: string;
   original_file_name?: string;
@@ -56,7 +60,7 @@ const emit = defineEmits<{
   (e: 'open', item: KnowledgeCard): void;
   (e: 'toggle-checkbox', id: string, checked: boolean, ctx?: { e?: Event }): void;
   (e: 'menu-visible-change', visible: boolean, item: KnowledgeCard): void;
-  (e: 'action', action: 'edit' | 'view-trace' | 'reparse' | 'cancel-parse' | 'move' | 'batch-manage' | 'delete', item: KnowledgeCard): void;
+  (e: 'action', action: 'edit' | 'view-trace' | 'reparse' | 'cancel-parse' | 'move' | 'batch-manage' | 'delete' | 'retry-wiki-build', item: KnowledgeCard): void;
   (e: 'tag-edit', item: KnowledgeCard): void;
   // Move sub-flow emits
   (e: 'move-select-target', kb: any): void;
@@ -90,6 +94,9 @@ const onMenuVisibleChange = (visible: boolean, item: KnowledgeCard) => {
 const CANCELABLE_PARSE_STATUSES = new Set(['pending', 'processing', 'finalizing']);
 const isParseInFlight = (status?: string): boolean =>
   CANCELABLE_PARSE_STATUSES.has(String(status ?? ''));
+// Wiki build (agent-gateway) in-flight check: parse is done, wiki isn't.
+const isWikiBuildInFlight = (status?: string): boolean =>
+  status === 'queued' || status === 'running';
 
 const isTraceMenuVisible = (item: KnowledgeCard): boolean => {
   if (!item?.id) return false;
@@ -250,7 +257,7 @@ const onCardMouseLeave = () => {
 };
 
 // --- Action handlers ---
-const handleAction = (action: 'edit' | 'view-trace' | 'reparse' | 'cancel-parse' | 'move' | 'batch-manage' | 'delete', item: KnowledgeCard) => {
+const handleAction = (action: 'edit' | 'view-trace' | 'reparse' | 'cancel-parse' | 'move' | 'batch-manage' | 'delete' | 'retry-wiki-build', item: KnowledgeCard) => {
   // Don't close menu for move — it triggers the sub-flow
   if (action !== 'move') {
     if (item.isMore !== undefined) item.isMore = false;
@@ -437,6 +444,30 @@ const handleAction = (action: 'edit' | 'view-trace' | 'reparse' | 'cancel-parse'
         <div v-else-if="item.parse_status === 'draft'" class="card-draft">
           <t-tag size="small" theme="warning" variant="light-outline">{{ $t('knowledgeBase.draft') }}</t-tag>
           <span class="card-draft-tip">{{ $t('knowledgeBase.draftTip') }}</span>
+        </div>
+        <div v-else-if="item.parse_status === 'completed' && isWikiBuildInFlight(item.agent_build_status)"
+          class="card-analyze">
+          <t-icon name="loading" class="card-analyze-loading"></t-icon>
+          <span class="card-analyze-txt">{{ $t('knowledgeBase.wikiBuilding') }}</span>
+        </div>
+        <div v-else-if="item.parse_status === 'completed' && item.agent_build_status === 'failed'"
+          class="card-analyze failure">
+          <t-icon name="close-circle" class="card-analyze-loading failure"></t-icon>
+          <span class="card-analyze-txt failure">{{ $t('knowledgeBase.wikiBuildFailed') }}</span>
+          <button
+            v-if="item.agent_build_task_id && canEdit"
+            type="button"
+            class="card-analyze-trace-btn"
+            :title="$t('knowledgeBase.wikiBuildRetry')"
+            :aria-label="$t('knowledgeBase.wikiBuildRetry')"
+            @click.stop="handleAction('retry-wiki-build', item)"
+          >
+            <t-icon name="refresh" />
+          </button>
+        </div>
+        <div v-else-if="item.parse_status === 'completed' && item.agent_build_status === 'cancelled'"
+          class="card-analyze">
+          <span class="card-analyze-txt">{{ $t('knowledgeBase.wikiBuildCancelled') }}</span>
         </div>
         <div
           v-else-if="item.parse_status === 'completed' && (item.summary_status === 'pending' || item.summary_status === 'processing')"

@@ -693,6 +693,33 @@ func (r *knowledgeRepository) SearchKnowledge(
 	return knowledges, hasMore, nil
 }
 
+// LatestAgentBuildTasksByKnowledgeIDs returns the most recent agent build
+// task (by updated_at) per knowledge id. Only tasks for the given ids are
+// considered; ids with no tasks are absent from the map. Used to synthesize
+// the doc list/card "wiki build" status without touching parse_status.
+func (r *knowledgeRepository) LatestAgentBuildTasksByKnowledgeIDs(
+	ctx context.Context,
+	knowledgeIDs []string,
+) (map[string]*types.AgentBuildTask, error) {
+	if len(knowledgeIDs) == 0 {
+		return map[string]*types.AgentBuildTask{}, nil
+	}
+	var tasks []*types.AgentBuildTask
+	if err := r.db.WithContext(ctx).
+		Where("knowledge_id IN ?", knowledgeIDs).
+		Order("updated_at DESC").
+		Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]*types.AgentBuildTask, len(tasks))
+	for _, t := range tasks {
+		if _, ok := out[t.KnowledgeID]; !ok {
+			out[t.KnowledgeID] = t
+		}
+	}
+	return out, nil
+}
+
 // SearchKnowledgeInScopes searches knowledge items by keyword within the given (tenant_id, kb_id) scopes (e.g. own + shared KBs).
 func (r *knowledgeRepository) SearchKnowledgeInScopes(
 	ctx context.Context,

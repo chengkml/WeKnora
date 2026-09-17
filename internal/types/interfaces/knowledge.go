@@ -218,6 +218,10 @@ type KnowledgeService interface {
 
 // KnowledgeRepository defines the interface for knowledge repositories.
 type KnowledgeRepository interface {
+	// LatestAgentBuildTasksByKnowledgeIDs returns the most recent agent build
+	// task per knowledge id (used to synthesize the read-only
+	// AgentBuildStatus on Knowledge).
+	LatestAgentBuildTasksByKnowledgeIDs(ctx context.Context, knowledgeIDs []string) (map[string]*types.AgentBuildTask, error)
 	CreateKnowledge(ctx context.Context, knowledge *types.Knowledge) error
 	GetKnowledgeByID(ctx context.Context, tenantID uint64, id string) (*types.Knowledge, error)
 	// GetKnowledgeByIDOnly returns knowledge by ID without tenant filter (for permission resolution).

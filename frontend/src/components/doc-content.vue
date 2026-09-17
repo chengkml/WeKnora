@@ -1112,6 +1112,22 @@ const handleDetailsScroll = () => {
         </div>
       </template>
 
+      <!-- Agent-gateway wiki build status (custom_wiki_generation KBs only) -->
+      <div v-if="details.agent_build_status && details.agent_build_status !== 'succeeded'"
+        class="doc-wiki-build-banner" :class="'doc-wiki-build--' + details.agent_build_status">
+        <template v-if="details.agent_build_status === 'queued' || details.agent_build_status === 'running'">
+          <t-icon name="loading" />
+          <span>{{ $t('knowledgeBase.wikiBuilding') }}</span>
+        </template>
+        <template v-else-if="details.agent_build_status === 'failed'">
+          <t-icon name="close-circle" />
+          <span>{{ $t('knowledgeBase.wikiBuildFailed') }}</span>
+        </template>
+        <template v-else>
+          <span>{{ $t('knowledgeBase.wikiBuildCancelled') }}</span>
+        </template>
+      </div>
+
       <!-- Hidden mount: keeps the timeline fetching data so the header
            link's status dot / duration stays live even before the user
            opens the secondary drawer. -->
@@ -1978,5 +1994,45 @@ body:has(.t-drawer.kp-secondary-drawer--resizing) .trace-drawer-resize-line {
 
 .t-drawer.kp-secondary-drawer--resizing .t-drawer__content {
   transition: none !important;
+}
+
+/* Agent-gateway wiki build status banner (doc detail drawer) */
+.doc-wiki-build-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  margin: 8px 0 0;
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+
+  .t-icon {
+    animation: doc-wiki-build-spin 1.2s linear infinite;
+  }
+
+  &.doc-wiki-build--failed {
+    background: var(--td-error-color-light);
+    color: var(--td-error-color);
+
+    .t-icon {
+      animation: none;
+    }
+  }
+
+  &.doc-wiki-build--cancelled {
+    background: var(--td-bg-color-component);
+    color: var(--td-text-color-placeholder);
+
+    .t-icon {
+      animation: none;
+    }
+  }
+}
+
+@keyframes doc-wiki-build-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

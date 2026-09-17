@@ -477,8 +477,43 @@ func (s *knowledgeService) GetKnowledgeByID(ctx context.Context, id string) (*ty
 		knowledge.Tags = tags
 	}
 
+	s.attachAgentBuildStatuses(ctx, []*types.Knowledge{knowledge})
+
 	logger.Infof(ctx, "Knowledge retrieved successfully, ID: %s, type: %s", knowledge.ID, knowledge.Type)
 	return knowledge, nil
+}
+
+// attachAgentBuildStatuses populates the read-only AgentBuildStatus /
+// AgentBuildTaskID fields from the latest agent build task per knowledge,
+// so the doc list/card can show "wiki building" instead of a premature
+// "completed". Best-effort: failures degrade to empty status.
+func (s *knowledgeService) attachAgentBuildStatuses(ctx context.Context, knowledges []*types.Knowledge) {
+	if len(knowledges) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(knowledges))
+	for _, k := range knowledges {
+		if k != nil {
+			ids = append(ids, k.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	tasks, err := s.repo.LatestAgentBuildTasksByKnowledgeIDs(ctx, ids)
+	if err != nil {
+		logger.Warnf(ctx, "Failed to load agent build statuses for %d knowledges: %v", len(ids), err)
+		return
+	}
+	for _, k := range knowledges {
+		if k == nil {
+			continue
+		}
+		if t, ok := tasks[k.ID]; ok && t.Status != "" {
+			k.AgentBuildStatus = t.Status
+			k.AgentBuildTaskID = t.ID
+		}
+	}
 }
 
 // GetKnowledgeByIDOnly retrieves knowledge by ID without tenant filter (for permission resolution).
@@ -552,6 +587,7 @@ func (s *knowledgeService) ListPagedKnowledgeByKnowledgeBaseID(ctx context.Conte
 			}
 		}
 	}
+	s.attachAgentBuildStatuses(ctx, knowledges)
 
 	return types.NewPageResult(total, page, knowledges), nil
 }
@@ -620,7 +656,12 @@ func (s *knowledgeService) GetKnowledgeBatch(ctx context.Context,
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	return s.repo.GetKnowledgeBatch(ctx, tenantID, ids)
+	knowledges, err := s.repo.GetKnowledgeBatch(ctx, tenantID, ids)
+	if err != nil {
+		return nil, err
+	}
+	s.attachAgentBuildStatuses(ctx, knowledges)
+	return knowledges, nil
 }
 
 // GetKnowledgeBatchWithSharedAccess retrieves knowledge by IDs, including items from shared KBs the user has access to.
@@ -667,6 +708,7 @@ func (s *knowledgeService) GetKnowledgeBatchWithSharedAccess(ctx context.Context
 		foundSet[k.ID] = true
 		ownList = append(ownList, k)
 	}
+	s.attachAgentBuildStatuses(ctx, ownList)
 	return ownList, nil
 }
 
