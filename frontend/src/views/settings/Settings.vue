@@ -114,11 +114,6 @@
                     <ChatHistorySettings />
                   </div>
 
-                  <!-- 向量数据库引擎 -->
-                  <div v-if="currentSection === 'vectorstore'" class="section">
-                    <VectorStoreSettings />
-                  </div>
-
                   <!-- 解析引擎 -->
                   <div v-if="currentSection === 'parser'" class="section">
                     <ParserEngineSettings />
@@ -327,10 +322,10 @@ const canSeeSection = (key: string): boolean => {
   return authStore.hasRole(min)
 }
 
-// 私有化定制（WEK-44）：设置弹窗导航只保留 用户信息/模型管理/向量数据库引擎/解析引擎 四个分区，
-// 其余配置分区（通用/Ollama/WeKnora Cloud/网络搜索/对话历史/存储引擎/MCP/版本信息/空间信息/成员/
-// 发布集成/系统管理…）全部隐藏。
-const PRIVATE_SETTINGS_ALLOW = new Set(['userprofile', 'models', 'vectorstore', 'parser'])
+// 私有化定制（WEK-44/2026-09-18）：设置弹窗导航只保留 用户信息/模型管理/解析引擎 三个分区，
+// 其余配置分区（向量数据库引擎/通用/Ollama/WeKnora Cloud/网络搜索/对话历史/存储引擎/MCP/版本信息/
+// 空间信息/成员/发布集成/系统管理…）全部隐藏。
+const PRIVATE_SETTINGS_ALLOW = new Set(['userprofile', 'models', 'parser'])
 
 const navItems = computed(() => {
   // 一律走 SECTION_MIN_ROLE 表，避免 ad-hoc isAdmin/isOwner 散落在多处。
@@ -349,7 +344,6 @@ const navItems = computed(() => {
     { key: 'models', icon: 'control-platform', label: t('settings.modelManagement') },
     { key: 'websearch', icon: 'search', label: t('settings.webSearchConfig') },
     { key: 'chathistory', icon: 'chat', label: t('chatHistorySettings.title') },
-    { key: 'vectorstore', icon: 'data-base', label: t('settings.vectorStoreEngine') },
     { key: 'parser', icon: 'file-search', label: t('settings.parserEngine') },
     { key: 'storage', icon: 'cloud', label: t('settings.storageEngine') },
     { key: 'mcp', icon: 'tools', label: t('settings.mcpService') },
@@ -411,7 +405,6 @@ const navGroups = computed<NavGroup[]>(() => {
       key: 'data_extensions',
       label: t('settings.navGroups.dataExtensions'),
       items: pickItems([
-        'vectorstore',
         'parser',
         'storage',
         'websearch',

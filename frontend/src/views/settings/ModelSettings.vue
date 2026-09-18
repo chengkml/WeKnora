@@ -19,20 +19,6 @@
           {{ $t('modelSettings.actions.debugModel') }}
         </t-button>
       </div>
-
-      <div class="builtin-models-hint" role="note">
-        <p class="builtin-hint-label">{{ $t('modelSettings.builtinModels.title') }}</p>
-        <p class="builtin-hint-text">
-          {{ $t(authStore.isSystemAdmin
-            ? 'modelSettings.builtinModels.descriptionAdmin'
-            : 'modelSettings.builtinModels.description') }}
-        </p>
-        <a class="doc-link" href="https://github.com/Tencent/WeKnora/blob/main/docs/BUILTIN_MODELS.md" target="_blank"
-          rel="noopener noreferrer">
-          {{ $t('modelSettings.builtinModels.viewGuide') }}
-          <t-icon name="link" class="link-icon" />
-        </a>
-      </div>
     </div>
 
     <t-tabs v-model="activeTypeFilter" class="model-type-tabs" data-guide="settings-models">
