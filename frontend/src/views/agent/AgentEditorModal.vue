@@ -92,47 +92,7 @@
                       </div>
                     </div>
 
-                    <!-- 运行模式（首先选择） -->
-                    <div class="setting-row">
-                      <div class="setting-info">
-                        <label>{{ $t('agent.editor.mode') }} <span class="required">*</span></label>
-                        <p class="desc">{{ agentMode === 'smart-reasoning' ? $t('agent.editor.agentDesc') :
-                          $t('agent.editor.normalDesc') }}</p>
-                      </div>
-                      <div class="setting-control">
-                        <t-radio-group v-model="agentMode" :disabled="isBuiltinAgent" data-guide="agent-create-mode">
-                          <t-radio-button value="quick-answer">
-                            {{ $t('agent.type.normal') }}
-                          </t-radio-button>
-                          <t-radio-button value="smart-reasoning">
-                            {{ $t('agent.type.agent') }}
-                          </t-radio-button>
-                        </t-radio-group>
-                      </div>
-                    </div>
-
-                    <!-- 智能体类型（仅智能推理模式下显示） -->
-                    <div v-if="isAgentMode && agentTypePresets.length > 0" class="setting-row setting-row--emphasize"
-                      data-guide="agent-create-agent-type">
-                      <div class="setting-info">
-                        <label>{{ $t('agentEditor.agentType.label') }}</label>
-                        <p class="desc">{{ $t('agentEditor.agentType.desc') }}</p>
-                        <p v-if="activeAgentTypePreset" class="desc agent-type-preset-desc">{{
-                          agentTypePresetDescription(activeAgentTypePreset) }}</p>
-                      </div>
-                      <div class="setting-control">
-                        <t-select :value="agentType" @change="onAgentTypeChange" :disabled="isBuiltinAgent"
-                          :placeholder="$t('agentEditor.agentType.label')" :options="agentTypeSelectOptions"
-                          :popup-props="{ overlayClassName: 'agent-type-popup' }" class="agent-type-select">
-                          <template #option="{ option }">
-                            <div class="agent-type-option">
-                              <span class="agent-type-option-label">{{ option.label }}</span>
-                              <span v-if="option.desc" class="agent-type-option-desc">{{ option.desc }}</span>
-                            </div>
-                          </template>
-                        </t-select>
-                      </div>
-                    </div>
+                    <!-- 运行模式/智能体类型(私有化定制 2026-09-18:配置隐藏,默认 智能推理 + Wiki+RAG 混合) -->
 
                     <!-- 名称 -->
                     <div class="setting-row" data-guide="agent-create-name">
@@ -2303,9 +2263,9 @@ const defaultFormData = {
     kb_selection_mode: 'all' as 'all' | 'selected' | 'none',
     knowledge_bases: [] as string[],
     retrieve_kb_only_when_mentioned: false,
-    // 智能推理下的类型预设：新建 agent 时默认给 RAG 问答（最常用场景）。
+    // 智能推理下的类型预设：新建 agent 默认 Wiki+RAG 混合（私有化定制）。
     // 编辑既有 agent 时会被 agent 自己保存的 agent_type 覆盖。
-    agent_type: 'rag-qa' as AgentType,
+    agent_type: 'hybrid-rag-wiki' as AgentType,
     system_prompt_id: '' as string,
     // 附件上传设置
     image_upload_enabled: false,
