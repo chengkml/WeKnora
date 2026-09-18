@@ -1587,7 +1587,8 @@
     </Transition>
   </Teleport>
 
-  <AgentCreateContextualGuide :when="visible && editorMode === 'create'" :is-agent-mode="isAgentMode" />
+  <!-- 私有化定制(2026-09-18):创建智能体引导禁用 -->
+
 </template>
 
 <script setup lang="ts">

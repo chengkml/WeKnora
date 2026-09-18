@@ -807,8 +807,7 @@
       :readOnly="editorMode === 'edit' && editingAgent != null && !canManageAgent(editingAgent as AgentWithUI)"
       @update:visible="editorVisible = $event" @success="handleEditorSuccess" />
 
-    <TenantModelsGuide :when="showAgentTenantModelsGuide" variant="agent" />
-    <ContextualGuide tour="agentList" :when="showAgentListContextualGuide" />
+    <!-- 私有化定制(2026-09-18):模型引导/列表情境引导禁用 -->
   </div>
 </template>
 

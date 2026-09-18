@@ -1,6 +1,5 @@
 <template>
-  <SpotlightGuide v-model:active="active" :steps="config.steps" :step-i18n-prefix="config.stepI18nPrefix"
-    labels-prefix="contextualGuide" @finish="onFinish" @dismiss="onFinish" />
+  <!-- 私有化定制(2026-09-18):系统所有情境引导禁用,不渲染 SpotlightGuide -->
 </template>
 
 <script setup lang="ts">

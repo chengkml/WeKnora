@@ -4,7 +4,8 @@ export const GLOBAL_USER_GUIDE_KEY = 'weknora:new-user-guide-done:v1'
 export const OPEN_NEW_USER_GUIDE_EVENT = 'weknora:open-new-user-guide'
 
 export function openNewUserGuide() {
-  window.dispatchEvent(new CustomEvent(OPEN_NEW_USER_GUIDE_EVENT))
+  // 私有化定制(2026-09-18):全局新手引导禁用,入口变为 no-op
+  return
 }
 
 export const KB_EDITOR_FOCUS_SECTION_EVENT = 'weknora:kb-editor-focus-section'

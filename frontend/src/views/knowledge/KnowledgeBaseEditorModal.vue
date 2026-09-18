@@ -466,8 +466,8 @@
     </Transition>
   </Teleport>
 
-  <KbCreateContextualGuide :when="visible && mode === 'create'" :is-faq="isFAQ"
-    :needs-embedding="kbCreateNeedsEmbedding" />
+  <!-- 私有化定制(2026-09-18):新建知识库引导禁用 -->
+
 </template>
 
 <script setup lang="ts">
