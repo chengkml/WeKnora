@@ -71,26 +71,7 @@
                       </div>
                     </div>
 
-                    <!-- 集成渠道状态（编辑模式，配置在集成中心） -->
-                    <div v-if="editorMode === 'edit' && editorAgent?.id" class="setting-row">
-                      <div class="setting-info">
-                        <label>{{ $t('integrations.agentEditor.label') }}</label>
-                        <p class="desc">{{ $t('integrations.agentEditor.desc') }}</p>
-                      </div>
-                      <div class="setting-control">
-                        <div class="integration-inline">
-                          <button type="button" class="integration-inline__stat integration-inline__link" @click="gotoIntegrations('im')">
-                            <span>{{ $t('integrations.tabs.im') }} · {{ agentIMChannelCount }}</span>
-                            <t-icon name="chevron-right" size="14px" />
-                          </button>
-                          <span class="integration-inline__sep" aria-hidden="true">|</span>
-                          <button type="button" class="integration-inline__stat integration-inline__link" @click="gotoIntegrations('embed')">
-                            <span>{{ $t('integrations.tabs.embed') }} · {{ agentEmbedChannelCount }}</span>
-                            <t-icon name="chevron-right" size="14px" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                    <!-- 私有化定制(2026-09-18):集成渠道状态(IM/嵌入)移除 -->
 
                     <!-- 运行模式/智能体类型(私有化定制 2026-09-18:配置隐藏,默认 智能推理 + Wiki+RAG 混合) -->
 
@@ -1563,11 +1544,8 @@
                   </div>
                 </div>
 
-                <!-- 共享管理（仅编辑模式且非内置智能体） -->
-                <div v-if="editorMode === 'edit' && editorAgent?.id && !editorAgent?.is_builtin"
-                  v-show="currentSection === 'share'" class="section">
-                  <AgentShareSettings :agent-id="editorAgent.id" :agent="editorAgent" />
-                </div>
+                <!-- 私有化定制(2026-09-18):共享管理移除 -->
+
               </div>
 
               <!-- 底部操作栏 -->
@@ -2197,10 +2175,7 @@ const navItems = computed(() => {
     // 私有化定制（WEK-56）：「MCP 服务(mcp)」与「技能 Skills(skills)」也从表单移除——
     // MCP 与技能在平台侧统一管理（技能管理页 / MCP 管理页），无需逐个智能体配置。
   }
-  // 发布（仅编辑模式）
-  if (editorMode.value === 'edit' && editorAgent.value?.id && !editorAgent.value?.is_builtin && !authStore.isLiteMode) {
-    items.push({ key: 'share', icon: 'share', label: t('knowledgeEditor.sidebar.share') });
-  }
+  // 私有化定制(2026-09-18):发布/共享管理入口移除
   return items;
 });
 
