@@ -848,8 +848,8 @@
                   </div>
                 </div>
 
-                <!-- 对话问题推荐 -->
-                <div v-show="currentSection === 'suggestions'" class="section">
+                <!-- 对话问题推荐(私有化定制 2026-09-18:配置隐藏) -->
+                <div v-if="false" class="section">
                   <div class="section-header">
                     <h2>{{ $t('agentEditor.questionSuggestions.title') }}</h2>
                     <p class="section-description">{{ $t('agentEditor.questionSuggestions.description') }}</p>
@@ -2019,14 +2019,18 @@ const missKindToReason = (kind: RequirementMissKind): string | undefined => {
 const availableTools = computed(() => {
   const scope = scopeCapabilities.value;
   const hasAnyKb = hasKnowledgeBase.value;
-  return allTools.value.map(tool => {
-    const { ok, missKind } = evaluateToolRequirement(tool.value, scope, hasAnyKb);
-    return {
-      ...tool,
-      disabled: !ok,
-      disabledReason: ok ? undefined : missKindToReason(missKind),
-    };
-  });
+  // 私有化定制(2026-09-18):隐藏 wiki 巡检(wiki_issue)与 数据分析(data) 两组工具
+  const HIDDEN_TOOL_GROUPS = new Set(['wiki_issue', 'data']);
+  return allTools.value
+    .filter(tool => !HIDDEN_TOOL_GROUPS.has(tool.group))
+    .map(tool => {
+      const { ok, missKind } = evaluateToolRequirement(tool.value, scope, hasAnyKb);
+      return {
+        ...tool,
+        disabled: !ok,
+        disabledReason: ok ? undefined : missKindToReason(missKind),
+      };
+    });
 });
 
 // 按分组切片后的工具列表，用于模板分组渲染
@@ -2173,7 +2177,7 @@ const navItems = computed(() => {
     { key: 'basic', icon: 'info-circle', label: t('agent.editor.basicInfo') },
     { key: 'prompts', icon: 'file-paste', label: t('agent.editor.promptsConfig') },
     { key: 'model', icon: 'control-platform', label: t('agent.editor.modelConfig') },
-    { key: 'suggestions', icon: 'help-circle', label: t('agentEditor.questionSuggestions.navLabel') },
+    // 私有化定制(2026-09-18):问题推荐配置隐藏
   ];
   // 多轮对话（仅普通模式显示，Agent模式内部自动控制）
   if (!isAgentMode.value) {
@@ -2986,6 +2990,12 @@ watch(() => props.visible, async (val) => {
         }
         if (!formData.value.description) {
           formData.value.description = getPresetDefaultDescription(preset);
+        }
+      }
+      // 私有化定制(2026-09-18):查询知识图谱默认勾选
+      if (newFormData.config.agent_mode === 'smart-reasoning') {
+        if (!formData.value.config.allowed_tools.includes('query_knowledge_graph')) {
+          formData.value.config.allowed_tools.push('query_knowledge_graph');
         }
       }
       applyDefaultChatModelIfEmpty()
