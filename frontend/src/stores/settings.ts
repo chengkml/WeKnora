@@ -103,7 +103,7 @@ const defaultSettings: Settings = {
     rerankModelId: "",
     selectedChatModelId: "",  // 用户当前选择的对话模型ID
   },
-  selectedAgentId: BUILTIN_QUICK_ANSWER_ID,  // 默认选中快速问答模式
+  selectedAgentId: "",  // 私有化定制(2026-09-18):默认不选快速问答,由页面加载后选第一个智能体或留空
   selectedAgentSourceTenantId: null as string | null,  // 共享智能体来源空间 ID
   autoCheckUpdate: true,
 };
@@ -171,7 +171,7 @@ export const useSettingsStore = defineStore("settings", {
     isAutoCheckUpdateEnabled: (state) => state.settings.autoCheckUpdate ?? true,
 
     // 当前选中的智能体ID
-    selectedAgentId: (state) => state.settings.selectedAgentId || BUILTIN_QUICK_ANSWER_ID,
+    selectedAgentId: (state) => state.settings.selectedAgentId || "",
     // 共享智能体来源空间 ID（可选）
     selectedAgentSourceTenantId: (state) => state.settings.selectedAgentSourceTenantId ?? null,
   },
@@ -470,7 +470,7 @@ export const useSettingsStore = defineStore("settings", {
     
     // 获取选中的智能体ID
     getSelectedAgentId(): string {
-      return this.settings.selectedAgentId || BUILTIN_QUICK_ANSWER_ID;
+      return this.settings.selectedAgentId || "";
     },
 
     // —— 会话级输入态恢复 —— //

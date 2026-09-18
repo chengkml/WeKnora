@@ -4834,6 +4834,7 @@ export default {
     messages: {
       enterContent: "请先输入内容!",
       selectKnowledge: "请先选择知识库!",
+      selectAgentFirst: "请先选择智能体!",
       replying: "正在回复中，请稍后再试!",
       agentSwitchedOn: "已切换到智能推理",
       agentSwitchedOff: "已切换到快速问答",

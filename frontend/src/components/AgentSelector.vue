@@ -11,38 +11,19 @@
         </div>
 
         <div class="agent-selector-content" @scroll="hideDetailPanel">
-          <!-- 内置智能体 -->
+          <!-- 智能体列表(私有化定制 2026-09-18:不分内置/自定义,直接摊开) -->
           <div class="agent-group">
-            <div class="agent-group-title">{{ $t('agent.builtinAgents') }}</div>
-            <div v-for="agent in builtinAgents" :key="agent.id" class="agent-option"
+            <div v-for="agent in allFlatAgents" :key="agent.id" class="agent-option"
               :class="{ selected: isMyAgentSelected(agent) }" @mouseenter="onOptionEnter(agent, $event)"
               @mouseleave="onOptionLeave" @click="selectAgent(agent)">
-              <div v-if="agent.id === BUILTIN_QUICK_ANSWER_ID || agent.id === BUILTIN_SMART_REASONING_ID"
-                class="builtin-icon" :class="agent.config?.agent_mode === 'smart-reasoning' ? 'agent' : 'normal'">
-                <TIcon :name="agent.config?.agent_mode === 'smart-reasoning' ? 'control-platform' : 'chat'"
-                  size="13px" />
-              </div>
-              <div v-else-if="agent.avatar" class="builtin-avatar">{{ agent.avatar }}</div>
-              <div v-else class="builtin-icon normal">
-                <TIcon name="app" size="13px" />
-              </div>
-              <span class="agent-option-name">{{ agent.name }}</span>
-              <div v-if="getAgentNotReadyLabels(agent).length" class="agent-option-actions">
-                <t-tooltip :content="$t('agent.selector.notReadyHint', { items: formatNotReadyHint(agent) })"
-                  placement="top">
-                  <TIcon name="error-circle" size="14px" class="not-ready-icon" @click.stop />
-                </t-tooltip>
-              </div>
-            </div>
-          </div>
-
-          <!-- 自定义智能体 -->
-          <div v-if="customAgents.length > 0" class="agent-group">
-            <div class="agent-group-title">{{ $t('agent.customAgents') }}</div>
-            <div v-for="agent in customAgents" :key="agent.id" class="agent-option"
-              :class="{ selected: isMyAgentSelected(agent) }" @mouseenter="onOptionEnter(agent, $event)"
-              @mouseleave="onOptionLeave" @click="selectAgent(agent)">
-              <AgentAvatar :name="agent.name" size="small" />
+              <template v-if="agent.is_builtin">
+                <div v-if="agent.avatar" class="builtin-avatar">{{ agent.avatar }}</div>
+                <div v-else class="builtin-icon" :class="agent.config?.agent_mode === 'smart-reasoning' ? 'agent' : 'normal'">
+                  <TIcon :name="agent.config?.agent_mode === 'smart-reasoning' ? 'control-platform' : 'chat'"
+                    size="13px" />
+                </div>
+              </template>
+              <AgentAvatar v-else :name="agent.name" size="small" />
               <span class="agent-option-name">{{ agent.name }}</span>
               <div v-if="getAgentNotReadyLabels(agent).length" class="agent-option-actions">
                 <t-tooltip :content="$t('agent.selector.notReadyHint', { items: formatNotReadyHint(agent) })"
@@ -263,6 +244,9 @@ const builtinAgents = computed(() => {
 });
 
 const customAgents = computed(() => agentsList.value.filter(a => !a.is_builtin));
+
+// 私有化定制(2026-09-18):内置+自定义合并平铺,下拉不再分组
+const allFlatAgents = computed(() => [...builtinAgents.value, ...customAgents.value]);
 
 const toCustomAgent = (agent: SharedAgentInfo['agent']): CustomAgent => ({
   is_builtin: false,

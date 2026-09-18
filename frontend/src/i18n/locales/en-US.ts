@@ -2522,6 +2522,7 @@ export default {
     messages: {
       enterContent: 'Please enter content first!',
       selectKnowledge: 'Please select a knowledge base first!',
+      selectAgentFirst: 'Please select an agent first!',
       replying: 'Currently replying, please try again later!',
       agentSwitchedOn: 'Switched to Intelligent Reasoning',
       agentSwitchedOff: 'Switched to Quick Q&A',
