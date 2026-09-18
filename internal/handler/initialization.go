@@ -110,8 +110,8 @@ type UserInitRequest struct {
 	Email    string `json:"email"    binding:"required"`
 	Password string `json:"password" binding:"required"`
 	// Models 为可选的模型配置块（结构同 with-models）。仅在「用户无知识库、
-	// 需新建默认个人知识库」时消费：upsert 到工作空间并绑定，默认库创建即可用；
-	// 已有知识库的重复调用完全忽略该字段（幂等，零副作用）。
+	// 已废弃（不再自动创建个人知识库），字段仅保留兼容；
+	// 不消费该字段（幂等，零副作用）。
 	Models []CreateKnowledgeBaseModelConfig `json:"models,omitempty"`
 }
 
@@ -198,7 +198,7 @@ func (h *InitializationHandler) upsertAndBindInitModels(
 
 // UserInitialize godoc
 // @Summary      用户初始化
-// @Description  用户首次进入系统时调用该接口完成初始化流程，包括创建用户、默认工作空间和个人知识库。
+// @Description  用户首次进入系统时调用该接口完成初始化流程，包括创建用户、默认工作空间。
 //
 //	已初始化过的用户再次调用不会重复创建（幂等）。
 //
@@ -259,45 +259,6 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 			}
 		}
 
-		// 检查用户是否有个人知识库，没有则创建
-		if activeTenant != nil {
-			kbCtx := context.WithValue(ctx, types.TenantIDContextKey, activeTenant.ID)
-			kbCtx = context.WithValue(kbCtx, types.UserIDContextKey, existingUser.ID)
-			kbCtx = context.WithValue(kbCtx, types.TenantInfoContextKey, activeTenant)
-
-			kbs, err := h.kbService.ListKnowledgeBases(kbCtx)
-			if err == nil && len(kbs) == 0 {
-				logger.Infof(ctx, "No personal knowledge base found for user %s, creating one", req.UserID)
-				kb := &types.KnowledgeBase{
-					Name:        "个人知识库",
-					Description: "个人知识库",
-					Type:        "document",
-					TenantID:    activeTenant.ID,
-					CreatorID:   existingUser.ID,
-					ChunkingConfig: types.ChunkingConfig{
-						ChunkSize:    1000,
-						ChunkOverlap: 200,
-						Separators:   []string{"\n\n", "\n", "。", "！", "？", ";", "；"},
-					},
-					IndexingStrategy: types.IndexingStrategy{
-						VectorEnabled:  true,
-						KeywordEnabled: false,
-						WikiEnabled:    true,
-						GraphEnabled:   false,
-					},
-					CreatedAt: time.Now(),
-					UpdatedAt: time.Now(),
-				}
-				if err := h.upsertAndBindInitModels(kbCtx, kb, activeTenant.ID, req.Models); err != nil {
-					logger.Errorf(ctx, "Failed to upsert init models for user %s: %v", req.UserID, err)
-					c.Error(errors.NewInternalServerError("初始化模型配置失败: " + err.Error()))
-					return
-				}
-				if _, createErr := h.kbService.CreateKnowledgeBase(kbCtx, kb); createErr != nil {
-					logger.Warnf(ctx, "Failed to create personal knowledge base for existing user: %v", createErr)
-				}
-			}
-		}
 		accessToken, refreshToken, tokenErr := h.userService.GenerateTokens(ctx, existingUser)
 		if tokenErr != nil {
 			logger.Errorf(ctx, "Failed to generate tokens for existing user: %v", tokenErr)
@@ -389,48 +350,6 @@ func (h *InitializationHandler) UserInitialize(c *gin.Context) {
 		return
 	}
 
-	// Step 4: 创建个人知识库
-	// CreateKnowledgeBase 内部从 context 读取 tenant ID 和 user ID，
-	// 免认证的初始化接口没有这些上下文，需注入。
-	kbCtx := context.WithValue(ctx, types.TenantIDContextKey, createdTenant.ID)
-	kbCtx = context.WithValue(kbCtx, types.UserIDContextKey, user.ID)
-	kbCtx = context.WithValue(kbCtx, types.TenantInfoContextKey, createdTenant)
-	kb := &types.KnowledgeBase{
-		Name:        "个人知识库",
-		Description: "个人知识库",
-		Type:        "document",
-		TenantID:    createdTenant.ID,
-		CreatorID:   user.ID,
-		ChunkingConfig: types.ChunkingConfig{
-			ChunkSize:    1000,
-			ChunkOverlap: 200,
-			Separators:   []string{"\n\n", "\n", "。", "！", "？", ";", "；"},
-		},
-		IndexingStrategy: types.IndexingStrategy{
-			VectorEnabled:  true,
-			KeywordEnabled: false,
-			WikiEnabled:    true,
-			GraphEnabled:   false,
-		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	if err := h.upsertAndBindInitModels(kbCtx, kb, createdTenant.ID, req.Models); err != nil {
-		logger.Errorf(ctx, "Failed to upsert init models for user %s: %v", req.UserID, err)
-		c.Error(errors.NewInternalServerError("初始化模型配置失败: " + err.Error()))
-		return
-	}
-
-	createdKB, err := h.kbService.CreateKnowledgeBase(kbCtx, kb)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to create personal knowledge base: %v", err)
-		c.Error(errors.NewInternalServerError("创建个人知识库失败: " + err.Error()))
-		return
-	}
-	logger.Infof(ctx, "Personal knowledge base created: %s", createdKB.ID)
-
-	// Step 5: 生成 JWT 令牌
 	accessToken, refreshToken, err := h.userService.GenerateTokens(ctx, user)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to generate tokens: %v", err)
