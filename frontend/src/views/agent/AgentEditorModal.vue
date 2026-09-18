@@ -2019,8 +2019,8 @@ const missKindToReason = (kind: RequirementMissKind): string | undefined => {
 const availableTools = computed(() => {
   const scope = scopeCapabilities.value;
   const hasAnyKb = hasKnowledgeBase.value;
-  // 私有化定制(2026-09-18):隐藏 wiki 巡检(wiki_issue)与 数据分析(data) 两组工具
-  const HIDDEN_TOOL_GROUPS = new Set(['wiki_issue', 'data']);
+  // 私有化定制(2026-09-18):隐藏 wiki 巡检(wiki_issue)/wiki 编辑(wiki_edit)/数据分析(data) 三组工具
+  const HIDDEN_TOOL_GROUPS = new Set(['wiki_issue', 'wiki_edit', 'data']);
   return allTools.value
     .filter(tool => !HIDDEN_TOOL_GROUPS.has(tool.group))
     .map(tool => {
