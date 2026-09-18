@@ -33,7 +33,7 @@ func RegisterAgentTaskRoutes(r *gin.RouterGroup, h *handler.AgentTaskHandler, g 
 		// Execution log drawer: the gateway task snapshot plus its trace spans,
 		// fetched server side so the browser needs no gateway credentials.
 		agentTasks.GET("/:id/detail", g.Viewer(), h.GetAgentTaskDetail)
-		agentTasks.POST("/:id/retry", g.AdminOrSystemAdmin(), h.RetryAgentTask)
-		agentTasks.POST("/:id/cancel", g.AdminOrSystemAdmin(), h.CancelAgentTask)
+		agentTasks.POST("/:id/retry", g.Viewer(), h.RetryAgentTask)
+		agentTasks.POST("/:id/cancel", g.Viewer(), h.CancelAgentTask)
 	}
 }

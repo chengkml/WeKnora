@@ -311,7 +311,7 @@ const { t, te } = useI18n()
 // 读接口对本工作区成员开放（按租户限域），但 retry / cancel 打的是共享的网关队列，
 // 后端走 AdminOrSystemAdmin 闸门：非管理员点按钮只会拿到 403，所以这里直接禁用。
 const authStore = useAuthStore()
-const canOperate = computed(() => authStore.isSystemAdmin || authStore.hasRole('admin'))
+const canOperate = computed(() => true) // 已放开管理员限制：登录用户即可重试/取消任务
 
 const POLL_INTERVAL_MS = 10000
 const DEFAULT_PAGE_SIZE = 20
