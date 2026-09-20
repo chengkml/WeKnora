@@ -141,34 +141,43 @@ func (n *Neo4jRepository) DelGraph(ctx context.Context, namespaces []types.NameS
 	defer session.Close(ctx)
 
 	result, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		totalDeleted := 0
 		for _, namespace := range namespaces {
-			labelExpr := n.Label(namespace)
+			labelExpr := n.Label(namespace) // ENTITY<kb_id>:ENTITY<kg>（kg 空时仅 ENTITY<kb_id>）
 
-			deleteRelsQuery := `
-				CALL apoc.periodic.iterate(
-					"MATCH (n:` + labelExpr + ` {kg: $knowledge_id})-[r]-(m:` + labelExpr + ` {kg: $knowledge_id}) RETURN r",
-					"DELETE r",
-					{batchSize: 1000, parallel: true, params: {knowledge_id: $knowledge_id}}
-				) YIELD batches, total
-				RETURN total
-        	`
-			if _, err := tx.Run(ctx, deleteRelsQuery, map[string]interface{}{"knowledge_id": namespace.Knowledge}); err != nil {
-				return nil, fmt.Errorf("failed to delete relationships: %v", err)
+			// 单事务 DETACH DELETE：原子、确定性，错误直接冒泡到 tx.Run。
+			// 旧实现用 apoc.periodic.iterate(parallel:true) 分两段删 rel/nodes，
+			// 高负载下内部 batch 静默丢失（DELETE r 锁冲突/重试耗尽）→
+			// 部分文档子图删不干净、旧边残留，且外层 CALL 不报错（2026-09-20 实测
+			// 两库各剩 ~500 条 v2 旧类型边：制定于/关联：被作用…挂在合并后的新节点上）。
+			var (
+				query  string
+				params map[string]interface{}
+			)
+			if namespace.Knowledge != "" {
+				query = `MATCH (n:` + labelExpr + ` {kg: $knowledge_id}) DETACH DELETE n RETURN count(n) AS deleted`
+				params = map[string]interface{}{"knowledge_id": namespace.Knowledge}
+			} else {
+				// 删整个 KB 图（knowledge_id 未传时）：不能按 kg='' 过滤（会匹配不到）
+				query = `MATCH (n:` + labelExpr + `) DETACH DELETE n RETURN count(n) AS deleted`
+				params = map[string]interface{}{}
 			}
-
-			deleteNodesQuery := `
-				CALL apoc.periodic.iterate(
-					"MATCH (n:` + labelExpr + ` {kg: $knowledge_id}) RETURN n",
-					"DELETE n",
-					{batchSize: 1000, parallel: true, params: {knowledge_id: $knowledge_id}}
-				) YIELD batches, total
-				RETURN total
-        	`
-			if _, err := tx.Run(ctx, deleteNodesQuery, map[string]interface{}{"knowledge_id": namespace.Knowledge}); err != nil {
-				return nil, fmt.Errorf("failed to delete nodes: %v", err)
+			res, err := tx.Run(ctx, query, params)
+			if err != nil {
+				return nil, fmt.Errorf("failed to delete graph: %v", err)
+			}
+			// Next 读出 count（DETACH DELETE RETURN count(n)），再 Consume 排空流，
+			// 确保事务内查询完整执行（错误会通过 res.Err() 冒泡，不再静默丢批）
+			for res.Next(ctx) {
+				if v, ok := res.Record().Values[0].(int64); ok {
+					totalDeleted += int(v)
+				}
+			}
+			if err := res.Err(); err != nil {
+				return nil, fmt.Errorf("failed to consume delete result: %v", err)
 			}
 		}
-		return nil, nil
+		return totalDeleted, nil
 	})
 	if err != nil {
 		return err
