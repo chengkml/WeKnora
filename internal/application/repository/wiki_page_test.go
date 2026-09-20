@@ -339,3 +339,48 @@ func TestListByTypeLight_ClampsLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(clampedEntries), 200)
 }
+
+// TestSearchQuery_ExactTitleRanksHighest guards the wiki search ranking.
+// A query equal to a page title must outrank pages whose titles merely embed
+// the query as a substring — the 三重一大 case, where 19 rule / long-sentence
+// pages tied at "title contains" pushed the real entity page to position 20,
+// outside the default limit of 10, so the entity looked like it did not exist.
+//
+// SQLite has no POSIX `~*` operator, so this asserts the statement GORM builds
+// (via dry-run) rather than executing it: the rank CASE must lead with the
+// exact-title branch, and the bind args must stay aligned with the
+// placeholders (5 for SELECT, then kbID + 5 for WHERE).
+func TestSearchQuery_ExactTitleRanksHighest(t *testing.T) {
+	db := setupWikiPagesTestDB(t)
+	repo := &wikiPageRepository{db: db}
+
+	const query = "三重一大"
+	tx := db.Session(&gorm.Session{DryRun: true})
+	var pages []*types.WikiPage
+	res := repo.buildSearchQuery(tx, "kb-search", query, 10).Find(&pages)
+	require.NoError(t, res.Error)
+
+	sql := res.Statement.SQL.String()
+	exactIdx := strings.Index(sql, "lower(btrim(title)) = lower(btrim(")
+	require.NotEqual(t, -1, exactIdx, "exact-title branch missing from: %s", sql)
+	substringIdx := strings.Index(sql, "title ~* ")
+	require.NotEqual(t, -1, substringIdx, "substring branch missing from: %s", sql)
+	assert.Less(t, exactIdx, substringIdx, "exact-title branch must precede the substring branch: %s", sql)
+	assert.Contains(t, sql, "THEN 5")
+	assert.Contains(t, sql, "match_rank DESC")
+	assert.Contains(t, sql, "LIMIT 10")
+
+	// Args: 5 for the rank CASE, then kbID + 5 for the WHERE clause, then the
+	// status guard. GORM appends its own soft-delete predicate (deleted_at IS
+	// NULL) without a bind arg.
+	require.Len(t, res.Statement.Vars, 12, "bind args drifted from placeholders: %s", sql)
+	for _, i := range []int{0, 1, 2, 3, 4} {
+		assert.Equal(t, query, res.Statement.Vars[i], "rank CASE arg %d", i)
+	}
+	assert.Equal(t, "kb-search", res.Statement.Vars[5], "kbID arg")
+	for _, i := range []int{6, 7, 8, 9, 10} {
+		assert.Equal(t, query, res.Statement.Vars[i], "WHERE arg %d", i)
+	}
+	assert.Equal(t, "archived", res.Statement.Vars[11], "status guard arg")
+	assert.Contains(t, sql, "deleted_at` IS NULL", "soft-deleted pages must stay excluded")
+}

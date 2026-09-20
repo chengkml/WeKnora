@@ -1138,6 +1138,7 @@ func escapeLikePattern(s string) string {
 //
 // Results are ranked by where the query hit, highest-relevance first:
 //
+//	title exact match → rank 5 (user typed exactly what the page is called)
 //	title    hit → rank 4 (most obvious intent: user typed what the page is called)
 //	slug     hit → rank 3 (url-like identifiers, direct jump)
 //	summary  hit → rank 2 (short authored abstract)
@@ -1148,6 +1149,12 @@ func escapeLikePattern(s string) string {
 // see pages like "华为" or "Index" ahead of the actual 王新 page just
 // because they mention 王新 in their body and were updated more recently.
 // updated_at stays as the tiebreaker so same-rank ties stay deterministic.
+//
+// The exact-title tier matters because "title contains" alone ties every
+// substring hit together: searching "三重一大" on a wiki with 19 rule /
+// long-sentence pages whose titles merely embed the phrase pushed the actual
+// 三重一大 entity page to position 20, i.e. outside the default limit of 10 —
+// the entity looked like it did not exist.
 func (r *wikiPageRepository) Search(ctx context.Context, kbID string, query string, limit int) ([]*types.WikiPage, error) {
 	if limit <= 0 {
 		limit = 10
@@ -1156,32 +1163,46 @@ func (r *wikiPageRepository) Search(ctx context.Context, kbID string, query stri
 		limit = 50
 	}
 
-	// CASE expression is evaluated per-row during SELECT; we order by the
-	// alias so the DB only computes the rank once. Parameterized four
-	// times with the same regex to avoid coupling to GORM's positional
-	// arg rewriting quirks.
-	rankExpr := "CASE " +
-		"WHEN title ~* ? THEN 4 " +
-		"WHEN slug ~* ? THEN 3 " +
-		"WHEN summary ~* ? THEN 2 " +
-		"WHEN content ~* ? THEN 1 " +
-		"ELSE 0 END AS match_rank"
-
-	var pages []*types.WikiPage
-	if err := r.db.WithContext(ctx).
-		Select("*, "+rankExpr, query, query, query, query).
-		Where("knowledge_base_id = ? AND (title ~* ? OR content ~* ? OR summary ~* ? OR slug ~* ?)",
-			kbID, query, query, query, query).
-		Where("status != ?", "archived").
-		Order("match_rank DESC, updated_at DESC").
-		Limit(limit).
-		Find(&pages).Error; err != nil {
+	pages := make([]*types.WikiPage, 0)
+	if err := r.buildSearchQuery(r.db.WithContext(ctx), kbID, query, limit).Find(&pages).Error; err != nil {
 		return nil, err
 	}
 	if err := r.hydratePageFolders(ctx, pages); err != nil {
 		return nil, err
 	}
 	return pages, nil
+}
+
+// wikiSearchRankExpr ranks a row by the strongest place the query matched.
+// CASE is evaluated per-row during SELECT; we order by the alias so the DB
+// only computes the rank once. Parameterized five times with the same query
+// to avoid coupling to GORM's positional arg rewriting quirks.
+const wikiSearchRankExpr = "CASE " +
+	"WHEN lower(btrim(title)) = lower(btrim(?)) THEN 5 " +
+	"WHEN title ~* ? THEN 4 " +
+	"WHEN slug ~* ? THEN 3 " +
+	"WHEN summary ~* ? THEN 2 " +
+	"WHEN content ~* ? THEN 1 " +
+	"ELSE 0 END AS match_rank"
+
+// wikiSearchWhere matches rows whose title/slug/summary/content hit the query.
+// The exact-title branch is repeated here (not just in the rank expression)
+// so a query full of regex metacharacters — where `title ~* ?` alone would
+// not match the literal title — still surfaces its exact page.
+const wikiSearchWhere = "knowledge_base_id = ? AND (" +
+	"lower(btrim(title)) = lower(btrim(?)) " +
+	"OR title ~* ? OR content ~* ? OR summary ~* ? OR slug ~* ?)"
+
+// buildSearchQuery assembles the search statement. Split out from Search so
+// tests can inspect the generated SQL and its bind args without a live
+// Postgres (the SQLite test harness has no POSIX `~*` operator).
+func (r *wikiPageRepository) buildSearchQuery(db *gorm.DB, kbID string, query string, limit int) *gorm.DB {
+	return db.Model(&types.WikiPage{}).
+		Select("*, "+wikiSearchRankExpr, query, query, query, query, query).
+		Where(wikiSearchWhere, kbID, query, query, query, query, query).
+		Where("status != ?", "archived").
+		Order("match_rank DESC, updated_at DESC").
+		Limit(limit)
 }
 
 // CountByType returns page counts grouped by type for a knowledge base
