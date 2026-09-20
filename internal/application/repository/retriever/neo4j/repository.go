@@ -67,16 +67,32 @@ func (n *Neo4jRepository) addGraph(ctx context.Context, namespace types.NameSpac
 			UNWIND $data AS row
 			CALL apoc.merge.node(row.labels, {name: row.name, kg: row.knowledge_id}, row.props, {}) YIELD node
 			SET node.chunks = apoc.coll.union(node.chunks, row.chunks)
+			SET node.page_id = coalesce(row.page_id, node.page_id)
+			SET node.page_slug = coalesce(row.page_slug, node.page_slug)
 			RETURN distinct 'done' AS result
 		`
 		nodeData := []map[string]interface{}{}
 		for _, node := range graph.Node {
+			props := map[string][]string{"attributes": node.Attributes}
+			// Pass nil (not "") when absent so the coalesce() SET above keeps
+			// any existing page_id instead of overwriting it with an empty string.
+			var pageID, pageSlug interface{}
+			if node.PageID != "" {
+				props["page_id"] = []string{node.PageID}
+				pageID = node.PageID
+			}
+			if node.PageSlug != "" {
+				props["page_slug"] = []string{node.PageSlug}
+				pageSlug = node.PageSlug
+			}
 			nodeData = append(nodeData, map[string]interface{}{
 				"name":         node.Name,
 				"knowledge_id": namespace.Knowledge,
-				"props":        map[string][]string{"attributes": node.Attributes},
+				"props":        props,
 				"chunks":       node.Chunks,
 				"labels":       n.Labels(namespace),
+				"page_id":      pageID,
+				"page_slug":    pageSlug,
 			})
 		}
 		if _, err := tx.Run(ctx, node_import_query, map[string]interface{}{"data": nodeData}); err != nil {
@@ -211,6 +227,8 @@ func (n *Neo4jRepository) SearchNode(
 					Name:       nameStr,
 					Chunks:     propToStringSlice(n.Props["chunks"]),
 					Attributes: propToStringSlice(n.Props["attributes"]),
+					PageID:     propToString(n.Props["page_id"]),
+					PageSlug:   propToString(n.Props["page_slug"]),
 				})
 			}
 
@@ -252,4 +270,21 @@ func listI2listS(list []any) []string {
 		result[i] = fmt.Sprintf("%v", v)
 	}
 	return result
+}
+
+// propToString reads a single-valued Neo4j property (string, or a 1-element
+// list) into a string. Used for page_id / page_slug, which are written both
+// as scalars and as 1-element string lists.
+func propToString(prop interface{}) string {
+	switch v := prop.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	default:
+		if list := propToStringSlice(prop); len(list) > 0 {
+			return list[0]
+		}
+		return ""
+	}
 }

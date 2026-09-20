@@ -19,6 +19,12 @@ type GraphNode struct {
 	Name       string   `json:"name,omitempty"`
 	Chunks     []string `json:"chunks,omitempty"`
 	Attributes []string `json:"attributes,omitempty"`
+	// PageID / PageSlug carry the originating wiki page identity, so a graph
+	// node can be traced back to its wiki page by id/slug instead of by name.
+	// Empty for nodes with no page of their own (rule-derived objects,
+	// document nodes, org names that never got an entity page).
+	PageID   string `json:"page_id,omitempty"`
+	PageSlug string `json:"page_slug,omitempty"`
 }
 
 // GraphRelation represents the relation of the graph

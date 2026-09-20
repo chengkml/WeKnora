@@ -529,7 +529,8 @@ async def handle_list_tools() -> list[types.Tool]:
             name="graph_add",
             description="Write nodes and relationships into the Neo4j knowledge graph "
             "of a knowledge base. Accepts a list of graph payloads, each with "
-            '"node" (name/chunks/attributes) and "relation" (node1/node2/type) '
+            '"node" (name/chunks/attributes, optional page_id/page_slug linking '
+            'the node back to its wiki page) and "relation" (node1/node2/type) '
             "arrays; nodes are merged by (name, kb) with chunk lists unioned. "
             "Pass knowledge_id to scope the write to a single knowledge file.",
             inputSchema={
@@ -538,7 +539,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     **_KB_ID_PROP,
                     "graphs": {
                         "type": "array",
-                        "description": "Graph payloads: [{\"node\": [{\"name\": \"...\", \"chunks\": [], \"attributes\": []}], \"relation\": [{\"node1\": \"...\", \"node2\": \"...\", \"type\": \"...\"}]}]",
+                        "description": "Graph payloads: [{\"node\": [{\"name\": \"...\", \"chunks\": [], \"attributes\": [], \"page_id\": \"...\", \"page_slug\": \"...\"}], \"relation\": [{\"node1\": \"...\", \"node2\": \"...\", \"type\": \"...\"}]}]",
                         "items": {"type": "object"},
                     },
                     "knowledge_id": {
