@@ -29,9 +29,10 @@ type GraphNode struct {
 
 // GraphRelation represents the relation of the graph
 type GraphRelation struct {
-	Node1 string `json:"node1,omitempty"`
-	Node2 string `json:"node2,omitempty"`
-	Type  string `json:"type,omitempty"`
+	Node1      string            `json:"node1,omitempty"`
+	Node2      string            `json:"node2,omitempty"`
+	Type       string            `json:"type,omitempty"`
+	Properties map[string]string `json:"properties,omitempty"` // 边属性（rule_slug/note/predicate 等，2026-09-20 v3a）
 }
 
 type GraphData struct {

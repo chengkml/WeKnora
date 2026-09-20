@@ -116,6 +116,7 @@ func (n *Neo4jRepository) addGraph(ctx context.Context, namespace types.NameSpac
 				"type":          rel.Type,
 				"source_labels": n.Labels(namespace),
 				"target_labels": n.Labels(namespace),
+				"attributes":    rel.Properties, // 边属性（rule_slug/note/predicate…），nil=不设置
 			})
 		}
 		if _, err := tx.Run(ctx, rel_import_query, map[string]interface{}{"data": relData}); err != nil {
@@ -234,10 +235,17 @@ func (n *Neo4jRepository) SearchNode(
 
 			// Convert relationship to types.Relation
 			relData := rel.(neo4j.Relationship)
+			relProps := make(map[string]string, len(relData.Props))
+			for k, v := range relData.Props {
+				if s, ok := v.(string); ok {
+					relProps[k] = s
+				}
+			}
 			graphData.Relation = append(graphData.Relation, &types.GraphRelation{
-				Node1: nodeData.Props["name"].(string),
-				Node2: targetNodeData.Props["name"].(string),
-				Type:  relData.Type,
+				Node1:      nodeData.Props["name"].(string),
+				Node2:      targetNodeData.Props["name"].(string),
+				Type:       relData.Type,
+				Properties: relProps,
 			})
 		}
 		return graphData, nil
