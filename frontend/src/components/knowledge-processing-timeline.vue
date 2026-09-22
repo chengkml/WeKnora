@@ -40,6 +40,26 @@ interface SpansResponse {
   current_stage?: string
   trace: SpanNode
   last_error?: LastError | null
+  /** Wiki 技能构建阶段（agent build task + skill back-written logs）。 */
+  agent?: AgentStageInfo | null
+}
+
+interface AgentStageLog {
+  action: string
+  time?: string
+  summary?: string
+}
+
+interface AgentStageInfo {
+  task_id?: string
+  status?: string
+  skill?: string
+  doc_name?: string
+  started_at?: string
+  finished_at?: string
+  duration_ms?: number
+  last_error?: string
+  stages?: AgentStageLog[]
 }
 
 // IMPORTANT: Vue 3 coerces missing Boolean props to `false`, NOT
@@ -243,8 +263,8 @@ const isLive = computed<boolean>(() => {
     // and irrecoverable failure can leave child spans stranded as
     // 'running' (worker process died, cancel raced FailSpan, etc.),
     // and we must NOT keep polling forever on those.
-    if (isHardTerminal(data.value.parse_status)) return false
-    return isPolling(data.value.parse_status) || traceActive.value
+    if (isHardTerminal(data.value.parse_status)) return props.gracePoll && agentActive.value
+    return isPolling(data.value.parse_status) || traceActive.value || (props.gracePoll && agentActive.value)
   }
   if (isHardTerminal(props.parseStatus)) return false
   return isPolling(props.parseStatus)
@@ -330,7 +350,7 @@ const isWithinQuiesceGrace = computed<boolean>(() => {
 function shouldPollNow(): boolean {
   if (!data.value) return isPolling(props.parseStatus)
   if (props.gracePoll) {
-    return isLive.value || isWithinQuiesceGrace.value
+    return isLive.value || isWithinQuiesceGrace.value || agentActive.value
   }
   return isPolling(data.value.parse_status)
 }
@@ -1160,12 +1180,79 @@ const viewingLatestAttempt = computed<boolean>(() => {
 // The latest knowledge row is therefore authoritative for ALL statuses,
 // including terminal ones. Historical attempts keep their own root status.
 const headerStatus = computed(() => {
-  return resolveTimelineHeaderStatus({
+  const base = resolveTimelineHeaderStatus({
     parseStatus: data.value?.parse_status,
     traceStatus: data.value?.trace?.status,
     isLatestAttempt: viewingLatestAttempt.value,
   })
+  // Wiki 技能构建尚未结束（或失败）时，解析完成不再直接显示为「成功」——
+  // 技能（agent build）还在 agent-gateway 上跑，成功后另有 agent_build_done。
+  if (viewingLatestAttempt.value && agent.value) {
+    if (base === 'done' || base === 'completed') {
+      const s = agent.value.status
+      if (s === 'running' || s === 'queued') return 'agent_running'
+      if (s === 'failed') return 'agent_failed'
+      if (s === 'cancelled') return 'agent_cancelled'
+    }
+  }
+  return base
 })
+
+// ---- Wiki 技能构建阶段（agent build）-------
+const agent = computed<AgentStageInfo | null>(() => data.value?.agent || null)
+const agentActive = computed<boolean>(() => {
+  const s = agent.value?.status
+  return s === 'queued' || s === 'running'
+})
+const agentRows = computed<Array<{ action: string; time: string | undefined; timeMs: number | null; summary?: string }>>(() => {
+  return (agent.value?.stages || []).map((s) => ({ action: s.action, time: s.time, timeMs: parseTime(s.time), summary: s.summary }))
+})
+const agentTotalMs = computed<number>(() => {
+  const a = agent.value
+  if (typeof a?.duration_ms === 'number' && a.duration_ms > 0) return a.duration_ms
+  const rows = agentRows.value
+  if (rows.length === 0) return 0
+  const first = rows[0].timeMs
+  const last = rows[rows.length - 1].timeMs
+  if (first !== null && last !== null) return Math.max(0, last - first)
+  return 0
+})
+const agentStatusText = computed(() => {
+  const s = agent.value?.status || 'unknown'
+  return t(`knowledgeStages.agent.status.${s}`)
+})
+const agentTagTheme = computed(() => {
+  switch (agent.value?.status) {
+    case 'succeeded':
+      return 'success'
+    case 'failed':
+      return 'danger'
+    default:
+      return 'warning'
+  }
+})
+function agentStageLabel(action: string): string {
+  const key = `knowledgeStages.subspan.${action}`
+  const localized = t(key)
+  return localized === key ? action : localized
+}
+function agentStageTime(ms: number | null, raw?: string): string {
+  if (raw && parseTime(raw) === ms && ms === null) return '—'
+  if (!raw) return '—'
+  return formatTime(raw)
+}
+function agentStageDur(i: number): string {
+  const rows = agentRows.value
+  const cur = rows[i].timeMs
+  if (cur === null) return '—'
+  const next = i + 1 < rows.length ? rows[i + 1].timeMs : null
+  let end = next
+  if (end === null) {
+    const fin = agent.value?.finished_at ? parseTime(agent.value.finished_at) : null
+    end = fin ?? cur
+  }
+  return formatDuration(Math.max(0, end - cur))
+}
 
 const headerStatusText = computed(() => {
   const s = headerStatus.value
@@ -1183,7 +1270,11 @@ const headerStatusTheme = computed(() => {
     case 'processing':
     case 'pending':
     case 'finalizing':
+    case 'agent_running':
+    case 'agent_cancelled':
       return 'warning'
+    case 'agent_failed':
+      return 'danger'
     default:
       return 'default'
   }
@@ -1619,6 +1710,27 @@ const processConfigLines = computed<string[]>(() => {
             </div>
           </template>
         </div>
+
+        <!-- ============== WIKI SKILL BUILD STAGE ============== -->
+        <section v-if="data?.agent" class="kp-agent">
+          <div class="kp-agent-head">
+            <span class="kp-agent-title">{{ t('knowledgeStages.agent.title') }}</span>
+            <t-tag size="small" :theme="agentTagTheme" variant="light">{{ agentStatusText }}</t-tag>
+            <span v-if="agentTotalMs > 0" class="kp-agent-total kp-mono">
+              {{ t('knowledgeStages.agent.total', { d: formatDuration(agentTotalMs) }) }}
+            </span>
+          </div>
+          <div v-if="(agent?.stages || []).length > 0" class="kp-agent-list">
+            <div v-for="(st, i) in agentRows" :key="i" class="kp-agent-row">
+              <span class="kp-agent-dot" :class="{ 'kp-agent-dot-last': i === agentRows.length - 1 }" />
+              <span class="kp-agent-stage" :title="st.action">{{ agentStageLabel(st.action) }}</span>
+              <span class="kp-agent-time kp-mono">{{ agentStageTime(st.timeMs, st.time) }}</span>
+              <span class="kp-agent-dur kp-mono">{{ agentStageDur(i) }}</span>
+              <span v-if="st.summary" class="kp-agent-summary" :title="st.summary">{{ st.summary }}</span>
+            </div>
+          </div>
+          <div v-else class="kp-agent-empty">{{ t('knowledgeStages.agent.noLogs') }}</div>
+        </section>
 
         <!-- ============== DETAIL PANEL ============== -->
         <div class="kp-detail" :class="{ 'kp-detail-open': detailOpen }">
@@ -3304,5 +3416,75 @@ const processConfigLines = computed<string[]>(() => {
   line-height: 1.6;
   color: var(--td-text-color-secondary);
   word-break: break-word;
+}
+
+.kp-agent {
+  margin: 12px 16px 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 8px;
+  background: var(--td-bg-color-container);
+}
+.kp-agent-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.kp-agent-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--td-text-color-primary);
+}
+.kp-agent-total {
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  margin-left: auto;
+}
+.kp-agent-list {
+  display: flex;
+  flex-direction: column;
+}
+.kp-agent-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+}
+.kp-agent-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--td-brand-color);
+  flex: none;
+  align-self: center;
+}
+.kp-agent-dot-last {
+  background: var(--td-success-color);
+}
+.kp-agent-stage {
+  color: var(--td-text-color-primary);
+  flex: none;
+  min-width: 96px;
+}
+.kp-agent-time {
+  color: var(--td-text-color-secondary);
+  flex: none;
+}
+.kp-agent-dur {
+  color: var(--td-text-color-secondary);
+  flex: none;
+  min-width: 52px;
+}
+.kp-agent-summary {
+  color: var(--td-text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kp-agent-empty {
+  font-size: 12px;
+  color: var(--td-text-color-placeholder);
 }
 </style>

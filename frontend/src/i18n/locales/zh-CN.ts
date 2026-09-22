@@ -1117,6 +1117,21 @@ export default {
       failed: "失败",
       skipped: "已跳过",
       cancelled: "已取消",
+      agent_running: "解析完成·技能构建中",
+      agent_failed: "技能构建失败",
+      agent_cancelled: "技能已取消",
+    },
+    agent: {
+      title: "Wiki 技能构建",
+      total: "总耗时 {d}",
+      noLogs: "技能进度日志暂未回写",
+      status: {
+        queued: "技能排队中",
+        running: "技能构建中",
+        succeeded: "技能完成",
+        failed: "技能失败",
+        cancelled: "技能已取消",
+      },
     },
     errorCode: {
       DOCREADER_TIMEOUT: "文档解析超时",

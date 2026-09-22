@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +39,11 @@ type KnowledgeHandler struct {
 	agentShareService interfaces.AgentShareService
 	asynqClient       interfaces.TaskEnqueuer
 	spanRepo          repository.KnowledgeSpanRepository
+	// logEntryService reads the per-KB wiki operation log (skill
+	// back-written agent_build_* progress entries) for the spans agent stage.
+	logEntryService interfaces.WikiLogEntryService
+	// kgRepo resolves the latest agent build task per knowledge (spans agent stage).
+	kgRepo interfaces.KnowledgeRepository
 }
 
 // NewKnowledgeHandler creates a new knowledge handler instance
@@ -49,6 +55,8 @@ func NewKnowledgeHandler(
 	agentShareService interfaces.AgentShareService,
 	asynqClient interfaces.TaskEnqueuer,
 	spanRepo repository.KnowledgeSpanRepository,
+	logEntryService interfaces.WikiLogEntryService,
+	kgRepo interfaces.KnowledgeRepository,
 ) *KnowledgeHandler {
 	return &KnowledgeHandler{
 		cfg:               cfg,
@@ -58,6 +66,8 @@ func NewKnowledgeHandler(
 		agentShareService: agentShareService,
 		asynqClient:       asynqClient,
 		spanRepo:          spanRepo,
+		logEntryService:    logEntryService,
+		kgRepo:             kgRepo,
 	}
 }
 
@@ -745,6 +755,12 @@ func (h *KnowledgeHandler) GetKnowledgeSpans(c *gin.Context) {
 		"current_stage":   currentStageName,
 		"trace":           tree,
 	}
+	// Wiki 技能构建阶段：解析/摘要完成 ≠ 全部完成——agent build（文档→wiki
+	// 抽取技能，在 agent-gateway 执行）可能仍在排队/运行/失败。把台账行与
+	// 技能回写日志一并交给前端，让时间线在解析成功后继续跟踪技能状态。
+	if agent := h.agentBuildStageFor(ctx, knowledge); agent != nil {
+		resp["agent"] = agent
+	}
 	if lastError := knowledgeSpansLastError(
 		currentAttempt,
 		latestAttempt,
@@ -759,6 +775,79 @@ func (h *KnowledgeHandler) GetKnowledgeSpans(c *gin.Context) {
 		"success": true,
 		"data":    resp,
 	})
+}
+
+// agentBuildStageFor assembles the "wiki 技能构建" stage for GET /spans: the
+// latest AgentBuildTask ledger row for this knowledge plus the skill's
+// back-written progress log entries (wiki_log_entries with action
+// agent_build_*). Returns nil when no agent build task exists yet (e.g. lite
+// installs without the wiki skill pipeline / non-wiki knowledge).
+func (h *KnowledgeHandler) agentBuildStageFor(ctx context.Context, knowledge *types.Knowledge) gin.H {
+	ids := []string{knowledge.ID}
+	tasks, err := h.kgRepo.LatestAgentBuildTasksByKnowledgeIDs(ctx, ids)
+	if err != nil || len(tasks) == 0 {
+		return nil
+	}
+	t := tasks[knowledge.ID]
+	if t == nil {
+		return nil
+	}
+
+	// Skill back-written progress log (agent_build_start -> ... -> agent_build_done).
+	// WikiLogEntryService.List pages NEWEST first; collect up to a bounded window
+	// and then sort ascending so the frontend can render the stage line.
+	var entries []*types.WikiLogEntry
+	if h.logEntryService != nil {
+		const pageSize = 100
+		cursor := ""
+		for page := 0; page < 10; page++ { // cap: ~1000 scanned rows
+			pageResp, lerr := h.logEntryService.List(ctx, knowledge.KnowledgeBaseID, cursor, pageSize)
+			if lerr != nil {
+				logger.Warnf(ctx, "agent stage log list failed kb=%s kid=%s: %v",
+					knowledge.KnowledgeBaseID, knowledge.ID, lerr)
+				break
+			}
+			for _, e := range pageResp.Entries {
+				if e.KnowledgeID != knowledge.ID || !strings.HasPrefix(e.Action, "agent_build_") {
+					continue
+				}
+				entries = append(entries, e)
+			}
+			if pageResp.NextCursor == "" || len(pageResp.Entries) < pageSize {
+				break
+			}
+			cursor = pageResp.NextCursor
+		}
+	}
+	sort.SliceStable(entries, func(i, j int) bool { return entries[i].CreatedAt.Before(entries[j].CreatedAt) })
+	stageLogs := make([]gin.H, 0, len(entries))
+	seen := map[string]bool{}
+	for _, e := range entries {
+		// Deduplicate identical (action, created_at) pairs — a retried run
+		// may re-log the same stage; keep the first occurrence.
+		key := e.Action + "|" + e.CreatedAt.Format(time.RFC3339Nano)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		stageLogs = append(stageLogs, gin.H{
+			"action":  e.Action,
+			"time":    e.CreatedAt,
+			"summary": e.Summary,
+		})
+	}
+
+	return gin.H{
+		"task_id":     t.ID,
+		"status":      t.Status,
+		"skill":       t.Skill,
+		"doc_name":    t.DocName,
+		"started_at":  t.StartedAt,
+		"finished_at": t.FinishedAt,
+		"duration_ms": t.DurationMs,
+		"last_error":  t.LastError,
+		"stages":      stageLogs,
+	}
 }
 
 // knowledgeSpansLastError builds the last_error payload for GetKnowledgeSpans.
