@@ -140,6 +140,9 @@ type rbacGuards struct {
 	chunkService      middleware.ChunkLookup
 	kbShareService    interfaces.KBShareService
 	agentShareService interfaces.AgentShareService
+	// tenantInfoLookup restores TenantInfo for the master-key cross-tenant
+	// path (env-store retrieval needs the KB's own tenant engines).
+	tenantInfoLookup middleware.KBTenantInfoLookup
 
 	// apiKeyAuthorizer is the single source of truth for which routes an
 	// X-API-Key principal may call. Routes opt in via the apiKeyGroup
@@ -162,8 +165,12 @@ func newRBACGuards(
 	chunkService interfaces.ChunkService,
 	kbShareService interfaces.KBShareService,
 	agentShareService interfaces.AgentShareService,
+	tenantService interfaces.TenantService,
 ) *rbacGuards {
 	g := &rbacGuards{cfg: cfg, apiKeyAuthorizer: middleware.NewAPIKeyRouteAuthorizer()}
+	if tenantService != nil {
+		g.tenantInfoLookup = tenantService
+	}
 	if kbHandler != nil {
 		g.kbCreator = kbHandler.KBCreatorLookup
 		g.kbCreatorFromKbIDParam = kbHandler.KBCreatorLookupFromKbIDParam
@@ -557,6 +564,7 @@ func (g *rbacGuards) KBAccessRead(param string) gin.HandlerFunc {
 		g.kbShareService,
 		g.agentShareService,
 		g.cfg,
+		g.tenantInfoLookup,
 	)
 }
 
@@ -571,6 +579,7 @@ func (g *rbacGuards) KBAccessWrite(param string) gin.HandlerFunc {
 		g.kbShareService,
 		g.agentShareService,
 		g.cfg,
+		g.tenantInfoLookup,
 	)
 }
 
@@ -586,6 +595,7 @@ func (g *rbacGuards) KBAccessReadFromKnowledgeIDParam(param string) gin.HandlerF
 		g.kbShareService,
 		g.agentShareService,
 		g.cfg,
+		g.tenantInfoLookup,
 	)
 }
 
@@ -599,6 +609,7 @@ func (g *rbacGuards) KBAccessWriteFromKnowledgeIDParam(param string) gin.Handler
 		g.kbShareService,
 		g.agentShareService,
 		g.cfg,
+		g.tenantInfoLookup,
 	)
 }
 
@@ -613,6 +624,7 @@ func (g *rbacGuards) KBAccessReadFromChunkIDParam(param string) gin.HandlerFunc 
 		g.kbShareService,
 		g.agentShareService,
 		g.cfg,
+		g.tenantInfoLookup,
 	)
 }
 
@@ -627,5 +639,6 @@ func (g *rbacGuards) KBAccessWriteFromChunkIDParam(param string) gin.HandlerFunc
 		g.kbShareService,
 		g.agentShareService,
 		g.cfg,
+		g.tenantInfoLookup,
 	)
 }

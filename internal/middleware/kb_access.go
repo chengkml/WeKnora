@@ -198,6 +198,15 @@ func isResourceNotFound(err error) bool {
 		stderrors.Is(err, ErrResourceNotFound)
 }
 
+// KBTenantInfoLookup resolves the *types.Tenant for a tenant ID. The
+// master-key path uses it to restore TenantInfo (effective engines, model
+// config) when a request crosses into another tenant's KB — without it,
+// env-store retrieval flows (e.g. hybrid-search) fail with
+// retriever.ErrTenantInfoMissing. Optional: nil skips the lookup.
+type KBTenantInfoLookup interface {
+	GetTenantByID(ctx context.Context, id uint64) (*types.Tenant, error)
+}
+
 // RequireKBAccess returns a gin.HandlerFunc that resolves KB access
 // (own / org-shared / via shared agent), enforces the minimum required
 // org-level permission, and on success stores the result under
@@ -230,6 +239,7 @@ func RequireKBAccess(
 	kbShareService interfaces.KBShareService,
 	agentShareService interfaces.AgentShareService,
 	cfg *config.Config,
+	tenantInfoLookup KBTenantInfoLookup,
 ) gin.HandlerFunc {
 	warnOnNilConfig(cfg)
 	return func(c *gin.Context) {
@@ -304,6 +314,19 @@ func RequireKBAccess(
 		// the fallback tenant (or 0) and mis-scope every KB from another tenant.
 		if scope, ok := types.TenantAPIKeyScopeFromContext(ctx); ok && scope.MasterKey {
 			c.Set(types.TenantIDContextKey.String(), access.EffectiveTenantID)
+			// Restore TenantInfo for the KB's own tenant so env-store retrieval
+			// (effective engines) and model-consistency checks behave as if the
+			// request originated inside that tenant.
+			if tenantInfoLookup != nil {
+				t, err := tenantInfoLookup.GetTenantByID(ctx, access.EffectiveTenantID)
+				if err == nil && t != nil {
+					c.Set(types.TenantInfoContextKey.String(), t)
+					newCtx = context.WithValue(newCtx, types.TenantInfoContextKey, t)
+				} else if err != nil {
+					logger.Warnf(ctx, "[kb_access] master key: tenant info lookup failed for tenant %d: %v",
+						access.EffectiveTenantID, err)
+				}
+			}
 		}
 		c.Request = c.Request.WithContext(newCtx)
 		c.Next()

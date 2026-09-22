@@ -221,6 +221,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 			params.ChunkService,
 			params.KBShareService,
 			params.AgentShareService,
+			params.TenantService,
 		)
 
 		// API-key gate: single authority for X-API-Key principals. Runs

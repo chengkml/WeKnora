@@ -213,6 +213,7 @@ func runGuard(
 		shareSvc,
 		agentSvc,
 		cfgRBAC(true),
+		nil,
 	)
 	guard(c)
 	return rec, c
@@ -312,6 +313,7 @@ func TestRequireKBAccess_NoTenant_Aborts(t *testing.T) {
 		nil,
 		nil,
 		cfgRBAC(true),
+		nil,
 	)
 	guard(c)
 	require.True(t, c.IsAborted())
@@ -502,6 +504,7 @@ func TestRequireKBAccess_Forbidden_FailOpenWhenRBACDisabled(t *testing.T) {
 		types.OrgRoleEditor, // would-deny
 		kbsvc, share, nil,
 		cfgRBAC(false), // enforcement off
+		nil,
 	)
 	guard(c)
 	require.False(t, c.IsAborted(), "guard must pass through when EnableRBAC is off")
@@ -525,6 +528,7 @@ func TestRequireKBAccess_NotFound_FiresEvenWhenRBACDisabled(t *testing.T) {
 		&stubKBLookup{kbs: map[string]*types.KnowledgeBase{}},
 		nil, nil,
 		cfgRBAC(false),
+		nil,
 	)
 	guard(c)
 	require.True(t, c.IsAborted(), "404 still fires with enforcement off")
@@ -534,12 +538,24 @@ func TestRequireKBAccess_NotFound_FiresEvenWhenRBACDisabled(t *testing.T) {
 // runGuardMaster fires a request through the guard with the master-key API
 // scope (MasterKey+FullAccess, no real tenant row) and a fallback tenant in
 // context — mirroring what Auth attaches for MASTER_API_KEY.
+type stubTenantInfoLookup struct {
+	tenants map[uint64]*types.Tenant
+}
+
+func (s *stubTenantInfoLookup) GetTenantByID(_ context.Context, id uint64) (*types.Tenant, error) {
+	if t, ok := s.tenants[id]; ok {
+		return t, nil
+	}
+	return nil, errors.New("tenant not found")
+}
+
 func runGuardMaster(
 	t *testing.T,
 	fallbackTenantID uint64,
 	kbID string,
 	requiredPerm types.OrgMemberRole,
 	kb *types.KnowledgeBase,
+	lookup KBTenantInfoLookup,
 ) (*httptest.ResponseRecorder, *gin.Context) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -569,6 +585,7 @@ func runGuardMaster(
 		nil,
 		nil,
 		cfgRBAC(true),
+		lookup,
 	)
 	guard(c)
 	return rec, c
@@ -580,6 +597,7 @@ func TestRequireKBAccess_MasterKey_GrantsCrossTenantKB(t *testing.T) {
 	rec, c := runGuardMaster(t, 10000, "kb-x",
 		types.OrgRoleEditor,
 		&types.KnowledgeBase{ID: "kb-x", TenantID: 777},
+		nil,
 	)
 	require.False(t, c.IsAborted(), "master key should pass through")
 	require.Equal(t, 200, rec.Code)
@@ -603,13 +621,32 @@ func TestRequireKBAccess_MasterKey_WriteRoute_Grants(t *testing.T) {
 	rec, c := runGuardMaster(t, 10000, "kb-y",
 		types.OrgRoleEditor,
 		&types.KnowledgeBase{ID: "kb-y", TenantID: 777},
+		nil,
 	)
 	require.False(t, c.IsAborted(), "master key must pass write routes")
 	require.Equal(t, 200, rec.Code)
 }
 
 func TestRequireKBAccess_MasterKey_MissingKB_AbortsNotFound(t *testing.T) {
-	rec, c := runGuardMaster(t, 10000, "kb-missing", types.OrgRoleViewer, nil)
+	rec, c := runGuardMaster(t, 10000, "kb-missing", types.OrgRoleViewer, nil, nil)
 	require.True(t, c.IsAborted())
 	_ = rec
+}
+
+func TestRequireKBAccess_MasterKey_RestoresTenantInfo(t *testing.T) {
+	lookup := &stubTenantInfoLookup{tenants: map[uint64]*types.Tenant{777: {ID: 777, Name: "cross"}}}
+	_, c := runGuardMaster(t, 10000, "kb-z",
+		types.OrgRoleViewer,
+		&types.KnowledgeBase{ID: "kb-z", TenantID: 777},
+		lookup,
+	)
+	require.False(t, c.IsAborted())
+	// c.Keys (legacy handlers) and request context must both carry the KB's
+	// own TenantInfo so env-store retrieval resolves the right engines.
+	ti, ok := c.Get(types.TenantInfoContextKey.String())
+	require.True(t, ok, "TenantInfo must be restored on c.Keys")
+	require.Equal(t, uint64(777), ti.(*types.Tenant).ID)
+	ctxTI, ok := types.TenantInfoFromContext(c.Request.Context())
+	require.True(t, ok)
+	require.Equal(t, uint64(777), ctxTI.ID)
 }
