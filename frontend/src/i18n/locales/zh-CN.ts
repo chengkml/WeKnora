@@ -89,6 +89,7 @@ export default {
       trace: "Trace 执行链路",
       traceEmpty: "暂无 trace 日志",
       spanCount: "共 {n} 个 span",
+      liveTag: "运行中 · 每 5 秒自动刷新",
       durationShort: "{n} ms",
       input: "输入",
       spanOutput: "输出",

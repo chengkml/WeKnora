@@ -242,6 +242,9 @@
             <span class="at-detail-chip">
               {{ t('agentTasks.detail.spanCount', { n: detail.trace?.span_count || 0 }) }}
             </span>
+            <t-tag v-if="detail.task.status === 'running'" size="small" theme="warning" variant="light">
+              {{ t('agentTasks.detail.liveTag') }}
+            </t-tag>
           </h4>
           <div v-if="!detailSpans.length" class="at-detail-muted">{{ t('agentTasks.detail.traceEmpty') }}</div>
           <div v-else class="at-trace">
@@ -314,6 +317,8 @@ const authStore = useAuthStore()
 const canOperate = computed(() => true) // 已放开管理员限制：登录用户即可重试/取消任务
 
 const POLL_INTERVAL_MS = 10000
+// 实时日志（2026-09-22）：执行日志抽屉在任务运行中每 5s 静默刷新，span 实时增长
+const DETAIL_POLL_INTERVAL_MS = 5000
 const DEFAULT_PAGE_SIZE = 20
 const STATUS_VALUES: AgentTaskStatus[] = ['queued', 'running', 'succeeded', 'failed', 'cancelled']
 
@@ -341,6 +346,8 @@ const summary = ref<AgentTaskSummary>({
 })
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let detailPollTimer: ReturnType<typeof setInterval> | null = null
+const detailTaskId = ref('')
 let requestId = 0
 
 // 执行日志抽屉：网关任务快照 + trace span 链路
@@ -393,16 +400,55 @@ async function openDetail(row: AgentTaskItem) {
   detailLoading.value = true
   detailError.value = ''
   detail.value = null
+  detailTaskId.value = row.id
   expandedSpans.value = new Set()
+  stopDetailPolling()
   try {
     detail.value = await getAgentTaskDetail(row.id)
     // 默认展开根 span，方便一眼看到链路主干
     const first = detail.value?.trace?.spans?.find(span => !span.parent_id)
     if (first) expandedSpans.value = new Set([first.id])
+    // 实时日志（2026-09-22）：任务运行中，抽屉每 5s 静默刷新 span
+    if (detail.value?.task?.status === 'running') startDetailPolling()
   } catch (err: any) {
     detailError.value = err?.message || t('agentTasks.detail.loadFailed')
   } finally {
     detailLoading.value = false
+  }
+}
+
+function startDetailPolling() {
+  stopDetailPolling()
+  detailPollTimer = setInterval(refreshDetailSilently, DETAIL_POLL_INTERVAL_MS)
+}
+
+function stopDetailPolling() {
+  if (detailPollTimer) {
+    clearInterval(detailPollTimer)
+    detailPollTimer = null
+  }
+}
+
+/** 运行中静默重拉执行日志：不闪 loading、保留展开状态；任务结束即停。 */
+async function refreshDetailSilently() {
+  if (!detailTaskId.value) return
+  try {
+    const expanded = expandedSpans.value
+    const fresh = await getAgentTaskDetail(detailTaskId.value)
+    detail.value = fresh
+    if (fresh.task.status !== 'running') {
+      stopDetailPolling()
+      const first = fresh?.trace?.spans?.find(span => !span.parent_id)
+      expandedSpans.value = new Set(first ? [first.id] : [])
+    } else {
+      // 保留用户展开状态，仅追加新到 span 的默认展开（根 span）
+      const first = fresh?.trace?.spans?.find(span => !span.parent_id)
+      const next = new Set(expanded)
+      if (first) next.add(first.id)
+      expandedSpans.value = next
+    }
+  } catch {
+    // 静默失败：下一次轮询再试
   }
 }
 
@@ -568,6 +614,14 @@ watch(autoRefresh, (on) => {
   else stopPolling()
 })
 
+// 抽屉关闭时停止运行中轮询
+watch(detailVisible, (on) => {
+  if (!on) {
+    stopDetailPolling()
+    detailTaskId.value = ''
+  }
+})
+
 onMounted(() => {
   load()
   startPolling()
@@ -575,6 +629,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPolling()
+  stopDetailPolling()
 })
 </script>
 

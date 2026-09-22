@@ -68,6 +68,7 @@ export default {
       trace: "Trace 실행 체인",
       traceEmpty: "아직 trace 로그가 없습니다",
       spanCount: "span {n}개",
+      liveTag: "실행 중 · 5초 자동 새로고침",
       durationShort: "{n} ms",
       input: "입력",
       spanOutput: "출력",

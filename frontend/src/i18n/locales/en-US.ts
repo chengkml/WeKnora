@@ -88,6 +88,7 @@ export default {
       trace: 'Trace spans',
       traceEmpty: 'No trace log yet',
       spanCount: '{n} spans',
+      liveTag: 'Running · auto-refresh 5s',
       durationShort: '{n} ms',
       input: 'Input',
       spanOutput: 'Output',
