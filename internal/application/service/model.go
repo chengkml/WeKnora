@@ -98,6 +98,9 @@ func (s *modelService) resolveWeKnoraCloudCredentials(ctx context.Context, param
 func (s *modelService) CreateModel(ctx context.Context, model *types.Model) error {
 	logger.Infof(ctx, "Creating model: %s, type: %s, source: %s", model.Name, model.Type, model.Source)
 
+	// 新建的模型默认全局共享（is_builtin=true）：所有租户可见可用（2026-09-22，对齐 MCP 全局共享改造）
+	model.IsBuiltin = true
+
 	// Handle remote models (e.g., OpenAI, Azure)
 	if model.Source == types.ModelSourceRemote {
 		logger.Info(ctx, "Remote model detected, setting status to active")
@@ -369,9 +372,9 @@ func (s *modelService) DeleteModel(ctx context.Context, id string) error {
 	if existingModel == nil {
 		return ErrModelNotFound
 	}
-	if existingModel.IsBuiltin {
-		logger.Warnf(ctx, "Attempted to delete builtin model: %s", id)
-		return apperrors.NewBadRequestError("builtin models cannot be deleted")
+	if existingModel.IsBuiltin && !types.IsSystemAdminFromContext(ctx) {
+		logger.Warnf(ctx, "Attempted to delete builtin model by non-system-admin: %s", id)
+		return apperrors.NewBadRequestError("builtin models can only be deleted by system administrators")
 	}
 
 	kbCount, err := s.kbRepo.CountByModelID(ctx, tenantID, id)
