@@ -47,6 +47,9 @@ func (s *mcpServiceService) CreateMCPService(ctx context.Context, service *types
 		service.AdvancedConfig = types.GetDefaultAdvancedConfig()
 	}
 
+	// 新建的 MCP 服务默认全局共享（is_builtin=true）：所有租户可见、同步下发必含（2026-09-21）
+	service.IsBuiltin = true
+
 	// Set timestamps
 	service.CreatedAt = time.Now()
 	service.UpdatedAt = time.Now()
@@ -126,10 +129,6 @@ func (s *mcpServiceService) UpdateMCPService(ctx context.Context, service *types
 		return fmt.Errorf("MCP service not found")
 	}
 
-	// Builtin MCP services cannot be updated
-	if existing.IsBuiltin {
-		return fmt.Errorf("builtin MCP services cannot be updated")
-	}
 
 	// Determine the final transport type after merge
 	finalTransportType := existing.TransportType
@@ -327,10 +326,6 @@ func (s *mcpServiceService) DeleteMCPService(ctx context.Context, tenantID uint6
 		return fmt.Errorf("MCP service not found")
 	}
 
-	// Builtin MCP services cannot be deleted
-	if existing.IsBuiltin {
-		return fmt.Errorf("builtin MCP services cannot be deleted")
-	}
 
 	// Close client connection
 	s.mcpManager.CloseClient(id)
@@ -495,9 +490,6 @@ func (s *mcpServiceService) UpdateMCPCredentials(
 	if existing == nil {
 		return nil, fmt.Errorf("MCP service not found")
 	}
-	if existing.IsBuiltin {
-		return nil, fmt.Errorf("builtin MCP services cannot have credentials modified")
-	}
 
 	if existing.AuthConfig == nil {
 		existing.AuthConfig = &types.MCPAuthConfig{}
@@ -540,9 +532,6 @@ func (s *mcpServiceService) ClearMCPCredential(
 	}
 	if existing == nil {
 		return fmt.Errorf("MCP service not found")
-	}
-	if existing.IsBuiltin {
-		return fmt.Errorf("builtin MCP services cannot have credentials modified")
 	}
 	if existing.AuthConfig == nil {
 		return nil // nothing to clear

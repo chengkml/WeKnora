@@ -165,11 +165,11 @@
             <t-button variant="text" theme="primary" size="small" @click="handleEdit(row)">
               {{ $t('mcpManage.edit') }}
             </t-button>
-            <t-button v-if="!row.is_builtin" variant="text" theme="default" size="small"
+            <t-button variant="text" theme="default" size="small"
               :loading="togglingId === row.id" @click="handleToggleEnabled(row)">
               {{ row.enabled ? $t('mcpManage.disable') : $t('mcpManage.enable') }}
             </t-button>
-            <t-popconfirm v-if="!row.is_builtin" theme="danger"
+            <t-popconfirm theme="danger"
               :content="$t('mcpManage.deleteConfirm', { name: row.name || $t('mcpManage.unnamed') })"
               @confirm="handleDelete(row)">
               <t-button variant="text" theme="danger" size="small" :loading="deletingId === row.id">
