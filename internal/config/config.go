@@ -280,6 +280,17 @@ type AuthConfig struct {
 	// tenantless creates only the identity and waits for an invitation or an
 	// explicit self-service tenant creation.
 	DefaultTenantMode string `yaml:"default_tenant_mode" json:"default_tenant_mode"`
+	// MasterAPIKey is an env-configured universal API key (MASTER_API_KEY).
+	// When X-API-Key equals it the request is authenticated as a full-access
+	// master principal WITHOUT consulting tenant_api_keys: every knowledge
+	// base in every tenant is reachable and every API-key-declared route is
+	// allowed. Empty disables the feature.
+	MasterAPIKey string `yaml:"master_api_key" json:"master_api_key"`
+	// MasterAPIKeyTenantID is the fallback tenant identity used by
+	// non-KB-scoped routes when the master key is used (KB-scoped routes
+	// always rewrite to the KB's own tenant). Sourced from
+	// MASTER_API_KEY_TENANT_ID; defaults to 0 (no tenant context).
+	MasterAPIKeyTenantID uint64 `yaml:"master_api_key_tenant_id" json:"master_api_key_tenant_id"`
 }
 
 // AuthRegistrationMode constants used by handlers and middleware.
@@ -825,6 +836,18 @@ func applyAuthAndTenantDefaults(cfg *Config) {
 	}
 	if cfg.Tenant == nil {
 		cfg.Tenant = &TenantConfig{}
+	}
+
+	// Master API key (universal X-API-Key credential) is env-driven only —
+	// it must never be committed to config.yaml since the plaintext secret
+	// would then ship in the repo. See middleware/auth.go for enforcement.
+	if env := strings.TrimSpace(os.Getenv("MASTER_API_KEY")); env != "" {
+		cfg.Auth.MasterAPIKey = env
+	}
+	if env := strings.TrimSpace(os.Getenv("MASTER_API_KEY_TENANT_ID")); env != "" {
+		if v, err := strconv.ParseUint(env, 10, 64); err == nil && v > 0 {
+			cfg.Auth.MasterAPIKeyTenantID = v
+		}
 	}
 
 	if legacy := strings.TrimSpace(os.Getenv("DISABLE_REGISTRATION")); strings.EqualFold(legacy, "true") {

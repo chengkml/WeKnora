@@ -297,6 +297,14 @@ func RequireKBAccess(
 		// hit the right embedding store) without having to know.
 		c.Set(KBAccessContextKey, access)
 		newCtx := context.WithValue(ctx, types.TenantIDContextKey, access.EffectiveTenantID)
+		// Legacy handlers read the caller tenant from c.Keys (c.GetUint64) instead
+		// of the request context. Shared-KB flows intentionally leave c.Keys at the
+		// caller's own tenant so ?agent_id branching keeps working, but the master
+		// key has no own tenant — without rewriting c.Keys its handlers would see
+		// the fallback tenant (or 0) and mis-scope every KB from another tenant.
+		if scope, ok := types.TenantAPIKeyScopeFromContext(ctx); ok && scope.MasterKey {
+			c.Set(types.TenantIDContextKey.String(), access.EffectiveTenantID)
+		}
 		c.Request = c.Request.WithContext(newCtx)
 		c.Next()
 	}
@@ -322,6 +330,31 @@ func resolveKBAccessOnce(
 	kbShareService interfaces.KBShareService,
 	agentShareService interfaces.AgentShareService,
 ) (*KBAccess, error) {
+	// Master key (MASTER_API_KEY env): grant ANY knowledge base regardless of
+	// owning tenant. Resolution runs before the tenant-context check because
+	// the master principal's tenant is only a fallback — KB-scoped routes must
+	// work for KBs in every tenant, with the effective tenant rewritten to the
+	// KB's own so downstream handlers query the right tenant's data.
+	if scope, ok := types.TenantAPIKeyScopeFromContext(ctx); ok && scope.MasterKey {
+		kb, err := kbService.GetKnowledgeBaseByID(ctx, kbID)
+		if err != nil {
+			if stderrors.Is(err, apprepo.ErrKnowledgeBaseNotFound) {
+				return nil, errKBAccessNotFound
+			}
+			return nil, err
+		}
+		if kb == nil {
+			return nil, errKBAccessNotFound
+		}
+		logger.Infof(ctx, "[kb_access] master key grants %s access to KB %s (tenant %d)",
+			requiredPermission, kbID, kb.TenantID)
+		return &KBAccess{
+			KnowledgeBase:     kb,
+			EffectiveTenantID: kb.TenantID,
+			Permission:        types.OrgRoleAdmin,
+		}, nil
+	}
+
 	tenantID, ok := types.TenantIDFromContext(ctx)
 	if !ok || tenantID == 0 {
 		return nil, errKBAccessUnauthorized

@@ -388,6 +388,47 @@ func (s *knowledgeBaseService) ListKnowledgeBases(ctx context.Context) ([]*types
 	return kbs, nil
 }
 
+// ListAllKnowledgeBases returns knowledge bases across every tenant, enriched
+// with per-KB counts (knowledge/chunk/processing). The master API key path
+// (handler ListKnowledgeBases master branch) is the only caller; counts use
+// each KB's own tenant so cross-tenant rows are scoped correctly.
+func (s *knowledgeBaseService) ListAllKnowledgeBases(ctx context.Context) ([]*types.KnowledgeBase, error) {
+	kbs, err := s.repo.ListKnowledgeBases(ctx)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{
+			"scope": "all_tenants",
+		})
+		return nil, err
+	}
+	for _, kb := range kbs {
+		kb.EnsureDefaults()
+		tenantID := kb.TenantID
+		switch kb.Type {
+		case types.KnowledgeBaseTypeDocument:
+			if cnt, err := s.kgRepo.CountKnowledgeByKnowledgeBaseID(ctx, tenantID, kb.ID); err == nil {
+				kb.KnowledgeCount = cnt
+			} else {
+				logger.Warnf(ctx, "Failed to get knowledge count for knowledge base %s: %v", kb.ID, err)
+			}
+		case types.KnowledgeBaseTypeFAQ:
+			if cnt, err := s.chunkRepo.CountChunksByKnowledgeBaseID(ctx, tenantID, kb.ID); err == nil {
+				kb.ChunkCount = cnt
+			} else {
+				logger.Warnf(ctx, "Failed to get chunk count for knowledge base %s: %v", kb.ID, err)
+			}
+		}
+		if count, err := s.kgRepo.CountKnowledgeByStatus(
+			ctx, tenantID, kb.ID, []string{"pending", "processing"},
+		); err == nil {
+			kb.IsProcessing = count > 0
+			kb.ProcessingCount = count
+		} else {
+			logger.Warnf(ctx, "Failed to check processing status for knowledge base %s: %v", kb.ID, err)
+		}
+	}
+	return kbs, nil
+}
+
 // ListKnowledgeBasesByTenantID returns all knowledge bases for the given tenant (e.g. for shared agent context).
 func (s *knowledgeBaseService) ListKnowledgeBasesByTenantID(ctx context.Context, tenantID uint64) ([]*types.KnowledgeBase, error) {
 	kbs, err := s.repo.ListKnowledgeBasesByTenantID(ctx, tenantID)

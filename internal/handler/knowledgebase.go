@@ -567,6 +567,25 @@ func (h *KnowledgeBaseHandler) GetKnowledgeBase(c *gin.Context) {
 func (h *KnowledgeBaseHandler) ListKnowledgeBases(c *gin.Context) {
 	ctx := c.Request.Context()
 
+	// Master API key (MASTER_API_KEY env): list knowledge bases across EVERY
+	// tenant. Regular tenant keys keep the tenant-scoped path below.
+	if scope, ok := types.TenantAPIKeyScopeFromContext(ctx); ok && scope.MasterKey {
+		kbs, err := h.service.ListAllKnowledgeBases(ctx)
+		if err != nil {
+			logger.ErrorWithFields(ctx, err, map[string]interface{}{
+				"scope": "all_tenants",
+			})
+			c.Error(apperrors.NewInternalServerError(err.Error()))
+			return
+		}
+		kbs = filterKnowledgeBasesForAPIKeyScope(ctx, kbs)
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data":    h.buildKBListResponse(ctx, kbs, 0),
+		})
+		return
+	}
+
 	agentID := c.Query("agent_id")
 	if agentID != "" {
 		userIDVal, ok := c.Get(types.UserIDContextKey.String())

@@ -272,6 +272,12 @@ type TenantAPIKeyScope struct {
 	FullAccess       bool
 	KnowledgeBaseIDs StringArray
 	Capabilities     StringArray
+	// MasterKey marks the env-configured universal key (MASTER_API_KEY).
+	// It authenticates without a tenant_api_keys row and behaves like a
+	// full-access key with cross-tenant reach: RequireKBAccess grants any
+	// KB regardless of owning tenant and rewrites the effective tenant to
+	// the KB's own tenant.
+	MasterKey bool
 }
 
 func WithTenantAPIKeyScope(ctx context.Context, scope TenantAPIKeyScope) context.Context {
@@ -296,6 +302,7 @@ func (s TenantAPIKeyScope) Normalize() TenantAPIKeyScope {
 		FullAccess:       s.FullAccess,
 		KnowledgeBaseIDs: normalizeIDArray(s.KnowledgeBaseIDs),
 		Capabilities:     NormalizeAPIKeyCapabilities(s.Capabilities),
+		MasterKey:        s.MasterKey,
 	}
 }
 

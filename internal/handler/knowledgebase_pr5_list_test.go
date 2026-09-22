@@ -242,3 +242,60 @@ func TestListKB_GracefullyDegradesWhenBatchResolveFails(t *testing.T) {
 		t.Errorf("expected fallback source=unavailable, got %v", envelope.Data[0]["vector_store_source"])
 	}
 }
+
+// ListAllKnowledgeBases is the master-key-only path; the stub returns the
+// same fixture so the cross-tenant response can be asserted.
+func (s *stubListKBService) ListAllKnowledgeBases(context.Context) ([]*types.KnowledgeBase, error) {
+	return s.kbs, nil
+}
+
+func TestListKB_MasterKey_ReturnsAllTenants(t *testing.T) {
+	kbs := []*types.KnowledgeBase{
+		{ID: "kb-t1", Name: "tenant1", TenantID: 1},
+		{ID: "kb-t99", Name: "tenant99", TenantID: 99},
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(middleware.ErrorHandler())
+	r.Use(func(c *gin.Context) {
+		ctx := types.WithTenantAPIKeyScope(c.Request.Context(), types.TenantAPIKeyScope{
+			KeyID:      0,
+			ScopeType:  types.APIKeyScopeTenant,
+			FullAccess: true,
+			MasterKey:  true,
+		})
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	})
+	h := &KnowledgeBaseHandler{service: &stubListKBService{kbs: kbs}, vectorStoreService: &stubVectorStoreService{}}
+	r.GET("/knowledge-bases", h.ListKnowledgeBases)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/knowledge-bases", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	var envelope struct {
+		Success bool                     `json:"success"`
+		Data    []map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode: %v body=%s", err, w.Body.String())
+	}
+	if !envelope.Success || len(envelope.Data) != 2 {
+		t.Fatalf("master list must return KBs from every tenant, got %d body=%s",
+			len(envelope.Data), w.Body.String())
+	}
+	byID := map[string]map[string]interface{}{}
+	for _, row := range envelope.Data {
+		byID[row["id"].(string)] = row
+	}
+	if _, ok := byID["kb-t1"]; !ok {
+		t.Fatalf("missing tenant-1 KB in master list: %s", w.Body.String())
+	}
+	if _, ok := byID["kb-t99"]; !ok {
+		t.Fatalf("missing tenant-99 KB in master list: %s", w.Body.String())
+	}
+}

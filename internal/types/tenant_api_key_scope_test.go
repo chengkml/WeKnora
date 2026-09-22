@@ -95,3 +95,24 @@ func TestNormalizeAPIKeyCapabilities(t *testing.T) {
 		}
 	}
 }
+
+func TestScopeNormalizePreservesMasterKey(t *testing.T) {
+	s := TenantAPIKeyScope{
+		KeyID:            0,
+		ScopeType:        "Tenant",
+		FullAccess:       true,
+		KnowledgeBaseIDs: StringArray{"kb-1", "", "kb-2", "kb-1"},
+		Capabilities:     StringArray{"RETRIEVE", "unknown"},
+		MasterKey:        true,
+	}
+	got := s.Normalize()
+	if !got.MasterKey {
+		t.Fatalf("MasterKey must survive Normalize, got %#v", got)
+	}
+	if !got.FullAccess {
+		t.Fatalf("FullAccess must survive Normalize")
+	}
+	if got.ScopeType != APIKeyScopeTenant {
+		t.Fatalf("scope type = %q, want tenant", got.ScopeType)
+	}
+}

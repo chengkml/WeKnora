@@ -530,3 +530,86 @@ func TestRequireKBAccess_NotFound_FiresEvenWhenRBACDisabled(t *testing.T) {
 	require.True(t, c.IsAborted(), "404 still fires with enforcement off")
 	_ = rec
 }
+
+// runGuardMaster fires a request through the guard with the master-key API
+// scope (MasterKey+FullAccess, no real tenant row) and a fallback tenant in
+// context — mirroring what Auth attaches for MASTER_API_KEY.
+func runGuardMaster(
+	t *testing.T,
+	fallbackTenantID uint64,
+	kbID string,
+	requiredPerm types.OrgMemberRole,
+	kb *types.KnowledgeBase,
+) (*httptest.ResponseRecorder, *gin.Context) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Params = gin.Params{{Key: "id", Value: kbID}}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	ctx := context.WithValue(req.Context(), types.TenantIDContextKey, fallbackTenantID)
+	ctx = types.WithTenantAPIKeyScope(ctx, types.TenantAPIKeyScope{
+		KeyID:      0,
+		ScopeType:  types.APIKeyScopeTenant,
+		FullAccess: true,
+		MasterKey:  true,
+	})
+	c.Request = req.WithContext(ctx)
+
+	kbsvc := &stubKBLookup{kbs: map[string]*types.KnowledgeBase{}}
+	if kb != nil {
+		kbsvc.kbs[kbID] = kb
+	}
+
+	guard := RequireKBAccess(
+		KBIDFromParam("id"),
+		requiredPerm,
+		kbsvc,
+		nil,
+		nil,
+		cfgRBAC(true),
+	)
+	guard(c)
+	return rec, c
+}
+
+func TestRequireKBAccess_MasterKey_GrantsCrossTenantKB(t *testing.T) {
+	// KB lives in tenant 777 while the master fallback tenant is 10000 —
+	// only the master branch can grant this.
+	rec, c := runGuardMaster(t, 10000, "kb-x",
+		types.OrgRoleEditor,
+		&types.KnowledgeBase{ID: "kb-x", TenantID: 777},
+	)
+	require.False(t, c.IsAborted(), "master key should pass through")
+	require.Equal(t, 200, rec.Code)
+	access, ok := KBAccessFromContext(c)
+	require.True(t, ok)
+	require.Equal(t, uint64(777), access.EffectiveTenantID, "effective tenant = KB's own tenant")
+	require.Equal(t, types.OrgRoleAdmin, access.Permission)
+
+	// Both the request context AND c.Keys must carry the KB tenant so
+	// legacy handlers reading c.GetUint64(TenantIDContextKey) agree.
+	got, ok := types.TenantIDFromContext(c.Request.Context())
+	require.True(t, ok)
+	require.Equal(t, uint64(777), got)
+	gotKeys, ok := c.Get(types.TenantIDContextKey.String())
+	require.True(t, ok)
+	require.Equal(t, uint64(777), gotKeys)
+}
+
+func TestRequireKBAccess_MasterKey_WriteRoute_Grants(t *testing.T) {
+	// Even the Editor-minimum write routes pass: master grants Admin.
+	rec, c := runGuardMaster(t, 10000, "kb-y",
+		types.OrgRoleEditor,
+		&types.KnowledgeBase{ID: "kb-y", TenantID: 777},
+	)
+	require.False(t, c.IsAborted(), "master key must pass write routes")
+	require.Equal(t, 200, rec.Code)
+}
+
+func TestRequireKBAccess_MasterKey_MissingKB_AbortsNotFound(t *testing.T) {
+	rec, c := runGuardMaster(t, 10000, "kb-missing", types.OrgRoleViewer, nil)
+	require.True(t, c.IsAborted())
+	_ = rec
+}

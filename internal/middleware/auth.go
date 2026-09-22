@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -276,6 +277,15 @@ func Auth(
 		// 尝试X-API-Key认证（兼容模式）
 		apiKey := c.GetHeader("X-API-Key")
 		if apiKey != "" {
+			// 通用主密钥（MASTER_API_KEY env）：比对通过即视为 full-access 主
+			// 身份，不查 tenant_api_keys 表。跨租户能力由 kb_access 的 master
+			// 分支提供（任意租户 KB 直接放行并把有效租户重写为 KB 所属租户）。
+			if cfg != nil && cfg.Auth != nil && cfg.Auth.MasterAPIKey != "" &&
+				subtle.ConstantTimeCompare([]byte(apiKey), []byte(cfg.Auth.MasterAPIKey)) == 1 {
+				attachMasterAPIKeyAuthContext(c, cfg)
+				c.Next()
+				return
+			}
 			if apiKeyService != nil {
 				if authenticateAPIKeyRequest(c, tenantService, userService, apiKeyService, apiKey) {
 					c.Next()
@@ -394,6 +404,51 @@ func authenticateAPIKeyRequest(
 	// is enforced by middleware.APIKeyRouteAuthorizer on the /api/v1 group.
 	// Key-management and any other undeclared route is denied there.
 	return true
+}
+
+// attachMasterAPIKeyAuthContext builds the synthetic full-access principal
+// for the env-configured master API key (MASTER_API_KEY). No tenant_api_keys
+// row exists for it; the scope carries MasterKey=true so RequireKBAccess can
+// grant ANY knowledge base regardless of owning tenant and rewrite the
+// effective tenant to the KB's own tenant. A fallback tenant
+// (MASTER_API_KEY_TENANT_ID) is set for non-KB-scoped routes that still
+// require a tenant context.
+func attachMasterAPIKeyAuthContext(c *gin.Context, cfg *config.Config) {
+	tenantID := uint64(0)
+	if cfg != nil && cfg.Auth != nil {
+		tenantID = cfg.Auth.MasterAPIKeyTenantID
+	}
+	principal := types.Principal{Type: types.PrincipalAPITenant, ID: "master"}
+	user := &types.User{
+		ID:       "master-api-key",
+		Username: "master-api-key",
+		Email:    "master-api-key@api-key.local",
+		IsActive: true,
+	}
+	c.Set(types.UserContextKey.String(), user)
+	c.Set(types.UserIDContextKey.String(), user.ID)
+	c.Set(types.PrincipalContextKey.String(), principal)
+	c.Set(types.TenantRoleContextKey.String(), types.TenantRoleOwner)
+	c.Set(types.SystemAdminContextKey.String(), false)
+	if tenantID > 0 {
+		c.Set(types.TenantIDContextKey.String(), tenantID)
+	}
+	ctx := c.Request.Context()
+	ctx = context.WithValue(ctx, types.UserContextKey, user)
+	ctx = context.WithValue(ctx, types.UserIDContextKey, user.ID)
+	ctx = types.WithPrincipal(ctx, principal)
+	ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleOwner)
+	ctx = context.WithValue(ctx, types.SystemAdminContextKey, false)
+	if tenantID > 0 {
+		ctx = context.WithValue(ctx, types.TenantIDContextKey, tenantID)
+	}
+	ctx = types.WithTenantAPIKeyScope(ctx, types.TenantAPIKeyScope{
+		KeyID:      0,
+		ScopeType:  types.APIKeyScopeTenant,
+		FullAccess: true,
+		MasterKey:  true,
+	})
+	c.Request = c.Request.WithContext(ctx)
 }
 
 func isPlatformTenantOptionalAPI(path, method string) bool {
