@@ -32,7 +32,6 @@ type EmbedChannelHandler struct {
 	messageHandler    *MessageHandler
 	suggestionHandler *MessageSuggestionHandler
 	mcpOAuthHandler   *MCPOAuthHandler
-	mcpServiceHandler *MCPServiceHandler
 	redis             *redis.Client
 }
 
@@ -43,7 +42,6 @@ func NewEmbedChannelHandler(
 	messageHandler *MessageHandler,
 	suggestionHandler *MessageSuggestionHandler,
 	mcpOAuthHandler *MCPOAuthHandler,
-	mcpServiceHandler *MCPServiceHandler,
 	redisClient *redis.Client,
 ) *EmbedChannelHandler {
 	return &EmbedChannelHandler{
@@ -53,7 +51,6 @@ func NewEmbedChannelHandler(
 		messageHandler:    messageHandler,
 		suggestionHandler: suggestionHandler,
 		mcpOAuthHandler:   mcpOAuthHandler,
-		mcpServiceHandler: mcpServiceHandler,
 		redis:             redisClient,
 	}
 }
@@ -540,17 +537,6 @@ func (h *EmbedChannelHandler) EmbedMCPOAuthStatus(c *gin.Context) {
 		return
 	}
 	h.mcpOAuthHandler.Status(c)
-}
-
-func (h *EmbedChannelHandler) EmbedResolveToolApproval(c *gin.Context) {
-	if err := h.ensureEmbedSession(c); err != nil {
-		return
-	}
-	if h.mcpServiceHandler == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "tool approval handler unavailable"})
-		return
-	}
-	h.mcpServiceHandler.ResolveToolApproval(c)
 }
 
 type embedWebhookEventRequest struct {

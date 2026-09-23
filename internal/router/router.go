@@ -1086,9 +1086,6 @@ func RegisterMCPServiceRoutes(
 		// PUT body. See internal/handler/mcp_credentials.go for the contract. — Admin+
 		mcpServices.PUT("/:id/credentials", g.Admin(), credHandler.Put)
 		mcpServices.DELETE("/:id/credentials/:field", g.Admin(), credHandler.DeleteField)
-		// MCP tool human approval (issue #1173) — Viewer+ to read, Admin+ to set policy
-		mcpServices.GET("/:id/tool-approvals", g.Viewer(), handler.ListMCPToolApprovals)
-		mcpServices.PUT("/:id/tool-approvals/:tool_name", g.Admin(), handler.SetMCPToolApproval)
 		// Per-user OAuth authorization flow. Viewer+ may authorize/inspect/
 		// revoke their own token; the callback is the separate public route
 		// registered above.
@@ -1097,18 +1094,14 @@ func RegisterMCPServiceRoutes(
 		mcpServices.DELETE("/:id/oauth/token", g.Viewer(), oauthHandler.Revoke)
 	}
 
-	// /agent tool-approval + OAuth resolution are interactive human flows;
-	// not declared for API keys (default-deny).
+	// /agent MCP OAuth resolution is an interactive human flow; not declared
+	// for API keys (default-deny).
 	agentTool := r.Group("/agent")
 	{
-		// Resolving a pending tool-approval is gated to tenant members
-		// (Viewer+). The approval card surfaces inside an agent chat the
-		// caller initiated — restricting it to Admin+ blocks the only
-		// people who actually have context to approve, so the gate is
-		// kept at "anyone in the tenant" instead.
-		agentTool.POST("/tool-approvals/:pending_id", g.Viewer(), handler.ResolveToolApproval)
 		// Resume an agent run paused on an in-conversation MCP OAuth prompt.
-		// Same tenant-member (Viewer+) gating rationale as tool-approvals.
+		// Tenant-member (Viewer+) gating: the authorize card surfaces inside
+		// an agent chat the caller initiated — restricting it to Admin+ would
+		// block the only people who actually have context to authorize.
 		agentTool.POST("/mcp-oauth-resolutions/:pending_id", g.Viewer(), oauthHandler.ResolveMCPOAuth)
 		agentTool.POST("/mcp-oauth-resolutions/:pending_id/cancel", g.Viewer(), oauthHandler.CancelMCPOAuth)
 	}
@@ -1451,7 +1444,6 @@ func RegisterEmbedPublicRoutes(
 		embed.POST("/sessions/:session_id/mcp-oauth-resolutions/:pending_id/cancel", embedHandler.EmbedCancelMCPOAuth)
 		embed.POST("/sessions/:session_id/mcp-services/:id/oauth/authorize-url", embedHandler.EmbedMCPOAuthAuthorizeURL)
 		embed.GET("/sessions/:session_id/mcp-services/:id/oauth/status", embedHandler.EmbedMCPOAuthStatus)
-		embed.POST("/sessions/:session_id/tool-approvals/:pending_id", embedHandler.EmbedResolveToolApproval)
 		// Serve images embedded in bot replies (e.g. chart exports). EmbedAuth
 		// injects the channel's tenant, and the handler enforces that the
 		// requested path belongs to that tenant.

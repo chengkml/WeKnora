@@ -5726,46 +5726,6 @@ paths:
       summary: 跳过对话内 MCP OAuth 授权
       tags:
       - MCP服务
-  /agent/tool-approvals/{pending_id}:
-    post:
-      consumes:
-      - application/json
-      description: 用户审批通过或驳回一次工具调用（用于 Agent 阻塞等待审批的场景）
-      parameters:
-      - description: 待审批记录 ID
-        in: path
-        name: pending_id
-        required: true
-        type: string
-      - description: '{decision: \'
-        in: body
-        name: request
-        required: true
-        schema:
-          additionalProperties: true
-          type: object
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 审批结果
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: 请求参数错误
-          schema:
-            $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
-        "404":
-          description: 待审批记录不存在
-          schema:
-            $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
-      security:
-      - Bearer: []
-      - ApiKeyAuth: []
-      summary: 处理 MCP 工具调用待审批请求
-      tags:
-      - MCP服务
   /agents:
     get:
       consumes:
@@ -10888,51 +10848,6 @@ paths:
       - Bearer: []
       - ApiKeyAuth: []
       summary: 测试MCP服务连接
-      tags:
-      - MCP服务
-  /mcp-services/{id}/tool-approvals/{tool_name}:
-    put:
-      consumes:
-      - application/json
-      description: 为指定 MCP 服务下的某个工具设置/更新审批要求
-      parameters:
-      - description: MCP 服务 ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: 工具名
-        in: path
-        name: tool_name
-        required: true
-        type: string
-      - description: '{require_approval: bool}'
-        in: body
-        name: request
-        required: true
-        schema:
-          additionalProperties: true
-          type: object
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 更新结果
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: 请求参数错误
-          schema:
-            $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
-        "404":
-          description: MCP 服务或工具不存在
-          schema:
-            $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
-      security:
-      - Bearer: []
-      - ApiKeyAuth: []
-      summary: 设置 MCP 工具人工审批策略
       tags:
       - MCP服务
   /mcp-services/{id}/tools:

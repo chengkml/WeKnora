@@ -4449,10 +4449,6 @@ export default {
       descriptionLabel: 'Description',
       schemaLabel: 'Parameter schema',
       emptyDescription: 'This service did not provide tools or resources',
-      requireApproval: 'Require human approval',
-      requireApprovalTip:
-        'When enabled, the agent pauses before calling this tool until you approve — use for DB writes, deletes, etc.',
-      approvalSaveFailed: 'Failed to save approval setting'
     }
   },
   error: {
@@ -5914,29 +5910,6 @@ export default {
     supportedFormats: 'Supported formats',
   },
   agentStream: {
-    toolApproval: {
-      banner: 'This MCP tool requires human approval. Review parameters before execution.',
-      waiting: 'Awaiting review · {target}',
-      waitingStatus: 'Awaiting review',
-      targetWithTool: '{service} › {tool}',
-      titleWithTarget: 'Review · {service} › {tool}',
-      resolvedApproved: 'Approved · {target}',
-      resolvedRejected: 'Rejected · {target}',
-      service: 'Service',
-      tool: 'Tool',
-      argsLabel: 'Arguments',
-      argsModified: 'Modified',
-      countdown: 'About {seconds}s remaining',
-      countdownShort: '{seconds}s',
-      approve: 'Approve & run',
-      reject: 'Reject',
-      approvedTag: 'Approved',
-      rejectedTag: 'Rejected',
-      invalidJson: 'Arguments must be valid JSON',
-      submitted: 'Submitted',
-      submitFailed: 'Submit failed',
-      userRejected: 'User rejected',
-    },
     mcpOAuth: {
       banner: 'This MCP service requires OAuth authorization before it can be used',
       waiting: 'Awaiting authorization · {target}',
@@ -6783,7 +6756,7 @@ export default {
 	      capabilityManageModels: 'Manage models',
 	      capabilityManageModelsHint: 'Manage model definitions, credentials, connectivity checks, and WeKnoraCloud credentials.',
 	      capabilityManageMcpServices: 'Manage MCP services',
-	      capabilityManageMcpServicesHint: 'Manage MCP services, credentials, tool approval policies, and OAuth state for this principal.',
+	      capabilityManageMcpServicesHint: 'Manage MCP services, credentials, and OAuth state for this principal.',
 	      capabilityManageDatasources: 'Manage data sources',
 	      capabilityManageDatasourcesHint: 'Manage data-source connectors, credentials, resource selection, and sync jobs. Knowledge-base scope still applies when a source is bound to a KB.',
 	      capabilityManageChannels: 'Manage channels',

@@ -103,11 +103,7 @@ weknora chunk list --doc doc_xyz
 weknora message list --session sess_abc
 weknora message search "retry policy"                      # cross-session Q&A retrieval
 
-# 11. Resolve a pending tool approval (agent run blocked on approval event)
-weknora session tool-approval resolve pend_xxx -y          # approve (after user go-ahead)
-weknora session resume sess_abc --message msg_xyz # resume the blocked stream
-
-# 12. Health & verification verbs
+# 11. Health & verification verbs
 weknora kb status kb_abc       # fast snapshot: reachable / counts / processing flag (1 HTTP)
 weknora kb check kb_abc        # deep verify: also aggregates failed_count via doc list (1+N HTTP)
 weknora agent status ag_abc    # fast: reachable / model_id
@@ -382,27 +378,6 @@ weknora session resume sess_abc --message msg_xyz
 # Server REPLAYS all stored events from the start, then tails new ones.
 # Agent must dedupe (by message_id or event hash) to avoid double-processing.
 ```
-
-### Tool-approval unlock chain
-
-An agent run may pause the stream on a tool-approval event until a human approves or rejects the pending tool call. The unlock sequence:
-
-```bash
-# 1. Stream pauses with a tool-approval event carrying a pending_id.
-# 2. Surface the pending tool call to the user; get explicit go-ahead.
-weknora session tool-approval resolve pend_xxx -y                      # approve
-# weknora session tool-approval resolve pend_xxx --reject --reason "..." -y  # reject
-# 3. Resume the stream — server replays + tails from where the run was blocked.
-weknora session resume sess_abc --message msg_xyz
-```
-
-Pass `--modified-args '{"key":"value"}'` to replace tool arguments on approve (must be a non-empty JSON object). Never auto-pass `-y` — the approval is the exit-10 human-in-the-loop gate.
-
-Server-side buffer TTL: 1 hour for redis mode; process lifetime for memory mode (default). After TTL, expect `local.sse_stream_aborted` typed error.
-
-See `cli/AGENTS.md` "Stream recovery" section for the full agent contract.
-
----
 
 ## Health check
 

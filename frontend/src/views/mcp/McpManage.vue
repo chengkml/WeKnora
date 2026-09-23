@@ -185,13 +185,12 @@
     <McpServiceDialog v-model:visible="dialogVisible" :service="currentService" :mode="dialogMode"
       @success="handleDialogSuccess" @created="handleDialogCreated" />
 
-    <!-- 测试连接：WeKnora 侧视角（含工具/资源与人工审批开关） -->
+    <!-- 测试连接：WeKnora 侧视角（含工具/资源） -->
     <t-dialog v-model:visible="testVisible" :header="testDialogHeader" width="720px" :footer="false">
       <div v-if="testLoading" class="mcp-test-loading">
         <t-loading :loading="true" size="small" :text="$t('mcpManage.testing')" />
       </div>
-      <McpTestResultBody v-else :result="testResult" :service-id="testService ? testService.id : undefined"
-        :active="testVisible" />
+      <McpTestResultBody v-else :result="testResult" />
     </t-dialog>
 
     <!-- 网关侧测试：真正执行侧 agent-gateway 的连通性与工具列表 -->

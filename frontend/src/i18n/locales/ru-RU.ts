@@ -2933,9 +2933,6 @@ export default {
       descriptionLabel: 'Описание',
       schemaLabel: 'Структура параметров',
       emptyDescription: 'Сервис не предоставил инструменты или ресурсы',
-      requireApproval: 'Требуется подтверждение',
-      requireApprovalTip: 'При включении агент ждёт подтверждения перед вызовом инструмента.',
-      approvalSaveFailed: 'Не удалось сохранить настройку'
     }
   },
   error: {
@@ -5326,29 +5323,6 @@ export default {
     supportedFormats: 'Поддерживаемые форматы'
   },
   agentStream: {
-    toolApproval: {
-      banner: 'Этот инструмент MCP требует подтверждения. Проверьте параметры.',
-      waiting: 'Ожидание проверки · {target}',
-      waitingStatus: 'Ожидание проверки',
-      targetWithTool: '{service} › {tool}',
-      titleWithTarget: 'Проверка · {service} › {tool}',
-      resolvedApproved: 'Подтверждено · {target}',
-      resolvedRejected: 'Отклонено · {target}',
-      service: 'Сервис',
-      tool: 'Инструмент',
-      argsLabel: 'Аргументы',
-      argsModified: 'Изменено',
-      countdown: 'Осталось около {seconds} с',
-      countdownShort: '{seconds} с',
-      approve: 'Подтвердить и выполнить',
-      reject: 'Отклонить',
-      approvedTag: 'Подтверждено',
-      rejectedTag: 'Отклонено',
-      invalidJson: 'Некорректный JSON',
-      submitted: 'Отправлено',
-      submitFailed: 'Ошибка отправки',
-      userRejected: 'Отклонено пользователем',
-    },
     mcpOAuth: {
       banner: 'Этот MCP-сервис требует авторизации OAuth перед использованием',
       waiting: 'Ожидание авторизации · {target}',
@@ -6493,7 +6467,7 @@ export default {
 	      capabilityManageModels: 'Управление моделями',
 	      capabilityManageModelsHint: 'Управление конфигурациями моделей, учётными данными, проверками подключения и данными WeKnoraCloud.',
 	      capabilityManageMcpServices: 'Управление MCP-сервисами',
-	      capabilityManageMcpServicesHint: 'Управление MCP-сервисами, учётными данными, политиками подтверждения инструментов и OAuth-состоянием этого субъекта.',
+	      capabilityManageMcpServicesHint: 'Управление MCP-сервисами, учётными данными и OAuth-состоянием этого субъекта.',
 	      capabilityManageDatasources: 'Управление источниками данных',
 	      capabilityManageDatasourcesHint: 'Управление коннекторами, учётными данными, выбором ресурсов и синхронизацией. Для привязанных баз знаний диапазон всё равно применяется.',
 	      capabilityManageChannels: 'Управление каналами',

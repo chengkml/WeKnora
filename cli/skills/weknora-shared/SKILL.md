@@ -156,14 +156,10 @@ weknora doc upload ./manual.pdf --kb "$KB"
 Use `weknora message list --session <sess-id>` to review the message history of a session (e.g., after a stream drops) before deciding whether to re-ask or continue. Use `weknora message search "<query>"` to locate a prior Q&A exchange across all sessions — prefer this over re-running an expensive query when the answer may already exist.
 
 ### Tool-approval unlock
-An agent run pauses mid-stream on a tool-approval event when the server requires human sign-off before executing a tool call. The pattern:
 
-1. The stream emits a tool-approval event; capture the `pending_id`.
-2. **Surface the pending tool call to the user** (show tool name + proposed args). Do not auto-approve.
-3. After explicit user go-ahead: `weknora session tool-approval resolve <pending-id> -y` to approve, or add `--reject --reason "..."` to reject.
-4. Resume the answer: `weknora session resume <sess-id> --message <msg-id>`.
-
-`--modified-args '{"key":"val"}'` replaces the tool arguments on approve (non-empty JSON object required). This is an exit-10 interaction — see §5.
+The server no longer emits tool-approval events — the MCP tool human-approval
+feature was removed. Resume the answer after a stream drop with
+`weknora session resume <sess-id> --message <msg-id>`.
 
 ## 8. Resource model & command map
 
@@ -171,7 +167,7 @@ An agent run pauses mid-stream on a tool-approval event when the server requires
 kb        knowledge bases   list/view/create/update/delete/pin/unpin/status/check
 doc       documents in a KB list/view/create/upload/fetch/download/reparse/update/delete/wait
 chunk     retrieval units   list/view/delete   (RAG debug; not search)
-session   conversations     list/view/delete/ask/stop/resume/tool-approval resolve
+session   conversations     list/view/delete/ask/stop/resume
 message   session messages  list/search/delete
 agent     custom agents     list/view/create/update/delete/status/check
 model     configured models list/view/create/update/delete   (update rotates key / base-url in place, id preserved)

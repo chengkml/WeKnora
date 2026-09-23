@@ -52,15 +52,6 @@ export interface MCPTool {
   name: string
   description: string
   inputSchema: Record<string, any>
-  require_approval?: boolean
-}
-
-export interface MCPToolApprovalRow {
-  id: string
-  tenant_id?: number
-  service_id: string
-  tool_name: string
-  require_approval: boolean
 }
 
 export interface MCPResource {
@@ -134,18 +125,6 @@ export async function getMCPServiceResources(id: string): Promise<MCPResource[]>
   return response.data || []
 }
 
-/** Persisted per-tool human-approval flags (issue #1173) */
-export async function getMCPToolApprovals(serviceId: string): Promise<MCPToolApprovalRow[]> {
-  const response: any = await get(`/api/v1/mcp-services/${serviceId}/tool-approvals`)
-  return response.data || []
-}
-
-export async function setMCPToolApproval(serviceId: string, toolName: string, requireApproval: boolean): Promise<void> {
-  await put(`/api/v1/mcp-services/${serviceId}/tool-approvals/${encodeURIComponent(toolName)}`, {
-    require_approval: requireApproval
-  })
-}
-
 // ----------------------------------------------------------------------------
 // Credential subresource (issue #988 follow-up).
 //
@@ -214,16 +193,6 @@ export async function revokeMCPOAuthToken(serviceId: string): Promise<void> {
   await del(`/api/v1/mcp-services/${serviceId}/oauth/token`)
 }
 
-export async function resolveToolApproval(
-  pendingId: string,
-  body: { decision: 'approve' | 'reject'; modified_args?: Record<string, unknown>; reason?: string }
-): Promise<void> {
-  await post(`/api/v1/agent/tool-approvals/${encodeURIComponent(pendingId)}`, body)
-}
-
-// Resume an agent run that paused on an in-conversation MCP OAuth prompt.
-// Call after the per-user authorization popup completes; the backend verifies
-// the token exists before unblocking the paused tool call.
 export async function resolveMCPOAuth(
   pendingId: string,
   body: { service_id: string; decision?: 'authorize' | 'cancel' }

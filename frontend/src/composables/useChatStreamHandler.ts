@@ -509,8 +509,7 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
       loading.value &&
       (data.response_type === 'thinking' ||
         data.response_type === 'answer' ||
-        data.response_type === 'tool_call' ||
-        data.response_type === 'tool_approval_required')
+        data.response_type === 'tool_call')
     ) {
       log('[Agent Chunk] Closing loading for continued stream')
       loading.value = false
@@ -563,38 +562,6 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
           } else {
             console.warn('[Thinking] Received done for unknown event_id:', eventId)
           }
-        }
-        break
-      }
-      case 'tool_approval_required': {
-        if (!message.agentEventStream) message.agentEventStream = []
-        const d = dataPayload || {}
-        ;(message.agentEventStream as ChatMessage[]).push({
-          type: 'tool_approval_required',
-          pending_id: d.pending_id,
-          service_name: d.service_name,
-          mcp_tool_name: d.mcp_tool_name,
-          description: d.description,
-          args_json: d.args_json,
-          timeout_seconds: d.timeout_seconds,
-          requested_at: d.requested_at,
-          tool_call_id: d.tool_call_id,
-          resolved: false,
-        })
-        break
-      }
-      case 'tool_approval_resolved': {
-        const d = dataPayload || {}
-        const pid = d.pending_id
-        const ev = (message.agentEventStream as ChatMessage[] | undefined)?.find(
-          (e) => e.type === 'tool_approval_required' && e.pending_id === pid,
-        )
-        if (ev) {
-          ev.resolved = true
-          ev.approved = d.approved
-          ev.resolve_reason = d.reason
-          ev.timed_out = d.timed_out
-          ev.canceled = d.canceled
         }
         break
       }

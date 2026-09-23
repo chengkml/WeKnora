@@ -21,7 +21,7 @@ type MCPTool struct {
 	service    *types.MCPService
 	mcpTool    *types.MCPTool
 	mcpManager *mcp.MCPManager
-	gate       approval.MCPApproval // optional human approval before CallTool (issue #1173)
+	gate       approval.MCPApproval // optional in-conversation OAuth wait before CallTool
 	// authWaitTimeoutSeconds carries the agent-level, user-configured OAuth wait
 	// timeout (seconds) applied when a tool call triggers in-conversation auth.
 	// <=0 uses the gate's configured default.
@@ -113,74 +113,8 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 		}, err
 	}
 
-	// Human approval gate for dangerous tools (issue #1173)
-	if t.gate != nil {
-		if meta, ok := ToolExecFromContext(ctx); ok && meta != nil && meta.EventBus != nil {
-			tenantID, _ := types.TenantIDFromContext(ctx)
-			if t.gate.NeedsApproval(ctx, tenantID, t.service.ID, t.mcpTool.Name) {
-				// Use ApprovalCtx (round-level ctx WITHOUT defaultToolExecTimeout) so
-				// human approval can legitimately wait longer than the per-tool 60s.
-				// User-stop / request cancel still propagates because ApprovalCtx is a
-				// child of the request ctx.
-				waitCtx := ctx
-				if meta.ApprovalCtx != nil {
-					waitCtx = meta.ApprovalCtx
-				}
-				decision, waitErr := t.gate.RequestAndWait(waitCtx, approval.PendingRequest{
-					TenantID:           tenantID,
-					UserID:             meta.UserID,
-					SessionID:          meta.SessionID,
-					AssistantMessageID: meta.AssistantMessageID,
-					RequestID:          meta.RequestID,
-					EventBus:           meta.EventBus,
-					ServiceID:          t.service.ID,
-					ServiceName:        t.service.Name,
-					MCPToolName:        t.mcpTool.Name,
-					RegisteredToolName: t.Name(),
-					Description:        t.mcpTool.Description,
-					Args:               args,
-					ToolCallID:         meta.ToolCallID,
-				})
-				if waitErr != nil {
-					return &types.ToolResult{
-						Success: false,
-						Error:   fmt.Sprintf("Tool approval failed: %v", waitErr),
-					}, nil
-				}
-				if !decision.Approved {
-					msg := decision.Reason
-					if msg == "" {
-						msg = "tool execution rejected by user"
-					}
-					return &types.ToolResult{
-						Success: false,
-						Error:   msg,
-					}, nil
-				}
-				if len(decision.ModifiedArgs) > 0 {
-					args = decision.ModifiedArgs
-					if err := json.Unmarshal(args, &input); err != nil {
-						return &types.ToolResult{
-							Success: false,
-							Error:   fmt.Sprintf("Invalid modified_args after approval: %v", err),
-						}, nil
-					}
-				}
-				// Approval may have consumed most/all of the per-tool exec budget set by the
-				// agent engine (act.go). Re-derive a fresh tool-exec ctx from ApprovalCtx so
-				// the actual MCP CallTool gets a full timeout window. (issue #1173 follow-up)
-				if meta.ApprovalCtx != nil {
-					freshTimeout := meta.ExecTimeout
-					if freshTimeout <= 0 {
-						freshTimeout = 60 * time.Second
-					}
-					freshCtx, freshCancel := context.WithTimeout(meta.ApprovalCtx, freshTimeout)
-					defer freshCancel()
-					ctx = freshCtx
-				}
-			}
-		}
-	}
+	// Human approval gate removed: per-tool require_approval is no longer
+	// supported (the MCP settings UI entry was removed).
 
 	isStdio := t.service.TransportType == types.MCPTransportStdio
 	meta, _ := ToolExecFromContext(ctx)

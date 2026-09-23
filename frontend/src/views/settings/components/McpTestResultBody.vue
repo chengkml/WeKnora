@@ -20,7 +20,7 @@
         </div>
         <div class="mtr-list">
           <div
-            v-for="(tool, index) in displayTools"
+            v-for="(tool, index) in result.tools"
             :key="index"
             class="mtr-item"
             :class="{ 'is-open': expandedToolIndex === index }"
@@ -29,18 +29,6 @@
               <t-icon name="tools" class="mtr-item-icon" />
               <span class="mtr-item-name">{{ tool.name }}</span>
               <div class="mtr-item-actions" @click.stop>
-                <t-tooltip v-if="serviceId" :content="$t('mcp.testResult.requireApprovalTip')" placement="top">
-                  <span class="mtr-approval">
-                    <t-icon name="error-circle-filled" class="mtr-approval-icon" />
-                    <span class="mtr-approval-label">{{ $t('mcp.testResult.requireApproval') }}</span>
-                    <t-switch
-                      :value="tool.require_approval"
-                      :loading="approvalLoading[tool.name]"
-                      size="small"
-                      @change="(v: boolean) => onRequireApprovalChange(tool.name, v)"
-                    />
-                  </span>
-                </t-tooltip>
                 <t-icon
                   :name="expandedToolIndex === index ? 'chevron-up' : 'chevron-down'"
                   class="mtr-chevron"
@@ -97,75 +85,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import type { MCPTestResult, MCPTool } from '@/api/mcp-service'
-import { getMCPToolApprovals, setMCPToolApproval } from '@/api/mcp-service'
-import { MessagePlugin } from 'tdesign-vue-next'
-import { useI18n } from 'vue-i18n'
+import { ref } from 'vue'
+import type { MCPTestResult } from '@/api/mcp-service'
 
 interface Props {
   result: MCPTestResult | null
-  /** When set, loads/saves per-tool approval flags */
-  serviceId?: string
-  /** When true, (re)loads approval flags. Lets the dialog gate the fetch on
-   *  visibility; defaults to true for always-rendered inline usage. */
-  active?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), { active: true })
+defineProps<Props>()
 
 const expandedToolIndex = ref<number | null>(null)
-const { t } = useI18n()
-const displayTools = ref<MCPTool[]>([])
-const approvalLoading = ref<Record<string, boolean>>({})
-
-const mergeApprovals = async () => {
-  const tools = props.result?.tools
-  if (!tools?.length) {
-    displayTools.value = []
-    return
-  }
-  if (!props.serviceId) {
-    displayTools.value = tools.map((x) => ({ ...x }))
-    return
-  }
-  try {
-    const rows = await getMCPToolApprovals(props.serviceId)
-    const map = new Map(rows.map((r) => [r.tool_name, r.require_approval]))
-    displayTools.value = tools.map((tool) => ({
-      ...tool,
-      require_approval: map.get(tool.name) || false,
-    }))
-  } catch {
-    displayTools.value = tools.map((x) => ({ ...x }))
-  }
-}
-
-watch(
-  () => [props.active, props.serviceId, props.result?.tools],
-  () => {
-    if (props.active) {
-      void mergeApprovals()
-    }
-  },
-  { deep: true, immediate: true }
-)
-
-const onRequireApprovalChange = async (toolName: string, value: boolean) => {
-  if (!props.serviceId) return
-  approvalLoading.value = { ...approvalLoading.value, [toolName]: true }
-  try {
-    await setMCPToolApproval(props.serviceId, toolName, value)
-    displayTools.value = displayTools.value.map((x) =>
-      x.name === toolName ? { ...x, require_approval: value } : x
-    )
-  } catch (e) {
-    console.error(e)
-    MessagePlugin.error(t('mcp.testResult.approvalSaveFailed'))
-  } finally {
-    approvalLoading.value = { ...approvalLoading.value, [toolName]: false }
-  }
-}
 
 const toggleTool = (index: number) => {
   expandedToolIndex.value = expandedToolIndex.value === index ? null : index
@@ -312,23 +241,6 @@ const formatSchema = (schema: any): string => {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-}
-
-.mtr-approval {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--td-text-color-secondary);
-
-  .mtr-approval-icon {
-    font-size: 15px;
-    color: var(--td-warning-color);
-  }
-
-  .mtr-approval-label {
-    white-space: nowrap;
-  }
 }
 
 .mtr-chevron {

@@ -157,7 +157,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSystemSettingRepository))
 	must(container.Provide(neo4jRepo.NewNeo4jRepository))
 	must(container.Provide(repository.NewMCPServiceRepository))
-	must(container.Provide(repository.NewMCPToolApprovalRepository))
 	must(container.Provide(repository.NewMCPOAuthRepository))
 	must(container.Provide(repository.NewCustomAgentRepository))
 	must(container.Provide(repository.NewOrganizationRepository))
@@ -173,7 +172,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewWikiLogEntryRepository))
 	must(container.Provide(repository.NewTaskPendingOpsRepository))
 	must(container.Provide(repository.NewTaskDeadLetterRepository))
-must(container.Provide(repository.NewAgentBuildTaskRepository))
+	must(container.Provide(repository.NewAgentBuildTaskRepository))
 
 	// MCP manager for managing MCP client connections
 	logger.Debugf(ctx, "[Container] Registering MCP manager...")
@@ -214,7 +213,6 @@ must(container.Provide(repository.NewAgentBuildTaskRepository))
 	must(container.Provide(service.NewMessageSuggestionService))
 	must(container.Provide(service.NewMCPServiceService))
 	must(container.Provide(service.NewMCPGatewaySyncService))
-	must(container.Provide(service.NewMCPToolApprovalService))
 	must(container.Provide(service.NewCustomAgentService))
 	must(container.Provide(service.NewUserResourceFavoriteService))
 	must(container.Provide(service.NewWikiPageService))
@@ -222,7 +220,7 @@ must(container.Provide(repository.NewAgentBuildTaskRepository))
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))
 	must(container.Provide(service.NewWikiLintService))
 	must(container.Provide(service.NewEmbedChannelService))
-must(container.Provide(service.NewAgentBuildTaskService))
+	must(container.Provide(service.NewAgentBuildTaskService))
 
 	// Web search service (needed by AgentService)
 	logger.Debugf(ctx, "[Container] Registering web search registry and providers...")
@@ -258,8 +256,8 @@ must(container.Provide(service.NewAgentBuildTaskService))
 	// SessionService is passed as parameter to CreateAgentEngine method when creating AgentService
 	logger.Debugf(ctx, "[Container] Registering event bus and agent service...")
 	must(container.Provide(event.NewEventBus))
-	must(container.Provide(func(cfg *config.Config, s interfaces.MCPToolApprovalService, rdb *redis.Client) *approval.Gate {
-		return approval.NewGate(cfg, &approval.Adapter{Svc: s}, rdb)
+	must(container.Provide(func(cfg *config.Config, rdb *redis.Client) *approval.Gate {
+		return approval.NewGate(cfg, rdb)
 	}))
 	// Expose Gate as MCPApproval interface so AgentService and others can depend on the abstraction.
 	must(container.Provide(func(g *approval.Gate) approval.MCPApproval { return g }))
@@ -390,7 +388,7 @@ must(container.Provide(service.NewAgentBuildTaskService))
 	must(container.Provide(handler.NewIMHandler))
 	must(container.Provide(handler.NewEmbedChannelHandler))
 	must(container.Provide(handler.NewWeKnoraCloudHandler))
-must(container.Provide(handler.NewAgentTaskHandler))
+	must(container.Provide(handler.NewAgentTaskHandler))
 	logger.Debugf(ctx, "[Container] HTTP handlers registered")
 
 	// Wire the chat package's local image resolver so multimodal chat can read
@@ -411,7 +409,7 @@ must(container.Provide(handler.NewAgentTaskHandler))
 	// persistence succeeded immediately before trigger enqueue failed). Re-arm
 	// them only after the matching handlers are ready.
 	must(container.Invoke(recoverPendingWikiTasks))
-must(container.Invoke(startAgentBuildDispatcher))
+	must(container.Invoke(startAgentBuildDispatcher))
 
 	logger.Infof(ctx, "[Container] Container initialization completed successfully")
 	return container

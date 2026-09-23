@@ -79,15 +79,6 @@
                 </div>
               </div>
 
-              <!-- MCP tool human approval (issue #1173) -->
-              <div v-else-if="event.type === 'tool_approval_required'" class="tool-event">
-                <ToolApprovalCard :pending-id="event.pending_id" :service-name="event.service_name || ''"
-                  :mcp-tool-name="event.mcp_tool_name || ''" :description="event.description"
-                  :args-json="event.args_json" :timeout-seconds="event.timeout_seconds"
-                  :requested-at="event.requested_at" :resolved="event.resolved" :approved="event.approved"
-                  :resolve-reason="event.resolve_reason" v-bind="embedAuthProps" />
-              </div>
-
               <!-- MCP OAuth in-conversation authorization prompt -->
               <div v-else-if="event.type === 'mcp_oauth_required'" class="tool-event">
                 <McpOAuthCard :pending-id="event.pending_id" :service-id="event.service_id || ''"
@@ -246,14 +237,6 @@
                   </div>
                 </div>
               </div>
-            </div>
-
-            <!-- MCP tool human approval -->
-            <div v-else-if="event.type === 'tool_approval_required'" class="tool-event">
-              <ToolApprovalCard :pending-id="event.pending_id" :service-name="event.service_name || ''"
-                :mcp-tool-name="event.mcp_tool_name || ''" :description="event.description" :args-json="event.args_json"
-                :timeout-seconds="event.timeout_seconds" :requested-at="event.requested_at" :resolved="event.resolved"
-                :approved="event.approved" :resolve-reason="event.resolve_reason" v-bind="embedAuthProps" />
             </div>
 
             <!-- MCP OAuth in-conversation authorization prompt -->
@@ -476,7 +459,6 @@ import { useRouter, useRoute } from 'vue-router';
 import { marked } from 'marked';
 import 'katex/dist/katex.min.css';
 import ToolResultRenderer from './ToolResultRenderer.vue';
-import ToolApprovalCard from './ToolApprovalCard.vue';
 import McpOAuthCard from './McpOAuthCard.vue';
 import ChatRequestInfoButton from '@/components/ChatRequestInfoButton.vue';
 import ChatCitationFloat from '@/components/ChatCitationFloat.vue';
@@ -1293,13 +1275,13 @@ watch(answerFullyRendered, (ready) => {
 }, { immediate: true });
 
 // Whether any currently visible step is actively pending (a running tool, or a
-// blocking approval/OAuth prompt). A pending step shimmers on its own, so we
-// don't stack a placeholder on top of it.
+// blocking OAuth prompt). A pending step shimmers on its own, so we don't
+// stack a placeholder on top of it.
 const hasPendingStreamingActivity = computed(() => {
   return displayEvents.value.some((event: any) => {
     if (!event) return false;
     if (event.pending === true) return true;
-    return event.type === 'tool_approval_required' || event.type === 'mcp_oauth_required';
+    return event.type === 'mcp_oauth_required';
   });
 });
 
@@ -1748,9 +1730,6 @@ const getEventKey = (event: any, index: number): string => {
   if (!event) return `event-${index}`;
   if (event.event_id) return `event-${event.event_id}`;
   if (event.tool_call_id) return `tool-${event.tool_call_id}`;
-  if (event.type === 'tool_approval_required' && event.pending_id) {
-    return `approval-${event.pending_id}`;
-  }
   if (event.type === 'mcp_oauth_required' && event.pending_id) {
     return `mcp-oauth-${event.pending_id}`;
   }

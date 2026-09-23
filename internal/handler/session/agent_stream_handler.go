@@ -108,8 +108,6 @@ func (h *AgentStreamHandler) Subscribe() {
 	h.eventBus.On(event.EventError, h.handleError)
 	h.eventBus.On(event.EventSessionTitle, h.handleSessionTitle)
 	h.eventBus.On(event.EventAgentComplete, h.handleComplete)
-	h.eventBus.On(event.EventToolApprovalRequired, h.handleToolApprovalRequired)
-	h.eventBus.On(event.EventToolApprovalResolved, h.handleToolApprovalResolved)
 	h.eventBus.On(event.EventMCPOAuthRequired, h.handleMCPOAuthRequired)
 	h.eventBus.On(event.EventMCPOAuthResolved, h.handleMCPOAuthResolved)
 }
@@ -272,7 +270,7 @@ func (h *AgentStreamHandler) handleToolResult(ctx context.Context, evt event.Eve
 	return nil
 }
 
-func toolApprovalDataToMap(v interface{}) map[string]interface{} {
+func eventDataToMap(v interface{}) map[string]interface{} {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return map[string]interface{}{}
@@ -284,48 +282,6 @@ func toolApprovalDataToMap(v interface{}) map[string]interface{} {
 	return m
 }
 
-// handleToolApprovalRequired persists MCP tool human-approval prompts for SSE / replay (issue #1173).
-func (h *AgentStreamHandler) handleToolApprovalRequired(ctx context.Context, evt event.Event) error {
-	data, ok := evt.Data.(event.ToolApprovalRequiredData)
-	if !ok {
-		return nil
-	}
-	meta := toolApprovalDataToMap(data)
-	meta["pending_id"] = data.PendingID
-	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
-		ID:        evt.ID,
-		Type:      types.ResponseTypeToolApprovalRequired,
-		Content:   "MCP tool requires human approval",
-		Done:      true,
-		Timestamp: time.Now(),
-		Data:      meta,
-	}); err != nil {
-		logger.GetLogger(h.ctx).Error("Append tool approval required event failed", "error", err)
-	}
-	return nil
-}
-
-// handleToolApprovalResolved persists the outcome of a tool approval (issue #1173).
-func (h *AgentStreamHandler) handleToolApprovalResolved(ctx context.Context, evt event.Event) error {
-	data, ok := evt.Data.(event.ToolApprovalResolvedData)
-	if !ok {
-		return nil
-	}
-	meta := toolApprovalDataToMap(data)
-	meta["pending_id"] = data.PendingID
-	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
-		ID:        evt.ID,
-		Type:      types.ResponseTypeToolApprovalResolved,
-		Content:   "MCP tool approval resolved",
-		Done:      true,
-		Timestamp: time.Now(),
-		Data:      meta,
-	}); err != nil {
-		logger.GetLogger(h.ctx).Error("Append tool approval resolved event failed", "error", err)
-	}
-	return nil
-}
-
 // handleMCPOAuthRequired forwards an in-conversation "authorize this MCP
 // service" prompt to the SSE stream so the UI can render an Authorize card.
 func (h *AgentStreamHandler) handleMCPOAuthRequired(ctx context.Context, evt event.Event) error {
@@ -333,7 +289,7 @@ func (h *AgentStreamHandler) handleMCPOAuthRequired(ctx context.Context, evt eve
 	if !ok {
 		return nil
 	}
-	meta := toolApprovalDataToMap(data)
+	meta := eventDataToMap(data)
 	meta["pending_id"] = data.PendingID
 	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
 		ID:        evt.ID,
@@ -354,7 +310,7 @@ func (h *AgentStreamHandler) handleMCPOAuthResolved(ctx context.Context, evt eve
 	if !ok {
 		return nil
 	}
-	meta := toolApprovalDataToMap(data)
+	meta := eventDataToMap(data)
 	meta["pending_id"] = data.PendingID
 	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
 		ID:        evt.ID,

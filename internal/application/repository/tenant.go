@@ -173,7 +173,6 @@ func (r *tenantRepository) DeleteTenant(ctx context.Context, id uint64) error {
 			{"mcp_oauth_clients", "tenant_id"},
 			{"mcp_oauth_tokens", "tenant_id"},
 			{"mcp_services", "tenant_id"},
-			{"mcp_tool_approvals", "tenant_id"},
 			{"message_suggestion_events", "tenant_id"},
 			{"message_suggestion_sets", "tenant_id"},
 			{"models", "tenant_id"},

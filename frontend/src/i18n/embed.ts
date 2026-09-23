@@ -269,29 +269,6 @@ const messages = {
       "stepSummarySeparator": " · "
     },
     "agentStream": {
-      "toolApproval": {
-        "banner": "该 MCP 工具已标记为「需人工审核」，确认参数后再执行",
-        "waiting": "等待审核 · {target}",
-        "waitingStatus": "等待审核",
-        "targetWithTool": "{service} › {tool}",
-        "titleWithTarget": "人工审核 · {service} › {tool}",
-        "resolvedApproved": "已通过 · {target}",
-        "resolvedRejected": "已拒绝 · {target}",
-        "service": "服务",
-        "tool": "工具",
-        "argsLabel": "调用参数",
-        "argsModified": "已修改",
-        "countdown": "剩余约 {seconds} 秒",
-        "countdownShort": "{seconds}s",
-        "approve": "通过并执行",
-        "reject": "拒绝",
-        "approvedTag": "已通过",
-        "rejectedTag": "已拒绝",
-        "invalidJson": "参数不是合法 JSON",
-        "submitted": "已提交",
-        "submitFailed": "提交失败",
-        "userRejected": "用户拒绝"
-      },
       "mcpOAuth": {
         "banner": "该 MCP 服务需要 OAuth 授权后才能调用",
         "waiting": "等待授权 · {target}",
@@ -760,29 +737,6 @@ const messages = {
       "stepSummarySeparator": " · "
     },
     "agentStream": {
-      "toolApproval": {
-        "banner": "This MCP tool requires human approval. Review parameters before execution.",
-        "waiting": "Awaiting review · {target}",
-        "waitingStatus": "Awaiting review",
-        "targetWithTool": "{service} › {tool}",
-        "titleWithTarget": "Review · {service} › {tool}",
-        "resolvedApproved": "Approved · {target}",
-        "resolvedRejected": "Rejected · {target}",
-        "service": "Service",
-        "tool": "Tool",
-        "argsLabel": "Arguments",
-        "argsModified": "Modified",
-        "countdown": "About {seconds}s remaining",
-        "countdownShort": "{seconds}s",
-        "approve": "Approve & run",
-        "reject": "Reject",
-        "approvedTag": "Approved",
-        "rejectedTag": "Rejected",
-        "invalidJson": "Arguments must be valid JSON",
-        "submitted": "Submitted",
-        "submitFailed": "Submit failed",
-        "userRejected": "User rejected"
-      },
       "mcpOAuth": {
         "banner": "This MCP service requires OAuth authorization before it can be used",
         "waiting": "Awaiting authorization · {target}",

@@ -56,10 +56,6 @@ const (
 	EventAgentReferences  EventType = "references"   // 知识引用
 	EventAgentFinalAnswer EventType = "final_answer" // 最终答案
 
-	// MCP tool human approval (issue #1173)
-	EventToolApprovalRequired EventType = "tool_approval_required"
-	EventToolApprovalResolved EventType = "tool_approval_resolved"
-
 	// MCP OAuth in-conversation authorization prompt: emitted when an
 	// OAuth-enabled MCP service is invoked but the current user has not
 	// authorized it yet. The agent pauses until the user authorizes (or the

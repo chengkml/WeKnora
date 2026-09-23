@@ -356,7 +356,7 @@
             <template #icon><t-icon name="close" /></template>
           </t-button>
         </div>
-        <McpTestResultBody :result="testResult" :service-id="props.service?.id" />
+        <McpTestResultBody :result="testResult" />
       </section>
     </t-form>
   </SettingDrawer>
