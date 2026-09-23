@@ -23,7 +23,7 @@ const (
 	agentBuildDetailSpanTextLimit = 6000
 	agentBuildDetailMaxSpans      = 400
 	// agentBuildDetailTimeout bounds one gateway call from the detail endpoint.
-	agentBuildDetailTimeout = 10 * time.Second
+	agentBuildDetailTimeout = 30 * time.Second
 )
 
 // buildAgentBuildTaskView renders one ledger row for the API (no credentials,
