@@ -361,7 +361,11 @@ func (s *modelService) DeleteModel(ctx context.Context, id string) error {
 	tenantID := types.MustTenantIDFromContext(ctx)
 	logger.Infof(ctx, "Tenant ID: %d", tenantID)
 
-	// Check if the model is builtin - builtin models cannot be deleted
+	// Builtin models may be deleted like any other model. If the row is still
+	// managed by builtin_models.yaml (managed_by='yaml'), clear that marker
+	// first so the startup reconciler does not resurrect it by id on the next
+	// boot — this mirrors the "UI edit is a runtime override" semantics of
+	// UpdateModel (system admin explicitly removing the model).
 	existingModel, err := s.repo.GetByID(ctx, tenantID, id)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
@@ -372,9 +376,15 @@ func (s *modelService) DeleteModel(ctx context.Context, id string) error {
 	if existingModel == nil {
 		return ErrModelNotFound
 	}
-	if existingModel.IsBuiltin && !types.IsSystemAdminFromContext(ctx) {
-		logger.Warnf(ctx, "Attempted to delete builtin model by non-system-admin: %s", id)
-		return apperrors.NewBadRequestError("builtin models can only be deleted by system administrators")
+	if existingModel.ManagedBy != "" {
+		existingModel.ManagedBy = ""
+		if err := s.repo.Update(ctx, existingModel); err != nil {
+			logger.ErrorWithFields(ctx, err, map[string]interface{}{
+				"model_id": id,
+			})
+			return err
+		}
+		logger.Infof(ctx, "Cleared managed_by for model %s so the builtin reconciler will not resurrect it", id)
 	}
 
 	kbCount, err := s.kbRepo.CountByModelID(ctx, tenantID, id)

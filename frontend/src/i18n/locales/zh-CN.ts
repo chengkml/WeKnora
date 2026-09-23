@@ -5213,7 +5213,6 @@ export default {
       setDefault: "已设为默认模型",
       setDefaultFailed: "设置默认模型失败",
       builtinCannotEdit: "内置模型不能编辑",
-      builtinCannotDelete: "内置模型不能删除",
       builtinCannotCopy: "内置模型不能复制",
       copied: "模型已复制",
       copyFailed: "复制模型失败",

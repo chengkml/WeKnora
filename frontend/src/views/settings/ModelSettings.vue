@@ -56,8 +56,8 @@
                 :aria-label="$t('modelSettings.builtinTag')">
                 <t-icon :name="authStore.isSystemAdmin ? 'edit-1' : 'lock-on'" />
               </span>
-              <div v-if="canManageModel(model)" class="model-card__actions" @click.stop>
-                <t-dropdown :options="getModelOptions(model._modelType, model)" placement="bottom-right" attach="body"
+              <div v-if="canManageModel(model) || canDeleteModel(model)" class="model-card__actions" @click.stop>
+                <t-dropdown v-if="canManageModel(model)" :options="getModelOptions(model._modelType, model)" placement="bottom-right" attach="body"
                   trigger="click"
                   @click="(data: any) => handleMenuAction({ value: data.value }, model._modelType, model)">
                   <t-button variant="text" shape="square" size="small" class="model-card__action-btn model-card__more">
@@ -310,10 +310,10 @@ const isModelCardClickable = (model: any) => canEditModel(model)
 
 const canManageModel = (model: any) => canEditModel(model)
 
-// Built-in lifecycle remains deployment-managed (YAML / SQL). The UI only
-// exposes configuration and credential editing to SystemAdmin.
-const canDeleteModel = (model: any) =>
-  authStore.hasRole('admin') && !model.isBuiltin
+// Built-in models can now be deleted like any other model (backend no
+// longer rejects them). The lock icon is informational only — isBuiltin
+// no longer gates the delete entry.
+const canDeleteModel = (model: any) => authStore.hasRole('admin')
 
 const onModelCardClick = (event: Event, type: ModelType, model: any) => {
   if (!isModelCardClickable(model)) return
@@ -469,12 +469,6 @@ const handleModelSave = async (modelData: any) => {
 
 // 删除模型
 const deleteModel = async (_type: ModelType, modelId: string) => {
-  const model = allModels.value.find(m => m.id === modelId)
-  if (model?.is_builtin) {
-    MessagePlugin.warning(t('modelSettings.toasts.builtinCannotDelete'))
-    return
-  }
-
   try {
     await deleteModelAPI(modelId)
     MessagePlugin.success(t('modelSettings.toasts.deleted'))

@@ -164,6 +164,37 @@ func TestDeleteModel_SucceedsWhenUnreferenced(t *testing.T) {
 	assert.True(t, deleted)
 }
 
+func TestDeleteModel_SucceedsForBuiltin(t *testing.T) {
+	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
+	modelID := "builtin-model"
+	deleted := false
+	clearedManagedBy := false
+
+	svc := NewModelService(
+		&stubModelRepoForDelete{
+			model: &types.Model{ID: modelID, TenantID: 1, IsBuiltin: true, ManagedBy: types.BuiltinModelManagedBy},
+			delete: func(id string) error {
+				assert.Equal(t, modelID, id)
+				deleted = true
+				return nil
+			},
+			update: func(m *types.Model) error {
+				if m.ManagedBy == "" {
+					clearedManagedBy = true
+				}
+				return nil
+			},
+		},
+		&stubKBRepoForModelDelete{},
+		&stubAgentRepoForModelDelete{},
+		nil, nil, nil,
+	)
+
+	require.NoError(t, svc.DeleteModel(ctx, modelID))
+	assert.True(t, deleted)
+	assert.True(t, clearedManagedBy, "managed_by must be cleared so the YAML reconciler does not resurrect the row")
+}
+
 func TestFormatModelInUseMessage(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t,

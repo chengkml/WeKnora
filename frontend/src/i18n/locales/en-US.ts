@@ -5200,7 +5200,6 @@ export default {
       setDefault: 'Set as default',
       setDefaultFailed: 'Failed to set default model',
       builtinCannotEdit: 'Built-in models cannot be edited',
-      builtinCannotDelete: 'Built-in models cannot be deleted',
       builtinCannotCopy: 'Built-in models cannot be copied',
       copied: 'Model copied',
       copyFailed: 'Failed to copy model',
