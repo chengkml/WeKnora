@@ -110,9 +110,13 @@ func NewMCPServiceResponse(ctx context.Context, svc *types.MCPService) *MCPServi
 		}
 		resp.AuthConfig = auth
 	}
-	if svc.IsBuiltin {
+	if svc.IsBuiltin && !includeDetail {
 		// Builtin services are shared across tenants — strip everything that
 		// could leak how this tenant configured the underlying provider.
+		// Administrators / full-access API keys (includeDetail) still see the
+		// non-secret transport config so the editor can prefill the form when
+		// they manage the shared service (the secret values themselves are
+		// never part of this DTO — they live behind /credentials).
 		resp.URL = nil
 		resp.Headers = nil
 		resp.EnvVars = nil

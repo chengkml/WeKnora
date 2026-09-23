@@ -60,17 +60,32 @@ func TestMCPServiceResponse_BuiltinStripsTenantConfig(t *testing.T) {
 		URL:       &url,
 		Headers:   types.MCPHeaders{"X-Tenant-Secret": "shhh"},
 		AuthConfig: &types.MCPAuthConfig{
-			APIKey: "should-not-leak-via-builtin",
+			AuthType: types.MCPAuthAPIKey,
+			APIKey:   "should-not-leak-via-builtin",
 		},
 	}
-	resp := NewMCPServiceResponse(adminContext(), svc)
-	assert.Nil(t, resp.URL, "builtin must not leak per-tenant URL")
-	assert.Nil(t, resp.Headers, "builtin must not leak per-tenant headers")
-	assert.Nil(t, resp.AuthConfig, "builtin must not leak auth config")
+	// Viewer: builtin still strips all tenant config — cross-tenant viewers of
+	// the shared row must not learn how the owning tenant configured it.
+	viewerResp := NewMCPServiceResponse(viewerContext(), svc)
+	assert.Nil(t, viewerResp.URL, "builtin must not leak per-tenant URL to viewers")
+	assert.Nil(t, viewerResp.Headers, "builtin must not leak per-tenant headers to viewers")
+	assert.Nil(t, viewerResp.AuthConfig, "builtin must not leak auth config to viewers")
 
-	body, _ := json.Marshal(resp)
-	assert.False(t, strings.Contains(string(body), "should-not-leak-via-builtin"))
-	assert.False(t, strings.Contains(string(body), "X-Tenant-Secret"))
+	// Admin / full-access key: sees the non-secret transport config so the
+	// editor can prefill the form. Secret values (api_key/token) still never
+	// ride this DTO — only the credentials presence map is attached.
+	adminResp := NewMCPServiceResponse(adminContext(), svc)
+	assert.NotNil(t, adminResp.URL, "admin editing a builtin service needs the URL prefilled")
+	assert.Equal(t, url, *adminResp.URL)
+	assert.Equal(t, "shhh", adminResp.Headers["X-Tenant-Secret"])
+	assert.NotNil(t, adminResp.AuthConfig)
+	assert.Equal(t, types.MCPAuthAPIKey, adminResp.AuthConfig.AuthType)
+
+	body, _ := json.Marshal(adminResp)
+	assert.False(t, strings.Contains(string(body), "should-not-leak-via-builtin"),
+		"secret api_key value must never appear even for admin")
+	assert.True(t, strings.Contains(string(body), `"credentials"`),
+		"admin gets the configured-presence map for the credential editor")
 }
 
 func TestMCPServiceResponse_ViewerStripsIntegrationDetail(t *testing.T) {
