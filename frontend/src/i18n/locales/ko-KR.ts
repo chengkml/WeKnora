@@ -4094,6 +4094,9 @@ export default {
       typeFAQ: "Q&A",
       typeDescription:
         "FAQ 유형은 구조화된 Q&A 데이터에 적합합니다. 문서 유형은 파일 파싱과 청킹을 지원합니다. Wiki 유형은 LLM을 통해 상호 연결된 지식 페이지를 자동으로 구축합니다.",
+      skillLabel: "구축 스킬",
+      skillTip: "Wiki 구축에 사용할 에이전트 스킬을 선택하세요 (수동 생성 활성화 시 적용)",
+      skillPlaceholder: "구축 스킬을 선택하세요 (비어 있으면 기본 스킬 사용)",
       nameLabel: "지식베이스 이름",
       namePlaceholder: "지식베이스 이름을 입력해주세요",
       descriptionLabel: "지식베이스 설명",

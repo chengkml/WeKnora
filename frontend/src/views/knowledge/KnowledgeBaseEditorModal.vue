@@ -191,6 +191,21 @@
                         />
                       </div>
 
+                      <!-- 构建技能选择（仅当自定义 Wiki 生成开启时显示） -->
+                      <div v-if="!isFAQ && formData.customWikiGeneration" class="form-item">
+                        <label class="form-label">{{ $t('knowledgeEditor.basic.skillLabel') }}</label>
+                        <p class="form-tip">{{ $t('knowledgeEditor.basic.skillTip') }}</p>
+                        <t-select
+                          v-model="formData.wikiConfig.skill"
+                          :options="skillOptions"
+                          :placeholder="$t('knowledgeEditor.basic.skillPlaceholder')"
+                          :loading="skillsLoading"
+                          clearable
+                          filterable
+                          style="width: 100%"
+                        />
+                      </div>
+
                       <div class="form-item" data-guide="kb-create-name">
                         <label class="form-label required">{{ $t('knowledgeEditor.basic.nameLabel') }}</label>
                         <t-input 
@@ -477,6 +492,7 @@ import { KB_EDITOR_FOCUS_SECTION_EVENT, markContextualGuideDone } from '@/config
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import { createKnowledgeBase, getKnowledgeBaseById, listKnowledgeFiles, updateKnowledgeBase, rebuildKBIndex } from '@/api/knowledge-base'
 import { updateKBConfig, type KBModelConfigRequest } from '@/api/initialization'
+import { listSkills, type SkillInfo } from '@/api/skill'
 import { type ModelConfig } from '@/api/model'
 import { useChatResourcesStore } from '@/stores/chatResources'
 import { useEditorResourcesStore } from '@/stores/editorResources'
@@ -557,6 +573,16 @@ onBeforeUnmount(() => {
 const saving = ref(false)
 const loading = ref(false)
 const allModels = ref<any[]>([])
+// 可用技能列表（自定义 Wiki 生成时选择构建技能）
+const availableSkills = ref<SkillInfo[]>([])
+const skillsLoading = ref(false)
+// 技能下拉选项：名称（name）为值，展示描述（若有）
+const skillOptions = computed(() =>
+  availableSkills.value.map((s) => ({
+    label: s.description ? `${s.name}（${s.description}）` : s.name,
+    value: s.name,
+  })),
+)
 const hasFiles = ref(false)
 const initialStorageProvider = ref<string>('')
 /** Tenant-wide default from Settings → Storage engine (used when creating a KB). */
@@ -767,6 +793,8 @@ const initFormData = (type: 'document' | 'faq' = 'document') => {
       contentInstructions: '',
       extractionInstructions: '',
       graphDefaultTypes: '',
+      // 自定义 Wiki 生成时使用的 agent 技能；空 = 后端默认技能
+      skill: '' as string,
     },
     indexingStrategy: {
       vectorEnabled: true,
@@ -796,6 +824,20 @@ const loadAllModels = async (force = false) => {
     console.error('Failed to load model list:', error)
     MessagePlugin.error(t('knowledgeEditor.messages.loadModelsFailed'))
     allModels.value = []
+  }
+}
+
+// 加载可用技能列表（自定义 Wiki 生成时供选择构建技能）
+const loadAvailableSkills = async () => {
+  skillsLoading.value = true
+  try {
+    const res = await listSkills()
+    availableSkills.value = res?.data || []
+  } catch (error) {
+    console.error('Failed to load skill list:', error)
+    availableSkills.value = []
+  } finally {
+    skillsLoading.value = false
   }
 }
 
@@ -893,6 +935,8 @@ const loadKBData = async () => {
         contentInstructions: kb.wiki_config?.content_instructions || '',
         extractionInstructions: kb.wiki_config?.extraction_instructions || '',
         graphDefaultTypes: kb.wiki_config?.graph_default_types || '',
+        // 构建技能（自定义 Wiki 生成时选用）
+        skill: kb.wiki_config?.skill || '',
       },
       indexingStrategy: {
         vectorEnabled: kb.indexing_strategy?.vector_enabled ?? true,
@@ -1279,6 +1323,8 @@ const buildSubmitData = () => {
       extraction_granularity: formData.value.wikiConfig?.extractionGranularity || 'standard',
       content_instructions: formData.value.wikiConfig?.contentInstructions || '',
       extraction_instructions: formData.value.wikiConfig?.extractionInstructions || '',
+      // 构建技能：自定义 Wiki 生成时选用；空 = 后端默认技能
+      skill: formData.value.wikiConfig?.skill || '',
     }
   }
 
@@ -1540,7 +1586,7 @@ watch(() => props.visible, async (newVal) => {
     }
     
     // 加载模型列表与空间默认存储引擎（创建 KB 时即使用，不依赖是否打开「存储引擎」Tab）
-    await Promise.all([loadAllModels(), loadTenantDefaultStorageProvider()])
+    await Promise.all([loadAllModels(), loadTenantDefaultStorageProvider(), loadAvailableSkills()])
     
     // 根据模式加载数据
     if (props.mode === 'edit' && props.kbId) {
