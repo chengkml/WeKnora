@@ -448,6 +448,41 @@ func (r *wikiPageRepository) ListBySlugs(
 	return out, nil
 }
 
+// ListByTitles returns live pages whose page_type is in pageTypes (empty =
+// any) and title exactly matches one of titles. One indexed query replaces the
+// skill-side full-KB paginated scan that used to build per-document
+// canonical-name registries (build_full [7] keywords / extract_entities_single
+// 实体合并). FolderIDs are hydrated so callers can write back merged pages.
+func (r *wikiPageRepository) ListByTitles(
+	ctx context.Context,
+	kbID string,
+	pageTypes []string,
+	titles []string,
+) ([]*types.WikiPage, error) {
+	if len(titles) == 0 {
+		return nil, nil
+	}
+	q := r.db.WithContext(ctx).
+		Model(&types.WikiPage{}).
+		Where("knowledge_base_id = ? AND deleted_at IS NULL AND status <> ?",
+			kbID, types.WikiPageStatusArchived).
+		Where("title IN ?", titles)
+	if len(pageTypes) > 0 {
+		q = q.Where("page_type IN ?", pageTypes)
+	}
+	var pages []*types.WikiPage
+	if err := q.Select("id", "slug", "title", "page_type", "status",
+		"folder_id", "source_refs", "aliases", "summary", "content").
+		Order("page_type ASC, title ASC, created_at ASC").
+		Find(&pages).Error; err != nil {
+		return nil, err
+	}
+	if err := r.hydratePageFolders(ctx, pages); err != nil {
+		return nil, err
+	}
+	return pages, nil
+}
+
 // ListDistinctCategoryPaths returns the materialized paths of existing wiki
 // folders (split into segments), ordered by path and capped at maxPaths. Used
 // by the batch taxonomy planner as the candidate pool of folders to reuse

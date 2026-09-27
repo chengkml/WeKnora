@@ -54,6 +54,18 @@ type LookupPagesRequest struct {
 // generous while still bounding the generated IN (...) clause.
 const maxLookupSlugs = 500
 
+// LookupPagesByTitleRequest is the body schema for the batch name-lookup:
+// find live wiki pages whose title exactly matches one of `titles`, optionally
+// restricted to `page_types`. The wiki-build skills use it instead of
+// paginating the whole KB to resolve same-name page existence per document.
+type LookupPagesByTitleRequest struct {
+	PageTypes []string `json:"page_types"`
+	Titles    []string `json:"titles"`
+}
+
+// maxLookupTitles caps a single batch title lookup.
+const maxLookupTitles = 1000
+
 // validateWikiKB validates that the KB exists and is a wiki type
 func (h *WikiPageHandler) validateWikiKB(c *gin.Context) (string, uint64, error) {
 	ctx := c.Request.Context()
@@ -560,6 +572,52 @@ func (h *WikiPageHandler) LookupPages(c *gin.Context) {
 	resp.Total = len(resp.Items)
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// LookupPagesByTitle godoc
+// @Summary      Find wiki pages by exact title (batch)
+// @Description  Returns live wiki pages whose title exactly matches any of the
+//               given titles, optionally filtered by page_type. One indexed
+//               query; used by wiki-build skills for same-name-page resolution.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string                     true  "Knowledge base ID"
+// @Param        body   body  LookupPagesByTitleRequest  true  "titles (required), page_types (optional)"
+// @Success      200  {object}  gin.H{"data": []types.WikiPage}
+// @Failure      400  {object}  gin.H{"error": string}
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/lookup-by-title [post]
+func (h *WikiPageHandler) LookupPagesByTitle(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req LookupPagesByTitleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if len(req.Titles) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "titles is required"})
+		return
+	}
+	if len(req.Titles) > maxLookupTitles {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("too many titles: %d (max %d)", len(req.Titles), maxLookupTitles)})
+		return
+	}
+
+	pages, err := h.wikiService.LookupPagesByTitle(c.Request.Context(), kbID, req.PageTypes, req.Titles)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if pages == nil {
+		pages = []*types.WikiPage{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": pages})
 }
 
 // UpdatePage godoc

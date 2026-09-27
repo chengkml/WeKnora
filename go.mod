@@ -62,8 +62,8 @@ require (
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/lkeap v1.3.103
 	github.com/tencentyun/cos-go-sdk-v5 v0.7.73
 	github.com/tiktoken-go/tokenizer v0.7.0
-	github.com/volcengine/vikingdb-go-sdk v0.0.11
 	github.com/volcengine/ve-tos-golang-sdk/v2 v2.9.4
+	github.com/volcengine/vikingdb-go-sdk v0.0.11
 	github.com/wailsapp/wails/v2 v2.12.0
 	github.com/weaviate/weaviate v1.37.3
 	github.com/weaviate/weaviate-go-client/v5 v5.7.3
@@ -78,6 +78,7 @@ require (
 	golang.org/x/mod v0.36.0
 	golang.org/x/net v0.56.0
 	golang.org/x/sync v0.21.0
+	golang.org/x/text v0.38.0
 	golang.org/x/time v0.15.0
 	google.golang.org/api v0.278.0
 	google.golang.org/grpc v1.81.0
@@ -332,7 +333,6 @@ require (
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260508192327-42602be52be6 // indirect
-	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/tools v0.45.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 // indirect

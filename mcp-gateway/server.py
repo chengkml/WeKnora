@@ -416,6 +416,30 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["kb_id"],
             },
         ),
+        types.Tool(
+            name="wiki_lookup_by_title",
+            description="Batch lookup of wiki pages by exact page title (optionally filtered by "
+            "page_type). Returns matching pages with slug/title/page_type/folder_ids/source_refs. "
+            "Use this instead of listing the whole KB when you need to resolve whether a "
+            "same-name page already exists (entity/keyword merge).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "kb_id": {"type": "string", "description": "Knowledge base ID"},
+                    "titles": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Exact page titles to look up (max 1000)",
+                    },
+                    "page_type": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional page_type filter (e.g. business_ontology, rule_ontology, frequent_keyword)",
+                    },
+                },
+                "required": ["kb_id", "titles"],
+            },
+        ),
         # --- Wiki folder management ---
         types.Tool(
             name="list_wiki_folders",
@@ -841,6 +865,12 @@ async def handle_call_tool(
                 page=args.get("page", 1),
                 page_size=args.get("page_size", 20),
                 folder_id=args.get("folder_id", ""),
+            )
+        elif name == "wiki_lookup_by_title":
+            result = client.wiki_lookup_by_title(
+                args["kb_id"],
+                titles=args.get("titles", []),
+                page_types=args.get("page_type") or None,
             )
         elif name == "list_wiki_folders":
             result = client.list_wiki_folders(

@@ -362,6 +362,54 @@ func (s *wikiPageService) ListPages(ctx context.Context, req *types.WikiPageList
 	}, nil
 }
 
+// maxLookupTitles caps a single batch lookup request. Skill-side per-document
+// canonical-name resolution sends the extracted names of one document (tens to
+// low hundreds); the cap bounds the generated IN (...) clause while leaving
+// plenty of headroom.
+const maxLookupTitles = 1000
+
+// LookupPagesByTitle finds live pages whose title exactly matches one of
+// titles, optionally restricted to pageTypes. This is the "按名称检索" primitive
+// that lets wiki-build skills resolve same-name-page existence per document
+// with a single indexed query instead of paginating the whole KB.
+func (s *wikiPageService) LookupPagesByTitle(
+	ctx context.Context,
+	kbID string,
+	pageTypes []string,
+	titles []string,
+) ([]*types.WikiPage, error) {
+	if len(titles) == 0 {
+		return nil, nil
+	}
+	uniq := make([]string, 0, len(titles))
+	seen := make(map[string]struct{}, len(titles))
+	for _, t := range titles {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		if _, dup := seen[t]; dup {
+			continue
+		}
+		seen[t] = struct{}{}
+		uniq = append(uniq, t)
+		if len(uniq) >= maxLookupTitles {
+			break
+		}
+	}
+	if len(uniq) == 0 {
+		return nil, nil
+	}
+	pages, err := s.repo.ListByTitles(ctx, kbID, pageTypes, uniq)
+	if err != nil {
+		return nil, err
+	}
+	for _, page := range pages {
+		stripWikiPageInlineChunkCitations(page)
+	}
+	return pages, nil
+}
+
 // DeletePage soft-deletes a wiki page
 func (s *wikiPageService) DeletePage(ctx context.Context, kbID string, slug string) error {
 	page, err := s.repo.GetBySlug(ctx, kbID, slug)

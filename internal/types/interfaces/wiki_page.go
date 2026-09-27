@@ -127,6 +127,12 @@ type WikiPageService interface {
 	// the pre-batch ListAllPages dump.
 	ListBySlugs(ctx context.Context, kbID string, slugs []string) (map[string]*types.WikiPageLite, error)
 
+	// LookupPagesByTitle finds live pages whose title exactly matches one of
+	// titles (optionally restricted to pageTypes). Batch, index-backed
+	// "retrieve by name" primitive for wiki-build skills — replaces per-doc
+	// full-KB pagination when resolving same-name page existence.
+	LookupPagesByTitle(ctx context.Context, kbID string, pageTypes, titles []string) ([]*types.WikiPage, error)
+
 	// ListSummariesByKnowledgeIDs returns summary-page content keyed by
 	// the knowledge id that authored it. Used by the retract / reparse
 	// branches of reduceSlugUpdates for "what was this doc's
@@ -275,6 +281,12 @@ type WikiPageRepository interface {
 
 	// ListByType retrieves all wiki pages of a given type within a knowledge base.
 	ListByType(ctx context.Context, kbID string, pageType string) ([]*types.WikiPage, error)
+
+	// ListByTitles returns live pages whose title exactly matches one of the
+	// given titles (optionally restricted to pageTypes). Index-backed batch
+	// name lookup for wiki-build skills; replaces per-doc full-KB pagination
+	// when resolving same-name-page existence.
+	ListByTitles(ctx context.Context, kbID string, pageTypes, titles []string) ([]*types.WikiPage, error)
 
 	// ListByTypeLight returns a paginated window of lightweight entries
 	// (slug/title/summary only) for the given page_type plus the total

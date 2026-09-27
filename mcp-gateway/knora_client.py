@@ -185,6 +185,21 @@ class WeKnoraGatewayClient:
             params=params,
         )
 
+    def wiki_lookup_by_title(
+        self, kb_id: str, titles: List[str], page_types: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Batch exact-title lookup of live wiki pages (optional page_type
+        filter). Replaces full-KB pagination for same-name resolution in the
+        wiki-build skills; one indexed query per request."""
+        body: Dict[str, Any] = {"titles": titles}
+        if page_types:
+            body["page_types"] = page_types
+        return self._request(
+            "POST",
+            f"/knowledgebase/{kb_id}/wiki/pages/lookup-by-title",
+            json=body,
+        )
+
     # ------------------------------------------------------------------
     # Wiki folder CRUD
     # ------------------------------------------------------------------

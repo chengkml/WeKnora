@@ -2408,6 +2408,10 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// it is a pure read (POST only because the slug list travels in the
 		// body); keep it before the /pages/*slug wildcard routes.
 		wikiRead.POST("/pages/lookup", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.LookupPages)
+		// Batch exact-title lookup (optional page_type filter). Pure read;
+		// used by wiki-build skills for same-name page resolution without
+		// paginating the whole KB. Also registered before the wildcard route.
+		wikiRead.POST("/pages/lookup-by-title", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.LookupPagesByTitle)
 		wiki.PUT("/move-page", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.MovePage)
 		wikiRead.GET("/pages/*slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPage)
 		wiki.PUT("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdatePage)
