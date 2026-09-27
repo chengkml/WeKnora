@@ -440,6 +440,27 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["kb_id", "titles"],
             },
         ),
+        types.Tool(
+            name="wiki_create_pages",
+            description="Batch-create wiki pages (2026-09-27): create multiple pages in one "
+            "HTTP call and one transaction. Each page follows the single-create "
+            "WikiPage shape (slug, title, content, page_type, folder_ids/source_refs "
+            "etc.); kb_id/tenant are injected server-side. Use for bulk page "
+            "creation in wiki builds (long sentences, keywords, entities) instead "
+            "of one create_wiki_page call per page.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "kb_id": {"type": "string", "description": "Knowledge base ID"},
+                    "pages": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Pages to create (WikiPage shapes; max 200 per call)",
+                    },
+                },
+                "required": ["kb_id", "pages"],
+            },
+        ),
         # --- Wiki folder management ---
         types.Tool(
             name="list_wiki_folders",
@@ -871,6 +892,10 @@ async def handle_call_tool(
                 args["kb_id"],
                 titles=args.get("titles", []),
                 page_types=args.get("page_type") or None,
+            )
+        elif name == "wiki_create_pages":
+            result = client.wiki_create_pages(
+                args["kb_id"], pages=args.get("pages", [])
             )
         elif name == "list_wiki_folders":
             result = client.list_wiki_folders(

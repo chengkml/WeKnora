@@ -131,14 +131,51 @@ func (s *wikiPageService) lookupSourceName(ctx context.Context, knowledgeID stri
 
 // CreatePage creates a new wiki page
 func (s *wikiPageService) CreatePage(ctx context.Context, page *types.WikiPage) (*types.WikiPage, error) {
+	if err := s.preparePageForCreate(ctx, page); err != nil {
+		return nil, err
+	}
+	if err := s.repo.Create(ctx, page); err != nil {
+		return nil, fmt.Errorf("create wiki page: %w", err)
+	}
+	// Update inbound links on target pages
+	s.updateInLinks(ctx, page.KnowledgeBaseID, page.Slug, page.OutLinks)
+	return page, nil
+}
+
+// CreatePages creates multiple wiki pages in one transaction (2026-09-27
+// 批量建页：校验/归一化与逐条 CreatePage 完全一致，仅落库合并为一次事务，
+// 供构建技能一次 HTTP 写 N 页，替代每页一次 RPC 往返）。
+func (s *wikiPageService) CreatePages(ctx context.Context, pages []*types.WikiPage) ([]*types.WikiPage, error) {
+	if len(pages) == 0 {
+		return nil, errors.New("pages required")
+	}
+	for _, p := range pages {
+		if err := s.preparePageForCreate(ctx, p); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.repo.CreateMany(ctx, pages); err != nil {
+		return nil, fmt.Errorf("create wiki pages: %w", err)
+	}
+	for _, p := range pages {
+		s.updateInLinks(ctx, p.KnowledgeBaseID, p.Slug, p.OutLinks)
+	}
+	return pages, nil
+}
+
+// preparePageForCreate runs the single-page write pipeline shared by
+// CreatePage and CreatePages: defaults, citation strip, source-ref
+// normalization, folder normalization/validation, outlink parse, hierarchy
+// normalize, and timestamps. It must run before any repo write.
+func (s *wikiPageService) preparePageForCreate(ctx context.Context, page *types.WikiPage) error {
 	if page.ID == "" {
 		page.ID = uuid.New().String()
 	}
 	if page.Slug == "" {
-		return nil, errors.New("wiki page slug is required")
+		return errors.New("wiki page slug is required")
 	}
 	if page.KnowledgeBaseID == "" {
-		return nil, errors.New("knowledge_base_id is required")
+		return errors.New("knowledge_base_id is required")
 	}
 	if page.Status == "" {
 		page.Status = types.WikiPageStatusPublished
@@ -156,28 +193,20 @@ func (s *wikiPageService) CreatePage(ctx context.Context, page *types.WikiPage) 
 		page.FolderID = primary
 	}
 	if err := s.validatePageFolders(ctx, page.KnowledgeBaseID, page.FolderIDs); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Parse outbound links from content
 	page.OutLinks = s.parseOutLinks(page.Content)
 	if err := s.applyFolderToPage(ctx, page); err != nil {
-		return nil, err
+		return err
 	}
 	normalizeWikiHierarchy(page)
 
 	now := time.Now()
 	page.CreatedAt = now
 	page.UpdatedAt = now
-
-	if err := s.repo.Create(ctx, page); err != nil {
-		return nil, fmt.Errorf("create wiki page: %w", err)
-	}
-
-	// Update inbound links on target pages
-	s.updateInLinks(ctx, page.KnowledgeBaseID, page.Slug, page.OutLinks)
-
-	return page, nil
+	return nil
 }
 
 // UpdatePage updates an existing wiki page.

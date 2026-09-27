@@ -50,6 +50,31 @@ func (r *wikiPageRepository) Create(ctx context.Context, page *types.WikiPage) e
 	return r.replacePageFolders(ctx, page, ids)
 }
 
+// CreateMany inserts multiple wiki pages in a single transaction (2026-09-27
+// 批量建页：单篇构建的长句/关键词/实体页一次事务落库，替代 N 次独立写）。
+func (r *wikiPageRepository) CreateMany(ctx context.Context, pages []*types.WikiPage) error {
+	if len(pages) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, page := range pages {
+			if page == nil {
+				continue
+			}
+			ids, primary := types.NormalizePageFolderMembership(page.FolderID, page.FolderIDs)
+			page.FolderID = primary
+			page.FolderIDs = types.StringArray(ids)
+			if err := tx.Create(page).Error; err != nil {
+				return err
+			}
+			if err := replacePageFoldersTx(tx, ctx, page, ids); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // Update updates an existing wiki page record with optimistic locking.
 // Increments version — use only for content changes visible to the user.
 // The caller must set page.Version to the expected current version.
@@ -687,10 +712,17 @@ func (r *wikiPageRepository) ListPagesByFolderIDs(
 // folderIDs (a full replace: delete then insert). Called from every write path
 // so the join table always mirrors the page's membership set.
 func (r *wikiPageRepository) replacePageFolders(ctx context.Context, page *types.WikiPage, folderIDs []string) error {
+	return replacePageFoldersTx(r.db, ctx, page, folderIDs)
+}
+
+// replacePageFoldersTx is the join-table writer shared by the single-write and
+// batch-write paths; it accepts an explicit *gorm.DB so CreateMany can run it
+// inside one transaction.
+func replacePageFoldersTx(tx *gorm.DB, ctx context.Context, page *types.WikiPage, folderIDs []string) error {
 	if page == nil || page.ID == "" {
 		return nil
 	}
-	if err := r.db.WithContext(ctx).
+	if err := tx.WithContext(ctx).
 		Where("page_id = ?", page.ID).
 		Delete(&types.WikiPageFolder{}).Error; err != nil {
 		return err
@@ -709,7 +741,7 @@ func (r *wikiPageRepository) replacePageFolders(ctx context.Context, page *types
 			CreatedAt:       now,
 			UpdatedAt:       now,
 		}
-		if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
+		if err := tx.WithContext(ctx).Create(row).Error; err != nil {
 			return err
 		}
 	}

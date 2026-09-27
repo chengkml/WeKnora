@@ -14,6 +14,10 @@ type WikiPageService interface {
 	// bidirectional link references, and syncs to chunks for retrieval.
 	CreatePage(ctx context.Context, page *types.WikiPage) (*types.WikiPage, error)
 
+	// CreatePages creates multiple wiki pages in one transaction
+	// (2026-09-27 批量建页，语义与逐条 CreatePage 一致）。
+	CreatePages(ctx context.Context, pages []*types.WikiPage) ([]*types.WikiPage, error)
+
 	// UpdatePage updates an existing wiki page, re-parses links, and updates
 	// bidirectional references. The `version` field is incremented only when
 	// a user-visible content field (title, content, summary, page_type,
@@ -250,6 +254,9 @@ type WikiPageService interface {
 type WikiPageRepository interface {
 	// Create inserts a new wiki page record.
 	Create(ctx context.Context, page *types.WikiPage) error
+
+	// CreateMany inserts multiple wiki pages in a single transaction.
+	CreateMany(ctx context.Context, pages []*types.WikiPage) error
 
 	// Update rewrites a wiki page record with optimistic locking and
 	// unconditionally increments `version`. Callers are responsible for

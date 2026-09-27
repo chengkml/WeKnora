@@ -200,6 +200,18 @@ class WeKnoraGatewayClient:
             json=body,
         )
 
+    def wiki_create_pages(
+        self, kb_id: str, pages: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Batch-create wiki pages (2026-09-27): N pages in one HTTP call and
+        one transaction. Pages follow the single-create WikiPage shape; KB/tenant
+        are injected server-side."""
+        return self._request(
+            "POST",
+            f"/knowledgebase/{kb_id}/wiki/pages/batch",
+            json={"pages": pages},
+        )
+
     # ------------------------------------------------------------------
     # Wiki folder CRUD
     # ------------------------------------------------------------------

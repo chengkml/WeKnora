@@ -462,6 +462,59 @@ func (h *WikiPageHandler) CreatePage(c *gin.Context) {
 	c.JSON(http.StatusCreated, created)
 }
 
+// CreatePagesRequest is the batch page-creation body.
+type CreatePagesRequest struct {
+	Pages []types.WikiPage `json:"pages"`
+}
+
+// CreatePages godoc
+// @Summary      Create multiple wiki pages in one transaction
+// @Description  Batch variant of CreatePage (2026-09-27): accepts a list of
+// pages, applies the same per-page validation/normalization, and persists all
+// inserts in a single transaction. Returns the created pages.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        request body  handler.CreatePagesRequest  true  "Pages to create"
+// @Success      201  {object}  map[string]interface{}
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/batch [post]
+func (h *WikiPageHandler) CreatePages(c *gin.Context) {
+	kbID, tenantID, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req CreatePagesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if len(req.Pages) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "pages required"})
+		return
+	}
+	for i := range req.Pages {
+		req.Pages[i].KnowledgeBaseID = kbID
+		req.Pages[i].TenantID = tenantID
+	}
+
+	ptrs := make([]*types.WikiPage, 0, len(req.Pages))
+	for i := range req.Pages {
+		p := req.Pages[i]
+		ptrs = append(ptrs, &p)
+	}
+	created, err := h.wikiService.CreatePages(c.Request.Context(), ptrs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"created": len(created), "pages": created})
+}
+
 // GetPage godoc
 // @Summary      Get a wiki page by slug
 // @Description  Retrieve a wiki page by its slug

@@ -2404,6 +2404,9 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// Page CRUD
 		wikiRead.GET("/pages", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.ListPages)
 		wiki.POST("/pages", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.CreatePage)
+		// Batch page creation (2026-09-27): N pages in one HTTP call + one
+		// transaction; registered before the /pages/*slug wildcard.
+		wiki.POST("/pages/batch", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.CreatePages)
 		// Batch slug -> title resolution. Registered on the read group because
 		// it is a pure read (POST only because the slug list travels in the
 		// body); keep it before the /pages/*slug wildcard routes.
