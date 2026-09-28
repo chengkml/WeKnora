@@ -2172,6 +2172,9 @@ const navItems = computed(() => {
   // Agent 模式能力
   if (isAgentMode.value) {
     items.push({ key: 'tools', icon: 'tools', label: t('agent.editor.toolsConfig') });
+    // 恢复「多模态(图片上传)」配置区（2026-09-28：WEK-56 隐藏后用户无法为 Agent
+    // 配置 VLM 模型/图片上传；section 模板仍在，仅补回导航入口）
+    items.push({ key: 'multimodal', icon: 'image', label: t('agentEditor.imageUpload.sectionTitle') });
     // 私有化定制（WEK-56）：「MCP 服务(mcp)」与「技能 Skills(skills)」也从表单移除——
     // MCP 与技能在平台侧统一管理（技能管理页 / MCP 管理页），无需逐个智能体配置。
   }
