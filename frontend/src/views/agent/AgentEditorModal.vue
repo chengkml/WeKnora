@@ -705,7 +705,8 @@
                     </div>
 
                     <!-- 图片存储 Provider（图片上传启用时） -->
-                    <div v-if="formData.config.image_upload_enabled" class="setting-row">
+                    <!-- 私有化定制（2026-09-28）：存储 Provider 表单隐藏（隐藏优先于删功能，配置保留） -->
+                    <div v-if="formData.config.image_upload_enabled" class="setting-row" style="display: none;">
                       <div class="setting-info">
                         <label>{{ $t('agentEditor.imageUpload.storageProvider') }}</label>
                         <p class="desc">{{ $t('agentEditor.imageUpload.storageProviderDesc') }}</p>
