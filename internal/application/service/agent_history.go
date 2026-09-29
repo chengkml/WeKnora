@@ -120,17 +120,37 @@ func LoadAgentHistory(
 // form that should appear in LLM history. It deliberately ignores
 // RenderedContent: that field is a snapshot of the old prompt and retrieval
 // context format, which must not be mixed into the current request protocol.
-// Image captions and attachments are reconstructed from their canonical DB
-// columns so useful user-provided context is retained without stale RAG data.
+//
+// 2026-09-28 修复（多模态会话串台）：历史轮次的图片不再重放——既不注入 VLM
+// 图片描述文本，也不把图片附件拼进 prompt。历史只保留纯文本与文档类附件，
+// 否则后续轮次上下文堆满旧图的文字描述（VLM caption），模型会一直回答
+// 上一轮的图；当前轮的图片仍走多模态 Images 通道正常给模型。
 func buildUserHistoryMessage(m *types.Message) chat.Message {
 	content := m.Content
-	if captions := extractImageCaptionsFromMessage(m.Images); captions != "" {
-		content += "\n\n[用户上传图片内容]\n" + captions
-	}
 	if len(m.Attachments) > 0 {
-		content += m.Attachments.BuildPrompt()
+		content += nonImageAttachments(m.Attachments).BuildPrompt()
 	}
 	return chat.Message{Role: "user", Content: content}
+}
+
+// imageFileTypeSet lists image extensions (with leading dot) that are stripped
+// from history replay because they can only appear as text refs there — never as
+// real pixels — and would anchor later turns onto an old image.
+var imageFileTypeSet = map[string]struct{}{
+	".png": {}, ".jpg": {}, ".jpeg": {}, ".gif": {}, ".webp": {},
+	".bmp": {}, ".svg": {}, ".tiff": {}, ".tif": {}, ".heic": {}, ".avif": {},
+}
+
+// nonImageAttachments filters image files out of history replay.
+func nonImageAttachments(atts types.MessageAttachments) types.MessageAttachments {
+	var out types.MessageAttachments
+	for _, a := range atts {
+		if _, isImg := imageFileTypeSet[strings.ToLower(strings.TrimSpace(a.FileType))]; isImg {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 // buildAssistantHistoryMessages reconstructs the assistant side of one
