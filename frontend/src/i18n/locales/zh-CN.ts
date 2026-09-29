@@ -2,6 +2,9 @@
 
 export default {
   menu: {
+      // 私有化定制（2026-09-29）：左侧菜单「知识库」改称「行业大模型」，
+      // 单开 key 避免影响知识库详情/FAQ 面板复用的 menu.knowledgeBase 面包屑。
+      industryLLM: "行业大模型",
       knowledgeBase: "知识库",
       skills: "技能管理",
       mcp: "MCP 管理",
@@ -545,7 +548,7 @@ export default {
     sharedTooltip: "通过共享空间从其他空间访问",
   },
   knowledgeBase: {
-    title: "知识库",
+    title: "行业大模型",
     list: "知识库列表",
     fileContent: "文件内容",
     detail: "知识库详情",
