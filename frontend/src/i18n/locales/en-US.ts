@@ -1,8 +1,6 @@
 
 export default {
   menu: {
-    // 私有化定制（2026-09-29）：与 zh-CN 的 menu.industryLLM 对应
-    industryLLM: 'Industry LLM',
     knowledgeBase: 'Knowledge Base',
         skills: 'Skill Management',
         mcp: 'MCP Management',
@@ -546,7 +544,7 @@ export default {
     sharedTooltip: 'Accessed from an external workspace via a shared space'
   },
   knowledgeBase: {
-    title: 'Industry LLM',
+    title: 'Knowledge Base',
     list: 'Knowledge Base List',
     fileContent: 'File Content',
     detail: 'Knowledge Base Details',
