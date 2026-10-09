@@ -2,7 +2,7 @@
 export default {
   menu: {
     knowledgeBase: 'Knowledge Base',
-        skills: 'Skill Management',
+        skills: 'Rule Management',
         mcp: 'MCP Management',
         agentTasks: 'Task Monitor',
         agents: 'Agents',

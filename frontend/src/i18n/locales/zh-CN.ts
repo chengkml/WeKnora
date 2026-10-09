@@ -3,7 +3,7 @@
 export default {
   menu: {
       knowledgeBase: "知识库",
-      skills: "技能管理",
+      skills: "规则管理",
       mcp: "MCP 管理",
       agentTasks: "任务监控",
       agents: "智能体",
