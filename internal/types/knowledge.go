@@ -100,6 +100,14 @@ type KnowledgeListFilter struct {
 	// The special values "manual" and "url" are routed to the `type` column to match
 	// FileType semantics, so callers can filter "manually created" / "URL imported" entries.
 	Source string
+	// FolderID is the raw folder filter coming from the request (doc_folders.id).
+	// The service expands it into FolderIDs (the folder + its whole subtree)
+	// before hitting the repository; set this directly only when the caller
+	// already knows the exact set.
+	FolderID string
+	// FolderIDs matches knowledges.folder_id IN (...) — the expanded subtree
+	// set. Empty = no folder filter.
+	FolderIDs []string
 	// UpdatedFrom, when non-zero, keeps rows with updated_at >= UpdatedFrom.
 	UpdatedFrom time.Time
 	// UpdatedTo, when non-zero, keeps rows with updated_at <= UpdatedTo.
@@ -128,6 +136,10 @@ type Knowledge struct {
 	Source string `json:"source"             gorm:"type:varchar(2048)"`
 	// Channel indicates through which channel the knowledge was ingested (web, api, browser_extension, wechat, etc.)
 	Channel string `json:"channel"            gorm:"type:varchar(50);default:'web'"`
+	// FolderID is the document's placement in the KB's multi-level document
+	// directory tree (doc_folders.id; "" = KB root, i.e. unfiled). A document
+	// belongs to exactly one folder.
+	FolderID string `json:"folder_id,omitempty" gorm:"column:folder_id;type:varchar(36);index;default:''"`
 	// Parse status of the knowledge
 	ParseStatus string `json:"parse_status"`
 	// AgentBuildStatus is the latest agent-gateway wiki build status for this

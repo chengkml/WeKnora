@@ -332,6 +332,65 @@ export function listKnowledgeTags(
   return get(`/api/v1/knowledge-bases/${kbId}/tags${query}`);
 }
 
+// --- 文档目录 (doc_folders) ---
+// 多级文档分类目录：单归属、递归子树浏览、与标签并存（见迁移 000079）。
+
+export interface DocFolderNode {
+  id: string;
+  parent_id: string;
+  name: string;
+  path: string;
+  depth: number;
+  doc_count: number;
+  has_children: boolean;
+  folders?: DocFolderNode[];
+}
+
+export interface DocFolderListResponse {
+  parent_id: string;
+  folders: DocFolderNode[];
+}
+
+// 获取目录树（parent_id 空 = 根层级）
+export function listDocFolders(kbId: string, parentId?: string) {
+  const query = buildQuery(parentId ? { parent_id: parentId } : undefined);
+  return get(`/api/v1/knowledge-bases/${kbId}/doc-folders${query}`);
+}
+
+// 新建目录
+export function createDocFolder(
+  kbId: string,
+  data: { parent_id?: string; name: string },
+) {
+  return post(`/api/v1/knowledge-bases/${kbId}/doc-folders`, data);
+}
+
+// 重命名/移动目录
+export function updateDocFolder(
+  kbId: string,
+  folderId: string,
+  data: { name?: string; parent_id?: string; move_parent?: boolean },
+) {
+  return put(`/api/v1/knowledge-bases/${kbId}/doc-folders/${folderId}`, data);
+}
+
+// 删除空目录
+export function deleteDocFolder(kbId: string, folderId: string) {
+  return del(`/api/v1/knowledge-bases/${kbId}/doc-folders/${folderId}`);
+}
+
+// 移动文档到目录（folder_id 空 = 移出所有目录到根层级）
+export function moveDocumentsToFolder(
+  kbId: string,
+  knowledgeIds: string[],
+  folderId: string,
+) {
+  return put(`/api/v1/knowledge-bases/${kbId}/doc-folders/move`, {
+    knowledge_ids: knowledgeIds,
+    folder_id: folderId,
+  });
+}
+
 export function createKnowledgeBaseTag(
   kbId: string,
   data: { name: string; color?: string; sort_order?: number },
