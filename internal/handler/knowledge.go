@@ -44,9 +44,6 @@ type KnowledgeHandler struct {
 	logEntryService interfaces.WikiLogEntryService
 	// kgRepo resolves the latest agent build task per knowledge (spans agent stage).
 	kgRepo interfaces.KnowledgeRepository
-	// docFolderService serves the multi-level document directory tree and
-	// expands a folder filter to its whole subtree for recursive listing.
-	docFolderService interfaces.DocFolderService
 }
 
 // NewKnowledgeHandler creates a new knowledge handler instance
@@ -60,7 +57,6 @@ func NewKnowledgeHandler(
 	spanRepo repository.KnowledgeSpanRepository,
 	logEntryService interfaces.WikiLogEntryService,
 	kgRepo interfaces.KnowledgeRepository,
-	docFolderService interfaces.DocFolderService,
 ) *KnowledgeHandler {
 	return &KnowledgeHandler{
 		cfg:               cfg,
@@ -70,9 +66,8 @@ func NewKnowledgeHandler(
 		agentShareService: agentShareService,
 		asynqClient:       asynqClient,
 		spanRepo:          spanRepo,
-		logEntryService:   logEntryService,
-		kgRepo:            kgRepo,
-		docFolderService:  docFolderService,
+		logEntryService:    logEntryService,
+		kgRepo:             kgRepo,
 	}
 }
 
@@ -1033,7 +1028,6 @@ func buildSpanTree(knowledgeID string, attempt int, rows []types.KnowledgeProces
 // @Param        keyword       query     string  false  "关键词搜索"
 // @Param        file_type     query     string  false  "文件类型筛选"
 // @Param        parse_status  query     string  false  "解析状态筛选 (pending/processing/completed/failed)"
-// @Param        folder_id     query     string  false  "文档目录筛选：按目录浏览，含该目录全部子目录文档"
 // @Param        source        query     string  false  "来源/渠道筛选 (web/api/feishu/notion/yuque/wechat/...，或 manual/url 按 type 过滤)"
 // @Param        start_time    query     string  false  "更新时间起点，RFC3339 格式"
 // @Param        end_time      query     string  false  "更新时间终点，RFC3339 格式"
@@ -1071,19 +1065,6 @@ func (h *KnowledgeHandler) ListKnowledge(c *gin.Context) {
 		FileType:    c.Query("file_type"),
 		ParseStatus: c.Query("parse_status"),
 		Source:      c.Query("source"),
-		FolderID:    c.Query("folder_id"),
-	}
-	// A folder view is recursive: listing a parent directory shows every
-	// document in its whole subtree. Expand the raw folder id into the subtree
-	// set before hitting the repository. Unknown / cross-KB folder ids are a
-	// client error (400) rather than a silently empty list.
-	if filter.FolderID != "" {
-		subtree, err := h.docFolderService.ExpandSubtree(ctx, kbID, filter.FolderID)
-		if err != nil {
-			c.Error(errors.NewBadRequestError("invalid folder_id: folder not found"))
-			return
-		}
-		filter.FolderIDs = subtree
 	}
 	if raw := c.Query("start_time"); raw != "" {
 		t, err := parseFilterTime(raw)

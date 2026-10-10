@@ -49,7 +49,6 @@ type RouterParams struct {
 	AgentShareService            interfaces.AgentShareService
 	KBHandler                    *handler.KnowledgeBaseHandler
 	KnowledgeHandler             *handler.KnowledgeHandler
-	DocFolderHandler             *handler.DocFolderHandler
 	TenantHandler                *handler.TenantHandler
 	TenantService                interfaces.TenantService
 	TenantAPIKeyService          interfaces.TenantAPIKeyService
@@ -249,7 +248,6 @@ func NewRouter(params RouterParams) *gin.Engine {
 		)
 		RegisterKnowledgeTagRoutes(v1, params.TagHandler, rbacGuards)
 		RegisterKnowledgeRoutes(v1, params.KnowledgeHandler, rbacGuards)
-		RegisterDocFolderRoutes(v1, params.DocFolderHandler, rbacGuards)
 		RegisterFAQRoutes(v1, params.FAQHandler, rbacGuards)
 		RegisterChunkRoutes(v1, params.ChunkHandler, rbacGuards)
 		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, rbacGuards)
@@ -552,24 +550,6 @@ func RegisterKnowledgeTagRoutes(r *gin.RouterGroup, tagHandler *handler.TagHandl
 		kbTags.POST("", g.OwnedKBOrAdmin(), g.KBAccessWrite("id"), tagHandler.CreateTag)
 		kbTags.PUT("/:tag_id", g.OwnedKBOrAdmin(), g.KBAccessWrite("id"), tagHandler.UpdateTag)
 		kbTags.DELETE("/:tag_id", g.OwnedKBOrAdmin(), g.KBAccessWrite("id"), tagHandler.DeleteTag)
-	}
-}
-
-// RegisterDocFolderRoutes 注册文档目录（doc_folders）相关路由。
-// 与标签同为 KB 子资源：目录组织影响浏览/筛选行为，需要与 KB 主体一致
-// 的"creator OR Admin+"写矩阵；读放行 Viewer（含共享 KB 与智能体可见）。
-func RegisterDocFolderRoutes(r *gin.RouterGroup, folderHandler *handler.DocFolderHandler, g *rbacGuards) {
-	if folderHandler == nil {
-		return
-	}
-	kbFolders := g.apiKeyGroup(r.Group("/knowledge-bases/:id/doc-folders"), apiKeyIngest(apiKeyFullAccess()))
-	kbFoldersRead := kbFolders.With(apiKeyRetrieve(apiKeyFullAccess()))
-	{
-		kbFoldersRead.GET("", g.Viewer(), g.KBAccessRead("id"), folderHandler.ListFolders)
-		kbFolders.POST("", g.OwnedKBOrAdmin(), g.KBAccessWrite("id"), folderHandler.CreateFolder)
-		kbFolders.PUT("/move", g.OwnedKBOrAdmin(), g.KBAccessWrite("id"), folderHandler.MoveDocuments)
-		kbFolders.PUT("/:folder_id", g.OwnedKBOrAdmin(), g.KBAccessWrite("id"), folderHandler.UpdateFolder)
-		kbFolders.DELETE("/:folder_id", g.OwnedKBOrAdmin(), g.KBAccessWrite("id"), folderHandler.DeleteFolder)
 	}
 }
 

@@ -44,8 +44,6 @@ import DocumentBatchBar from './components/DocumentBatchBar.vue';
 import KbUploadSourceDropdown from './components/KbUploadSourceDropdown.vue';
 import TagEditDialog from './components/TagEditDialog.vue';
 import KbTagManageDrawer from './components/KbTagManageDrawer.vue';
-import DocFolderTree from './components/DocFolderTree.vue';
-import DocFolderMoveDialog from './components/DocFolderMoveDialog.vue';
 import type { KnowledgeProcessOverrides } from '@/types/knowledgeProcess';
 import { useUploadConfirmStore, type UploadConfirmResult } from '@/stores/uploadConfirm';
 import WikiBrowser from './wiki/WikiBrowser.vue';
@@ -510,12 +508,6 @@ const isTagFilterPlaceholder = computed(
 );
 
 const selectedTagIds = ref<string[]>([]);
-// 文档目录筛选（doc_folders）：选中目录 id（"" = 根/全部）。目录浏览是
-// 递归子树语义——父目录的列表包含其所有子目录的文档（后端展开）。
-const selectedFolderId = ref('');
-const folderFilterPanelVisible = ref(false);
-const folderFilterTriggerHover = ref(false);
-const folderFilterCleared = ref(false);
 const tagList = ref<any[]>([]);
 const tagLoading = ref(false);
 const tagSearchQuery = ref('');
@@ -585,7 +577,6 @@ const filterParams = computed(() => {
   const [start, end] = updatedTimeRange.value || [];
   return {
     tag_ids: selectedTagIds.value.length > 0 ? selectedTagIds.value.join(',') : undefined,
-    folder_id: selectedFolderId.value || undefined,
     keyword: docSearchKeyword.value ? docSearchKeyword.value.trim() : undefined,
     file_type: selectedFileType.value || undefined,
     parse_status: selectedParseStatus.value || undefined,
@@ -642,67 +633,6 @@ const activeTagFilterTitle = computed(() => {
 });
 
 const isTagFilterActive = (tagId: string) => selectedTagIds.value.includes(tagId);
-
-// --- 文档目录筛选（doc_folders）---
-const folderTreeStore = ref<Record<string, { name: string; path: string }>>({});
-const activeFolderFilterLabel = computed(() => {
-  if (!selectedFolderId.value) {
-    return folderFilterCleared.value
-      ? t('knowledgeBase.folderFilterPlaceholder')
-      : t('knowledgeBase.folderFilterAll');
-  }
-  return folderTreeStore.value[selectedFolderId.value]?.name
-    || t('knowledgeBase.folderFilterPlaceholder');
-});
-const activeFolderFilterTitle = computed(() => {
-  if (!selectedFolderId.value) return t('knowledgeBase.folderFilterTitle');
-  const node = folderTreeStore.value[selectedFolderId.value];
-  return node?.path || t('knowledgeBase.folderFilterTitle');
-});
-const showFolderFilterClear = computed(
-  () => selectedFolderId.value !== '' && folderFilterTriggerHover.value,
-);
-
-function onFolderSelect(folder: any) {
-  selectedFolderId.value = folder?.id || '';
-  if (folder) {
-    folderTreeStore.value[folder.id] = { name: folder.name, path: folder.path };
-    folderFilterPanelVisible.value = false;
-  } else {
-    folderFilterPanelVisible.value = false;
-  }
-  loadKnowledgeFiles(kbId.value);
-}
-function handleFolderRowClick(folderId: string) {
-  folderFilterPanelVisible.value = false;
-  if (selectedFolderId.value === folderId) {
-    selectedFolderId.value = '';
-  } else {
-    selectedFolderId.value = folderId;
-  }
-  loadKnowledgeFiles(kbId.value);
-}
-function clearFolderFilter() {
-  selectedFolderId.value = '';
-  folderFilterCleared.value = true;
-  loadKnowledgeFiles(kbId.value);
-}
-function onFolderError(message: string) {
-  MessagePlugin.warning(message || t('knowledgeBase.folderManageTitle') + ' ' + t('common.failed'));
-}
-
-// --- 移动文档到目录（单文档 + 批量）---
-const folderMoveDialogVisible = ref(false);
-const folderMoveKnowledgeIds = ref<string[]>([]);
-
-function openFolderMoveDialog(knowledgeIds: string[]) {
-  folderMoveKnowledgeIds.value = knowledgeIds;
-  folderMoveDialogVisible.value = true;
-}
-function onFolderMoved() {
-  MessagePlugin.success(t('knowledgeBase.folderMoveSuccess'));
-  if (kbId.value) loadKnowledgeFiles(kbId.value);
-}
 
 // 标签编辑弹窗
 const tagEditDialogVisible = ref(false);
@@ -982,8 +912,6 @@ watch(() => kbId.value, (newKbId, oldKbId) => {
     resetPage();
     tagSearchQuery.value = '';
     tagPage.value = 1;
-    selectedFolderId.value = '';
-    folderFilterCleared.value = false;
     uiStore.clearSelectedTagIds();
   }
   loadKnowledgeBaseInfo(newKbId);
@@ -1980,7 +1908,7 @@ const confirmCancelParseKnowledge = async (item: KnowledgeCard) => {
 
 // Bridge card-view actions back to existing per-card handlers.
 const handleCardAction = (
-  action: 'edit' | 'reparse' | 'cancel-parse' | 'move' | 'move-to-folder' | 'delete' | 'view-trace' | 'batch-manage' | 'retry-wiki-build',
+  action: 'edit' | 'reparse' | 'cancel-parse' | 'move' | 'delete' | 'view-trace' | 'batch-manage' | 'retry-wiki-build',
   item: KnowledgeCard,
 ) => {
   const idx = (cardList.value || []).findIndex((i: KnowledgeCard) => i.id === item.id);
@@ -1991,7 +1919,6 @@ const handleCardAction = (
   }
   if (action === 'cancel-parse') return confirmCancelParseKnowledge(item);
   if (action === 'move') return handleMoveKnowledge(item);
-  if (action === 'move-to-folder') return openFolderMoveDialog([item.id]);
   if (action === 'delete') return confirmDeleteKnowledge(idx, item);
   if (action === 'view-trace') return handleViewTrace(idx, item);
   if (action === 'batch-manage') return handleEnterBatchFromCard(item);
@@ -2000,7 +1927,7 @@ const handleCardAction = (
 
 // Bridge list-view actions back to existing per-card handlers.
 const handleListAction = (
-  action: 'edit' | 'reparse' | 'cancel-parse' | 'move' | 'move-to-folder' | 'delete' | 'view-trace' | 'batch-manage' | 'retry-wiki-build',
+  action: 'edit' | 'reparse' | 'cancel-parse' | 'move' | 'delete' | 'view-trace' | 'batch-manage' | 'retry-wiki-build',
   item: KnowledgeCard,
 ) => {
   const idx = (cardList.value || []).findIndex((i: KnowledgeCard) => i.id === item.id);
@@ -2008,7 +1935,6 @@ const handleListAction = (
   if (action === 'reparse') return confirmRebuildKnowledge(idx, item);
   if (action === 'cancel-parse') return confirmCancelParseKnowledge(item);
   if (action === 'move') return handleMoveKnowledge(item);
-  if (action === 'move-to-folder') return openFolderMoveDialog([item.id]);
   if (action === 'delete') return confirmDeleteKnowledge(idx, item);
   if (action === 'view-trace') return handleViewTrace(idx, item);
   if (action === 'batch-manage') return handleEnterBatchFromCard(item);
@@ -2326,61 +2252,6 @@ async function createNewSession(value: string): Promise<void> {
                   </div>
                 </t-popup>
                 <div class="doc-filter-field">
-                  <t-popup v-model:visible="folderFilterPanelVisible" trigger="click" placement="bottom-left"
-                    overlay-class-name="folder-filter-popup" :overlay-inner-style="{ padding: 0 }">
-                    <template #content>
-                      <div class="folder-filter-panel" @click.stop>
-                        <div class="folder-filter-panel__header">
-                          <div class="folder-filter-panel__title">
-                            <span>{{ $t('knowledgeBase.folderFilterTitle') }}</span>
-                          </div>
-                        </div>
-                        <div class="folder-filter-panel__body">
-                          <DocFolderTree
-                            :kb-id="kbId"
-                            :can-edit="canEdit"
-                            :model-value="selectedFolderId"
-                            @update:model-value="(v: string) => selectedFolderId = v"
-                            @select="onFolderSelect"
-                            @changed="() => loadKnowledgeFiles(kbId!)"
-                            @error="onFolderError" />
-                        </div>
-                      </div>
-                    </template>
-                    <div class="doc-filter-field">
-                      <button type="button" class="doc-tag-filter-trigger doc-filter-field__control"
-                        :class="{ open: folderFilterPanelVisible }"
-                        :aria-label="$t('knowledgeBase.folderFilterTitle')"
-                        :title="activeFolderFilterTitle"
-                        @mouseenter="folderFilterTriggerHover = true"
-                        @mouseleave="folderFilterTriggerHover = false">
-                        <span class="doc-tag-filter-trigger__prefix" aria-hidden="true">
-                          <t-icon name="folder" size="16px" />
-                        </span>
-                        <span class="doc-tag-filter-trigger__label">{{ activeFolderFilterLabel }}</span>
-                        <span class="doc-tag-filter-trigger__suffix">
-                          <span
-                            v-if="showFolderFilterClear"
-                            class="t-input__suffix t-input__suffix-icon t-input__clear"
-                            :aria-label="$t('common.clear')"
-                            @click.stop="clearFolderFilter"
-                            @mousedown.stop
-                          >
-                            <t-icon name="close-circle-filled" class="t-input__suffix-clear" />
-                          </span>
-                          <t-icon
-                            v-else
-                            name="chevron-down"
-                            size="16px"
-                            class="doc-tag-filter-trigger__caret"
-                            :class="{ open: folderFilterPanelVisible }"
-                          />
-                        </span>
-                      </button>
-                    </div>
-                  </t-popup>
-                </div>
-                <div class="doc-filter-field">
                   <t-select v-model="selectedFileType" :options="fileTypeOptions"
                     :placeholder="$t('knowledgeBase.fileTypeFilter')" class="doc-type-select doc-filter-field__control"
                     clearable>
@@ -2519,8 +2390,7 @@ async function createNewSession(value: string): Promise<void> {
               <div class="doc-batch-bar-anchor" v-show="batchMode || selectedIds.size > 0">
                 <DocumentBatchBar :count="selectedIds.size" :delete-loading="batchDeleting"
                   :reparse-loading="batchReparsing" :visible="batchMode || selectedIds.size > 0"
-                  @cancel="handleBatchCancel" @delete="confirmBatchDelete" @reparse="confirmBatchReparse"
-                  @move-to-folder="() => openFolderMoveDialog([...selectedIds])" />
+                  @cancel="handleBatchCancel" @delete="confirmBatchDelete" @reparse="confirmBatchReparse" />
               </div>
             </div>
           </div>
@@ -2559,23 +2429,10 @@ async function createNewSession(value: string): Promise<void> {
     :is-faq="isFAQ"
     @changed="onTagManageChanged"
   />
-
-  <!-- 文档移动到目录（单文档 + 批量共用） -->
-  <DocFolderMoveDialog
-    v-model:visible="folderMoveDialogVisible"
-    :kb-id="kbId"
-    :knowledge-ids="folderMoveKnowledgeIds"
-    @moved="onFolderMoved"
-    @error="onFolderError"
-  />
 </template>
 <style>
 /* 下拉菜单容器样式已统一至 @/assets/dropdown-menu.less */
 .tag-filter-popup {
-  z-index: 5500 !important;
-}
-
-.folder-filter-popup {
   z-index: 5500 !important;
 }
 
@@ -2588,40 +2445,6 @@ async function createNewSession(value: string): Promise<void> {
     0 0 0 0.5px rgba(0, 0, 0, 0.03),
     0 2px 4px rgba(0, 0, 0, 0.04),
     0 8px 24px rgba(0, 0, 0, 0.1) !important;
-}
-
-.folder-filter-popup .t-popup__content {
-  padding: 0 !important;
-  border-radius: 8px !important;
-  background: var(--td-bg-color-container) !important;
-  border: 0.5px solid var(--td-component-stroke) !important;
-  box-shadow:
-    0 0 0 0.5px rgba(0, 0, 0, 0.03),
-    0 2px 4px rgba(0, 0, 0, 0.04),
-    0 8px 24px rgba(0, 0, 0, 0.1) !important;
-}
-
-.folder-filter-panel {
-  width: 260px;
-  max-height: 380px;
-  display: flex;
-  flex-direction: column;
-}
-.folder-filter-panel__header {
-  padding: 10px 12px 6px;
-  border-bottom: 0.5px solid var(--td-component-stroke);
-}
-.folder-filter-panel__title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--td-text-color-primary);
-}
-.folder-filter-panel__body {
-  padding: 8px;
-  overflow-y: auto;
 }
 
 .tag-more-popup .tag-menu {

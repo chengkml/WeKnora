@@ -104,9 +104,6 @@ func applyKnowledgeListFilter(query *gorm.DB, filter types.KnowledgeListFilter) 
 			filter.TagIDs,
 		)
 	}
-	if len(filter.FolderIDs) > 0 {
-		query = query.Where("folder_id IN ?", filter.FolderIDs)
-	}
 	if filter.Keyword != "" {
 		// Case-insensitive (LOWER … LIKE LOWER) so keyword search matches
 		// regardless of the stored casing — consistent with the sibling
