@@ -6,6 +6,7 @@ import { getKnowledgeSpans, reparseKnowledge, cancelKnowledgeParse, getKnowledge
 import { knowledgeSpansPayloadHasTrace } from '@/utils/knowledgeTrace'
 import { resolveTimelineHeaderStatus } from '@/utils/knowledgeProcessingStatus'
 import type { KnowledgeProcessOverrides } from '@/types/knowledgeProcess'
+import AgentBuildLogDrawer from './AgentBuildLogDrawer.vue'
 
 interface SpanNode {
   span_id?: string
@@ -1207,6 +1208,9 @@ const agentActive = computed<boolean>(() => {
 const agentRows = computed<Array<{ action: string; time: string | undefined; timeMs: number | null; summary?: string }>>(() => {
   return (agent.value?.stages || []).map((s) => ({ action: s.action, time: s.time, timeMs: parseTime(s.time), summary: s.summary }))
 })
+// 构建执行日志抽屉（成功/失败/运行中均可查看网关 trace 链路）
+const buildLogVisible = ref(false)
+const buildLogTaskId = computed<string | null>(() => agent.value?.task_id || null)
 const agentTotalMs = computed<number>(() => {
   const a = agent.value
   if (typeof a?.duration_ms === 'number' && a.duration_ms > 0) return a.duration_ms
@@ -1719,6 +1723,17 @@ const processConfigLines = computed<string[]>(() => {
             <span v-if="agentTotalMs > 0" class="kp-agent-total kp-mono">
               {{ t('knowledgeStages.agent.total', { d: formatDuration(agentTotalMs) }) }}
             </span>
+            <button
+              v-if="buildLogTaskId"
+              type="button"
+              class="kp-agent-log-btn"
+              :title="t('knowledgeStages.agent.viewLog')"
+              :aria-label="t('knowledgeStages.agent.viewLog')"
+              @click="buildLogVisible = true"
+            >
+              <t-icon name="chart-line" size="14px" />
+              <span>{{ t('knowledgeStages.agent.viewLog') }}</span>
+            </button>
           </div>
           <div v-if="(agent?.stages || []).length > 0" class="kp-agent-list">
             <div v-for="(st, i) in agentRows" :key="i" class="kp-agent-row">
@@ -1731,6 +1746,9 @@ const processConfigLines = computed<string[]>(() => {
           </div>
           <div v-else class="kp-agent-empty">{{ t('knowledgeStages.agent.noLogs') }}</div>
         </section>
+
+        <!-- 构建执行日志抽屉：成功/失败/运行中任务均可查看网关 trace 链路 -->
+        <AgentBuildLogDrawer v-model:visible="buildLogVisible" :task-id="buildLogTaskId" />
 
         <!-- ============== DETAIL PANEL ============== -->
         <div class="kp-detail" :class="{ 'kp-detail-open': detailOpen }">
@@ -3440,6 +3458,24 @@ const processConfigLines = computed<string[]>(() => {
   font-size: 12px;
   color: var(--td-text-color-secondary);
   margin-left: auto;
+}
+.kp-agent-log-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 6px;
+  background: var(--td-bg-color-container);
+  color: var(--td-brand-color);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  flex: none;
+}
+.kp-agent-log-btn:hover {
+  background: var(--td-brand-color-1);
+  border-color: var(--td-brand-color);
 }
 .kp-agent-list {
   display: flex;

@@ -1106,6 +1106,7 @@ export default {
       title: "Wiki 스킬 빌드",
       total: "총 소요 {d}",
       noLogs: "스킬 진행 로그 없음",
+      viewLog: "빌드 로그 보기",
       status: {
         queued: "스킬 대기 중",
         running: "스킬 빌드 중",

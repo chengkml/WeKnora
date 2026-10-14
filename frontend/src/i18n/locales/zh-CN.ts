@@ -1125,6 +1125,7 @@ export default {
       title: "Wiki 技能构建",
       total: "总耗时 {d}",
       noLogs: "技能进度日志暂未回写",
+      viewLog: "查看构建日志",
       status: {
         queued: "技能排队中",
         running: "技能构建中",

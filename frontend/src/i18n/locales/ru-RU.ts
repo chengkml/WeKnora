@@ -989,6 +989,7 @@ export default {
       title: 'Сборка Wiki навыком',
       total: 'Всего {d}',
       noLogs: 'Журналов прогресса навыка пока нет',
+      viewLog: 'Смотреть лог сборки',
       status: {
         queued: 'Навык в очереди',
         running: 'Навык работает',

@@ -1122,6 +1122,7 @@ export default {
       title: 'Wiki Skill Build',
       total: 'Total {d}',
       noLogs: 'No skill progress logs yet',
+      viewLog: 'View build log',
       status: {
         queued: 'Skill queued',
         running: 'Skill building',
