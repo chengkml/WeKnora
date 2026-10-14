@@ -53,9 +53,9 @@
         </ul>
       </section>
 
-      <section v-if="detail.gateway?.output_text" class="at-detail-block">
+      <section v-if="outputText" class="at-detail-block">
         <h4>{{ t('agentTasks.detail.output') }}</h4>
-        <pre class="at-detail-pre">{{ detail.gateway.output_text }}</pre>
+        <pre class="at-detail-pre">{{ outputText }}</pre>
       </section>
 
       <section v-if="errorText" class="at-detail-block">
@@ -178,8 +178,21 @@ const detailSpans = computed<DetailSpanNode[]>(() => {
 })
 
 const errorText = computed(
-  () => detail.value?.gateway?.error_detail || detail.value?.task?.last_error || '',
+  () =>
+    detail.value?.task?.status !== 'succeeded'
+      ? detail.value?.gateway?.error_detail || detail.value?.task?.last_error || ''
+      : '',
 )
+
+/** 输出区：优先网关 output_text；成功任务若网关为空（离线直连通道），回落台账 output_preview */
+const outputText = computed(() => {
+  const gw = detail.value?.gateway?.output_text
+  if (gw) return gw
+  if (detail.value?.task?.status === 'succeeded' && detail.value?.task?.output_preview) {
+    return detail.value.task.output_preview
+  }
+  return ''
+})
 
 function formatRunSeconds(seconds?: number): string {
   const value = Number(seconds || 0)
